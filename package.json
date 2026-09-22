@@ -1,0 +1,16 @@
+{
+  "name": "kk-auto",
+  "version": "1.0.0",
+  "description": "Kk_Auto - Modern Responsive Auto-Rickshaw Ride-Booking Web Application",
+  "scripts": {
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "build:server": "cd server && npm run build",
+    "build:client": "cd client && npm run build",
+    "build": "npm run build:server && npm run build:client",
+    "start": "cd server && npm start"
+  },
+  "keywords": ["auto-rickshaw", "ride-booking", "react", "typescript", "express", "postgresql"],
+  "author": "Kk_Auto Team",
+  "license": "ISC"
+}

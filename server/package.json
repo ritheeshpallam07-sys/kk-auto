@@ -1,0 +1,32 @@
+{
+  "name": "kk-auto-server",
+  "version": "1.0.0",
+  "description": "Kk_Auto Ride Booking Backend API",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc && node -e \"const fs=require('fs'); fs.mkdirSync('dist/db', {recursive:true}); fs.copyFileSync('src/db/schema.sql', 'dist/db/schema.sql');\"",
+    "start": "node dist/index.js",
+    "seed": "tsx src/db/seed.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.16",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.8",
+    "@types/node": "^22.13.1",
+    "@types/pg": "^8.11.11",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.13",
+    "typescript": "^5.7.3"
+  }
+}
