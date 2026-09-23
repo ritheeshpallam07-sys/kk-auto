@@ -50,8 +50,7 @@ export class BookingController {
           pickupAddress: result.fromLocation,
           destinationAddress: result.toLocation,
           passengers,
-          estimatedFare: result.fare * passengers
-        }
+          estimatedFare: (result.fare ?? 0) * passengers        }
       });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message });
