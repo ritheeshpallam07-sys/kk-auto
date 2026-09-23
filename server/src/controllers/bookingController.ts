@@ -50,7 +50,7 @@ export class BookingController {
           pickupAddress: result.fromLocation,
           destinationAddress: result.toLocation,
           passengers,
-          estimatedFare: result.fare
+          estimatedFare: result.fare * passengers
         }
       });
     } catch (err: any) {
@@ -123,7 +123,7 @@ export class BookingController {
           routeCheck.toLocation,
           scheduledTime.toISOString(),
           numPassengers,
-          routeCheck.fare,
+          routeCheck.fare * numPassengers,
           'Searching for Auto'
         ]
       );
