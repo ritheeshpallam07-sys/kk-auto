@@ -73,78 +73,152 @@ export class DriverController {
    * Get available ride requests (Searching for Auto)
    */
   public static async getIncomingRequests(req: Request, res: Response) {
-    try {
-      const resRequests = await query(
-        `SELECT b.*, u.name as customer_name, u.mobile as customer_mobile
-         FROM bookings b
-         JOIN users u ON b.customer_id = u.id
-         WHERE b.status = 'Searching for Auto'
-         ORDER BY b.created_at ASC
-         LIMIT 20`
-      );
+  try {
+    const user = req.user!;
 
-      return res.json({ success: true, data: resRequests.rows });
-    } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+    const driverRes = await query(
+      `SELECT approval_status, availability_status
+       FROM drivers
+       WHERE user_id = $1
+       LIMIT 1`,
+      [user.id]
+    );
+
+    if (driverRes.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Driver profile not found.'
+      });
     }
+
+    const driver = driverRes.rows[0];
+    const approvalStatus = String(driver.approval_status || 'PENDING').toUpperCase();
+
+    // Only approved/active and currently online drivers receive requests.
+    if (
+      !['APPROVED', 'ACTIVE'].includes(approvalStatus) ||
+      driver.availability_status !== 'available'
+    ) {
+      return res.json({
+        success: true,
+        data: []
+      });
+    }
+
+    const resRequests = await query(
+      `SELECT b.*, u.name as customer_name, u.mobile as customer_mobile
+       FROM bookings b
+       JOIN users u ON b.customer_id = u.id
+       WHERE b.status = 'Searching for Auto'
+       ORDER BY b.created_at ASC
+       LIMIT 20`
+    );
+
+    return res.json({
+      success: true,
+      data: resRequests.rows
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
   }
+}
 
   /**
    * Driver accepts a booking request
    * Strictly enforces approval_status guard
    */
   public static async acceptBooking(req: Request, res: Response) {
-    try {
-      const user = req.user!;
-      const { id } = req.params;
+  try {
+    const user = req.user!;
+    const { id } = req.params;
 
-      // Get driver record
-      const driverRes = await query('SELECT * FROM drivers WHERE user_id = $1 LIMIT 1', [user.id]);
-      if (driverRes.rows.length === 0) {
-        return res.status(403).json({ success: false, error: 'Driver profile not found.' });
-      }
-      const driver = driverRes.rows[0];
+    // Get driver record
+    const driverRes = await query(
+      `SELECT * FROM drivers WHERE user_id = $1 LIMIT 1`,
+      [user.id]
+    );
 
-      // Approval guard
-      const status = (driver.approval_status || 'PENDING').toUpperCase();
-      if (status !== 'APPROVED' && status !== 'ACTIVE') {
-        return res.status(403).json({
-          success: false,
-          error: `Your driver account is currently ${status}. You can only accept rides after approval by Admin.`
-        });
-      }
-
-      // Verify booking is still available
-      const bookingRes = await query('SELECT * FROM bookings WHERE id = $1 LIMIT 1', [id]);
-      if (bookingRes.rows.length === 0) {
-        return res.status(404).json({ success: false, error: 'Booking not found.' });
-      }
-
-      const booking = bookingRes.rows[0];
-      if (booking.status !== 'Searching for Auto') {
-        return res.status(400).json({ success: false, error: 'Ride request is no longer available.' });
-      }
-
-      // Assign driver and update status to Driver Assigned
-      const updateRes = await query(
-        `UPDATE bookings 
-         SET driver_id = $1, status = 'Driver Assigned', updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2 RETURNING *`,
-        [driver.id, id]
-      );
-
-      // Set driver status to on_ride
-      await query(`UPDATE drivers SET availability_status = 'on_ride' WHERE id = $1`, [driver.id]);
-
-      return res.json({
-        success: true,
-        message: 'Ride accepted successfully.',
-        data: updateRes.rows[0]
+    if (driverRes.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Driver profile not found.'
       });
-    } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
     }
+
+    const driver = driverRes.rows[0];
+
+    // Driver must be approved/active
+    const approvalStatus = String(
+      driver.approval_status || 'PENDING'
+    ).toUpperCase();
+
+    if (!['APPROVED', 'ACTIVE'].includes(approvalStatus)) {
+      return res.status(403).json({
+        success: false,
+        error: `Your driver account is currently ${approvalStatus}. You can only accept rides after approval by Admin.`
+      });
+    }
+
+    // Driver must be online and available
+    if (driver.availability_status !== 'available') {
+      return res.status(400).json({
+        success: false,
+        error: 'You must be online and available to accept a new ride.'
+      });
+    }
+
+    /*
+     * Important:
+     * The status condition is part of the UPDATE itself.
+     *
+     * This prevents two drivers from accepting the same ride:
+     * the first UPDATE changes the booking from
+     * "Searching for Auto" -> "Driver Assigned".
+     * Any later driver gets zero updated rows.
+     */
+    const updateRes = await query(
+      `UPDATE bookings
+       SET driver_id = $1,
+           status = 'Driver Assigned',
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+         AND status = 'Searching for Auto'
+         AND driver_id IS NULL
+       RETURNING *`,
+      [driver.id, id]
+    );
+
+    // Another driver already accepted it
+    if (updateRes.rows.length === 0) {
+      return res.status(409).json({
+        success: false,
+        error: 'Ride request is no longer available.'
+      });
+    }
+
+    // This driver now has the active ride
+    await query(
+      `UPDATE drivers
+       SET availability_status = 'on_ride'
+       WHERE id = $1`,
+      [driver.id]
+    );
+
+    return res.json({
+      success: true,
+      message: 'Ride accepted successfully.',
+      data: updateRes.rows[0]
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
   }
+}
 
   /**
    * Driver updates the ride progress status
