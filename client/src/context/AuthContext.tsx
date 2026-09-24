@@ -5,8 +5,14 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
-  login: (identifier: string, pass: string) => Promise<{ success: boolean; error?: string }>;
-  register: (data: any) => Promise<{ success: boolean; error?: string }>;
+login: (identifier: string, pass: string) => Promise<{
+  success: boolean;
+  error?: string;
+  data?: {
+    user: User;
+    token: string;
+  };
+}>;  register: (data: any) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   isCustomer: boolean;
@@ -49,7 +55,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(res.data.user);
       setToken(res.data.token);
       localStorage.setItem('kk_token', res.data.token);
-      return { success: true };
+      return { success: true, data: res.data };
     }
     return { success: false, error: res.error || 'Login failed' };
   };

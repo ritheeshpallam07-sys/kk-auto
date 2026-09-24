@@ -73,26 +73,31 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, navigate }) => {
               About
             </button>
 
-            {user && (
-              <>
-                <button
-                  onClick={() => handleNav('/dashboard')}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                    currentPath === '/dashboard' ? 'text-amber-600 bg-amber-50' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                  }`}
-                >
-                  Dashboard
-                </button>
-                <button
-                  onClick={() => handleNav('/my-rides')}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                    currentPath === '/my-rides' ? 'text-amber-600 bg-amber-50' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                  }`}
-                >
-                  My Rides
-                </button>
-              </>
-            )}
+            {user && !isDriver && !isAdmin && (
+  <>
+    <button
+      onClick={() => handleNav('/dashboard')}
+      className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+        currentPath === '/dashboard'
+          ? 'text-amber-600 bg-amber-50'
+          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+      }`}
+    >
+      Dashboard
+    </button>
+
+    <button
+      onClick={() => handleNav('/my-rides')}
+      className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+        currentPath === '/my-rides'
+          ? 'text-amber-600 bg-amber-50'
+          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+      }`}
+    >
+      My Rides
+    </button>
+  </>
+)}
 
             {isDriver && (
               <button
@@ -221,12 +226,14 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, navigate }) => {
               </>
             )}
 
-            <button
-              onClick={() => handleNav('/book')}
-              className="px-4 py-2.5 text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl shadow-md transition-all hover:scale-102 flex items-center gap-2"
-            >
-              <span>Book an Auto</span>
-            </button>
+            {user && !isDriver && !isAdmin && (
+  <button
+    onClick={() => handleNav('/book')}
+    className="px-4 py-2.5 text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl shadow-md transition-all hover:scale-102 flex items-center gap-2"
+  >
+    <span>Book an Auto</span>
+  </button>
+)}
           </div>
 
           {/* Mobile Menu Button */}

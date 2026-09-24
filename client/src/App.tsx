@@ -48,30 +48,29 @@ export const App: React.FC = () => {
     // Protected Customer Routes
     if (currentPath === '/dashboard') {
       return (
-        <ProtectedRoute navigate={navigate}>
-          <CustomerDashboard navigate={navigate} />
+        <ProtectedRoute allowedRoles={['customer']} navigate={navigate}>          <CustomerDashboard navigate={navigate} />
         </ProtectedRoute>
       );
     }
     if (currentPath === '/book' || currentPath === '/fare-estimate') {
       return (
-        <ProtectedRoute navigate={navigate}>
-          <BookingFormPage navigate={navigate} />
-        </ProtectedRoute>
+        <ProtectedRoute allowedRoles={['customer']} navigate={navigate}>
+  <BookingFormPage navigate={navigate} />
+</ProtectedRoute>
       );
     }
     if (currentPath === '/my-rides') {
       return (
-        <ProtectedRoute navigate={navigate}>
-          <MyRidesPage navigate={navigate} />
-        </ProtectedRoute>
+        <ProtectedRoute allowedRoles={['customer']} navigate={navigate}>
+  <MyRidesPage navigate={navigate} />
+</ProtectedRoute>
       );
     }
     if (currentPath === '/profile') {
       return (
-        <ProtectedRoute navigate={navigate}>
-          <ProfilePage navigate={navigate} />
-        </ProtectedRoute>
+        <ProtectedRoute allowedRoles={['customer']} navigate={navigate}>
+  <ProfilePage navigate={navigate} />
+</ProtectedRoute>
       );
     }
 
@@ -79,7 +78,7 @@ export const App: React.FC = () => {
     if (currentPath.startsWith('/booking/')) {
       const id = currentPath.replace('/booking/', '');
       return (
-        <ProtectedRoute navigate={navigate}>
+        <ProtectedRoute allowedRoles={['customer']} navigate={navigate}>
           <BookingStatusPage bookingId={id} navigate={navigate} />
         </ProtectedRoute>
       );

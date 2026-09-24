@@ -14,13 +14,14 @@ import {
   Star,
   AlertCircle 
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { api, FareEstimate } from '../api/client';
-
 interface LandingPageProps {
   navigate: (path: string) => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ navigate }) => {
+  const { user, isDriver, isAdmin } = useAuth();
   const [locations, setLocations] = useState<string[]>([]);
   const [quickPickup, setQuickPickup] = useState('');
   const [quickDest, setQuickDest] = useState('');
@@ -69,8 +70,40 @@ export const LandingPage: React.FC<LandingPageProps> = ({ navigate }) => {
     }
   };
 
+  if (isDriver || isAdmin) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <section className="flex-1 bg-gradient-to-b from-amber-50/70 via-white to-slate-50 py-20">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="bg-white rounded-3xl p-8 sm:p-12 shadow-xl border border-slate-100 text-center">
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-400 flex items-center justify-center text-3xl mb-6">
+                {isDriver ? '🛺' : '🛡️'}
+              </div>
+
+              <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 mb-4">
+                {isDriver ? `Welcome, ${user?.name}` : 'Welcome, Admin'}
+              </h1>
+
+              <p className="text-slate-600 mb-8">
+                {isDriver
+                  ? 'Manage your availability, customer ride requests, and active rides from your driver dashboard.'
+                  : 'Manage drivers, routes, fares, bookings, and Kk_Auto operations from your admin dashboard.'}
+              </p>
+
+              <button
+                onClick={() => navigate(isDriver ? '/driver' : '/admin')}
+                className="px-8 py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl shadow-lg transition-transform hover:scale-105"
+              >
+                {isDriver ? 'Open Driver Dashboard' : 'Open Admin Dashboard'}
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }    
   return (
-    <div className="flex flex-col min-h-screen">
+  <div className="flex flex-col min-h-screen">
       {/* HERO SECTION */}
       <section className="relative overflow-hidden bg-gradient-to-b from-amber-50/70 via-white to-slate-50 pt-8 pb-20 lg:pt-16 lg:pb-28">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -411,6 +444,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ navigate }) => {
           </div>
         </div>
       </section>
-    </div>
+        </div>
   );
 };
