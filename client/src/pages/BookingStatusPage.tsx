@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api, Booking, PaymentRecord, RatingRecord } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
 import { Modal } from '../components/Modal';
+import { load } from '@cashfreepayments/cashfree-js';
 import { 
   ArrowLeft, 
   MapPin, 
@@ -100,23 +101,47 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   };
 
   const handleProcessPayment = async () => {
-    if (!booking) return;
-    setIsPaying(true);
-    const res = await api.payments.sandboxPay({
+  if (!booking) return;
+
+  setIsPaying(true);
+
+  try {
+    const res = await api.payments.createOrder({
       bookingId: booking.id,
       paymentMethod: selectedPaymentMethod
     });
-    setIsPaying(false);
-    setIsPayModalOpen(false);
 
-    if (res.success && res.data) {
-      setPayment(res.data);
-      loadBookingAndPayment(false);
-    } else {
-      setError(res.error || 'Payment failed.');
+    if (res.success && res.data?.payment_session_id) {
+      const cashfree = await load({
+        mode: 'sandbox'
+      });
+
+      if (!cashfree) {
+        throw new Error('Unable to load Cashfree Checkout.');
+      }
+
+      setIsPayModalOpen(false);
+
+      await cashfree.checkout({
+        paymentSessionId: res.data.payment_session_id,
+        redirectTarget: '_self'
+      });
+
+      return;
     }
-  };
 
+    throw new Error(res.error || 'Unable to create payment order.');
+  } catch (error) {
+    console.error('Payment checkout error:', error);
+    setError(
+      error instanceof Error
+        ? error.message
+        : 'Payment failed. Please try again.'
+    );
+  } finally {
+    setIsPaying(false);
+  }
+};
   const handleSubmitRating = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!booking) return;

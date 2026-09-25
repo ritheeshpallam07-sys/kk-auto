@@ -66,6 +66,7 @@ export interface PaymentRecord {
   transaction_reference: string;
   gateway_order_id?: string;
   gateway_payment_id?: string;
+  payment_session_id?: string;
   settled_at?: string;
   created_at: string;
   updated_at: string;

@@ -1,6 +1,12 @@
 import { query } from '../config/db';
 import crypto from 'crypto';
-
+import { Cashfree, CFEnvironment } from 'cashfree-pg';
+const cashfree = new Cashfree(
+  CFEnvironment.SANDBOX,
+  process.env.CASHFREE_APP_ID || '',
+  process.env.CASHFREE_SECRET_KEY || ''
+);
+cashfree.XApiVersion = '2025-01-01';
 export interface PaymentRecord {
   id: number;
   booking_id: number;
@@ -78,72 +84,120 @@ export class PaymentService {
    * Customer initiates online payment: creates an order with the marketplace split
    */
   public static async createPaymentOrder(
-    bookingId: number,
-    customerId: number,
-    paymentMethod: string = 'UPI'
-  ): Promise<PaymentRecord> {
-    // 1. Verify booking exists
-    const bookingRes = await query(
-      `SELECT * FROM bookings WHERE id = $1 LIMIT 1`,
-      [bookingId]
+  bookingId: number,
+  customerId: number,
+  paymentMethod: string = 'UPI'
+): Promise<PaymentRecord & { payment_session_id?: string }> {
+  // 1. Verify booking exists
+  const bookingRes = await query(
+    `SELECT b.*, u.name AS customer_name, u.email AS customer_email, u.mobile AS customer_mobile
+     FROM bookings b
+     JOIN users u ON b.customer_id = u.id
+     WHERE b.id = $1
+     LIMIT 1`,
+    [bookingId]
+  );
+
+  if (bookingRes.rows.length === 0) {
+    throw new Error('Booking not found.');
+  }
+
+  const booking = bookingRes.rows[0];
+
+  // Make sure the logged-in customer owns this booking
+  if (Number(booking.customer_id) !== Number(customerId)) {
+    throw new Error('You are not authorized to pay for this booking.');
+  }
+
+  // Check if already paid
+  const existingPayment = await query<PaymentRecord>(
+    `SELECT * FROM payments
+     WHERE booking_id = $1
+       AND payment_status = 'COMPLETED'
+     LIMIT 1`,
+    [bookingId]
+  );
+
+  if (existingPayment.rows.length > 0) {
+    return existingPayment.rows[0];
+  }
+
+  // 2. Calculate marketplace split
+  const commissionPerTrip = await this.getCommissionPerTrip();
+  const totalFare = Number(booking.estimated_fare);
+
+  if (!Number.isFinite(totalFare) || totalFare <= 0) {
+    throw new Error('Invalid booking fare.');
+  }
+
+  const ownerAmount = Math.min(commissionPerTrip, totalFare);
+  const driverAmount = Math.max(0, totalFare - ownerAmount);
+
+  // Reuse an existing pending payment if one exists
+  const pendingPayment = await query<PaymentRecord>(
+    `SELECT * FROM payments
+     WHERE booking_id = $1
+       AND payment_status = 'PENDING'
+     LIMIT 1`,
+    [bookingId]
+  );
+
+  let paymentRecord: PaymentRecord;
+
+  if (pendingPayment.rows.length > 0) {
+    const updated = await query<PaymentRecord>(
+      `UPDATE payments
+       SET payment_method = $1,
+           driver_id = $2,
+           total_amount = $3,
+           driver_amount = $4,
+           owner_amount = $5,
+           commission_amount = $6,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $7
+       RETURNING *`,
+      [
+        paymentMethod,
+        booking.driver_id,
+        totalFare,
+        driverAmount,
+        ownerAmount,
+        ownerAmount,
+        pendingPayment.rows[0].id
+      ]
     );
-    if (bookingRes.rows.length === 0) {
-      throw new Error('Booking not found.');
-    }
-    const booking = bookingRes.rows[0];
 
-    // Check if already paid
-    const existingPayment = await query<PaymentRecord>(
-      `SELECT * FROM payments WHERE booking_id = $1 AND payment_status = 'COMPLETED' LIMIT 1`,
-      [bookingId]
-    );
-    if (existingPayment.rows.length > 0) {
-      return existingPayment.rows[0];
-    }
-
-    // 2. Calculate marketplace split
-    const commissionPerTrip = await this.getCommissionPerTrip();
-    const totalFare = Number(booking.estimated_fare);
-    const ownerAmount = Math.min(commissionPerTrip, totalFare);
-    const driverAmount = Math.max(0, totalFare - ownerAmount);
-
-    const randomSuffix = Math.floor(100000 + Math.random() * 900000);
+    paymentRecord = updated.rows[0];
+  } else {
+    const randomSuffix = `${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
     const gatewayOrderId = `ORDER_KK_${randomSuffix}`;
     const transactionRef = `TXN_KK_${randomSuffix}`;
 
-    // 3. Insert or update existing pending payment
-    const pendingPayment = await query<PaymentRecord>(
-      `SELECT * FROM payments WHERE booking_id = $1 AND payment_status = 'PENDING' LIMIT 1`,
-      [bookingId]
-    );
-
-    if (pendingPayment.rows.length > 0) {
-      const updated = await query<PaymentRecord>(
-        `UPDATE payments 
-         SET payment_method = $1, driver_id = $2, total_amount = $3, driver_amount = $4,
-             owner_amount = $5, commission_amount = $6, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $7 RETURNING *`,
-        [
-          paymentMethod,
-          booking.driver_id,
-          totalFare,
-          driverAmount,
-          ownerAmount,
-          ownerAmount,
-          pendingPayment.rows[0].id
-        ]
-      );
-      return updated.rows[0];
-    }
-
     const inserted = await query<PaymentRecord>(
       `INSERT INTO payments (
-        booking_id, customer_id, driver_id, total_amount, driver_amount, owner_amount, commission_amount,
-        payment_status, settlement_status, payment_method, transaction_reference, gateway_order_id, created_at, updated_at
+        booking_id,
+        customer_id,
+        driver_id,
+        total_amount,
+        driver_amount,
+        owner_amount,
+        commission_amount,
+        payment_status,
+        settlement_status,
+        payment_method,
+        transaction_reference,
+        gateway_order_id,
+        created_at,
+        updated_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7,
-        'PENDING', 'PENDING', $8, $9, $10, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-      ) RETURNING *`,
+        'PENDING',
+        'PENDING',
+        $8, $9, $10,
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+      )
+      RETURNING *`,
       [
         bookingId,
         customerId,
@@ -158,8 +212,138 @@ export class PaymentService {
       ]
     );
 
-    return inserted.rows[0];
+    paymentRecord = inserted.rows[0];
   }
+
+    // 3. Create a fresh Cashfree Sandbox order ID for every payment attempt
+  const randomSuffix = `${Date.now()}_${Math.floor(100000 + Math.random() * 900000)}`;
+  const cashfreeOrderId = `ORDER_KK_${bookingId}_${randomSuffix}`;
+
+  // Store the new Cashfree order ID in the existing payment record
+  const updatedPayment = await query<PaymentRecord>(
+    `UPDATE payments
+     SET gateway_order_id = $1,
+         transaction_reference = $2,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = $3
+     RETURNING *`,
+    [
+      cashfreeOrderId,
+      `TXN_KK_${randomSuffix}`,
+      paymentRecord.id
+    ]
+  );
+
+  paymentRecord = updatedPayment.rows[0];
+
+  const cashfreeRequest = {
+    order_amount: Number(totalFare.toFixed(2)),
+    order_currency: 'INR',
+    order_id: cashfreeOrderId,
+    customer_details: {
+      customer_id: String(customerId),
+      customer_name: booking.customer_name || `Customer ${customerId}`,
+      customer_email: booking.customer_email || 'customer@example.com',
+      customer_phone: booking.customer_mobile
+    },
+    order_meta: {
+      return_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/booking/${bookingId}?order_id={order_id}`,
+      notify_url: 'https://kk-auto.onrender.com/api/payments/webhook'
+    },
+    order_note: `Kk_Auto booking #${bookingId}`
+  };
+
+  try {
+    console.log('Cashfree SDK diagnostics:', {
+  apiVersion: cashfree.XApiVersion,
+  environment: CFEnvironment.SANDBOX,
+  hasClientId: !!process.env.CASHFREE_APP_ID,
+  clientIdLength: process.env.CASHFREE_APP_ID?.length,
+  hasClientSecret: !!process.env.CASHFREE_SECRET_KEY,
+  clientSecretLength: process.env.CASHFREE_SECRET_KEY?.length
+});
+const response = await new Promise<any>((resolve, reject) => {
+  const https = require('https');
+
+  const requestBody = JSON.stringify(cashfreeRequest);
+
+  const req = https.request(
+    'https://sandbox.cashfree.com/pg/orders',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-version': '2025-01-01',
+        'x-client-id': process.env.CASHFREE_APP_ID || '',
+        'x-client-secret': process.env.CASHFREE_SECRET_KEY || '',
+        'Content-Length': Buffer.byteLength(requestBody)
+      }
+    },
+    (res: any) => {
+      let data = '';
+
+      res.on('data', (chunk: any) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            resolve({ data: parsed });
+          } else {
+  console.log('Cashfree REST error:', {
+    status: res.statusCode,
+    body: parsed
+  });
+
+  reject({
+    response: {
+      data: parsed,
+      status: res.statusCode
+    }
+  });
+}
+        } catch {
+          reject({
+            response: {
+              data: data,
+              status: res.statusCode
+            }
+          });
+        }
+      });
+    }
+  );
+
+  req.on('error', reject);
+  req.write(requestBody);
+  req.end();
+});
+    const cashfreeOrder = response.data;
+
+    if (!cashfreeOrder?.payment_session_id) {
+      throw new Error('Cashfree did not return a payment session ID.');
+    }
+
+    return {
+      ...paymentRecord,
+      payment_session_id: cashfreeOrder.payment_session_id
+    };
+  } catch (err: any) {
+    console.error(
+      'Cashfree order creation failed:',
+      err?.response?.data || err?.message || err
+    );
+
+    throw new Error(
+      err?.response?.data?.message ||
+      err?.message ||
+      'Unable to create Cashfree payment order.'
+    );
+  }
+}
 
   /**
    * Process sandbox payment simulation: customer completes online checkout
