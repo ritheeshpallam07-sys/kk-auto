@@ -123,16 +123,17 @@ export class PaymentService {
   }
 
   // 2. Calculate marketplace split
-  const commissionPerTrip = await this.getCommissionPerTrip();
   const totalFare = Number(booking.estimated_fare);
 
   if (!Number.isFinite(totalFare) || totalFare <= 0) {
     throw new Error('Invalid booking fare.');
   }
 
-  const ownerAmount = Math.min(commissionPerTrip, totalFare);
-  const driverAmount = Math.max(0, totalFare - ownerAmount);
+  // Owner commission = 10% of the total fare
+  const ownerAmount = Number((totalFare * 0.10).toFixed(2));
 
+  // Driver receives the remaining 90%
+  const driverAmount = Number((totalFare - ownerAmount).toFixed(2));
   // Reuse an existing pending payment if one exists
   const pendingPayment = await query<PaymentRecord>(
     `SELECT * FROM payments
