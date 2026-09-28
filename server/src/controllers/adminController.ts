@@ -124,40 +124,6 @@ export class AdminController {
 
       const booking = updateRes.rows[0];
 
-      // If ride completed, ensure payment record exists
-      if (status === 'Ride Completed') {
-        const existingPay = await query('SELECT id FROM payments WHERE booking_id = $1 LIMIT 1', [booking.id]);
-        if (existingPay.rows.length === 0) {
-          const commission = await PaymentService.getCommissionPerTrip();
-          const totalFare = Number(booking.estimated_fare);
-          const ownerAmt = Math.min(commission, totalFare);
-          const driverAmt = Math.max(0, totalFare - ownerAmt);
-          const rand = Math.floor(100000 + Math.random() * 900000);
-
-          await query(
-            `INSERT INTO payments (
-              booking_id, customer_id, driver_id, total_amount, driver_amount, owner_amount, commission_amount,
-              payment_status, settlement_status, payment_method, transaction_reference, gateway_order_id,
-              created_at, updated_at
-            ) VALUES (
-              $1, $2, $3, $4, $5, $6, $7,
-              'COMPLETED', 'PENDING', 'Cash', $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-            )`,
-            [
-              booking.id,
-              booking.customer_id,
-              booking.driver_id,
-              totalFare,
-              driverAmt,
-              ownerAmt,
-              ownerAmt,
-              `TXN_CASH_${rand}`,
-              `ORDER_CASH_${rand}`
-            ]
-          );
-        }
-      }
-
       return res.json({
         success: true,
         message: `Booking status updated to ${status}`,
