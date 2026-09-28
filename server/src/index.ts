@@ -23,7 +23,7 @@ app.use(cors({
 }));
 app.use(express.json({
   verify: (req, _res, buf) => {
-    if (req.path === '/api/payments/webhook') {
+    if (req.url === '/api/payments/webhook') {     
       (req as any).rawBody = buf.toString('utf8');
     }
   }
