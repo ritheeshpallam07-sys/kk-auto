@@ -108,6 +108,10 @@ export class PaymentService {
   if (Number(booking.customer_id) !== Number(customerId)) {
     throw new Error('You are not authorized to pay for this booking.');
   }
+  // Online payment is allowed only after the driver completes the ride
+  if (booking.status !== 'Ride Completed') {
+    throw new Error('Online payment is available only after the ride is completed.');
+}
 
   // Check if already paid
   const existingPayment = await query<PaymentRecord>(
@@ -375,34 +379,99 @@ const response = await new Promise<any>((resolve, reject) => {
   /**
    * Webhook processing: verified gateway notifications (Razorpay / Stripe webhook handler)
    */
-  public static async handleWebhook(payload: any, signature?: string): Promise<{ processed: boolean; payment?: PaymentRecord }> {
-    // In production, verify HMAC-SHA256 signature against webhook secret
-    const gatewayOrderId = payload?.order_id || payload?.data?.object?.id || payload?.gatewayOrderId;
-    const gatewayPaymentId = payload?.payment_id || payload?.data?.object?.payment_intent || payload?.gatewayPaymentId || `PAY_KK_WEBHOOK_${Date.now()}`;
-    const status = (payload?.status || 'COMPLETED').toUpperCase();
+  public static async handleWebhook(
+  payload: any,
+  signature?: string,
+  timestamp?: string,
+  rawBody?: string
+): Promise<{ processed: boolean; payment?: PaymentRecord }> {
 
-    if (!gatewayOrderId) {
-      throw new Error('Order identifier missing from webhook payload.');
-    }
-
-    const paymentRes = await query<PaymentRecord>(
-      `SELECT * FROM payments WHERE gateway_order_id = $1 LIMIT 1`,
-      [gatewayOrderId]
-    );
-
-    if (paymentRes.rows.length === 0) {
-      throw new Error(`No payment record found matching gateway order ${gatewayOrderId}`);
-    }
-
-    const updated = await query<PaymentRecord>(
-      `UPDATE payments 
-       SET payment_status = $1, gateway_payment_id = $2, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $3 RETURNING *`,
-      [status === 'COMPLETED' ? 'COMPLETED' : 'FAILED', gatewayPaymentId, paymentRes.rows[0].id]
-    );
-
-    return { processed: true, payment: updated.rows[0] };
+  // Cashfree webhook signature verification
+  if (!signature || !timestamp || !rawBody) {
+    throw new Error('Cashfree webhook signature data is missing.');
   }
+
+  const clientSecret = process.env.CASHFREE_SECRET_KEY;
+
+  if (!clientSecret) {
+    throw new Error('Cashfree secret key is not configured.');
+  }
+
+  const signatureData = `${timestamp}${rawBody}`;
+
+  const expectedSignature = crypto
+    .createHmac('sha256', clientSecret)
+    .update(signatureData)
+    .digest('base64');
+
+  if (signature !== expectedSignature) {
+    throw new Error('Invalid Cashfree webhook signature.');
+  }
+
+  const gatewayOrderId =
+    payload?.data?.order?.order_id ||
+    payload?.data?.order?.orderId ||
+    payload?.order_id;
+
+  const gatewayPaymentId =
+    payload?.data?.payment?.cf_payment_id ||
+    payload?.data?.payment?.payment_id ||
+    payload?.payment_id;
+
+  const webhookStatus =
+    payload?.data?.payment?.payment_status ||
+    payload?.payment_status ||
+    payload?.status;
+
+  if (!gatewayOrderId) {
+    throw new Error('Cashfree order identifier missing from webhook payload.');
+  }
+
+  if (!webhookStatus) {
+    throw new Error('Cashfree payment status missing from webhook payload.');
+  }
+
+  const paymentRes = await query<PaymentRecord>(
+    `SELECT * FROM payments
+     WHERE gateway_order_id = $1
+     LIMIT 1`,
+    [gatewayOrderId]
+  );
+
+  if (paymentRes.rows.length === 0) {
+    throw new Error(
+      `No payment record found matching Cashfree order ${gatewayOrderId}`
+    );
+  }
+
+  const normalizedStatus = String(webhookStatus).toUpperCase();
+
+const paymentStatus =
+  normalizedStatus === 'SUCCESS'
+    ? 'COMPLETED'
+    : normalizedStatus === 'PENDING'
+      ? 'PENDING'
+      : 'FAILED';
+
+  const updated = await query<PaymentRecord>(
+    `UPDATE payments
+     SET payment_status = $1,
+         gateway_payment_id = $2,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = $3
+     RETURNING *`,
+    [
+      paymentStatus,
+      gatewayPaymentId || null,
+      paymentRes.rows[0].id
+    ]
+  );
+
+  return {
+    processed: true,
+    payment: updated.rows[0]
+  };
+}
 
   /**
    * Get payment details for a specific booking

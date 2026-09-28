@@ -59,18 +59,30 @@ export class PaymentController {
   }
 
   /**
-   * Payment gateway webhook (Razorpay / Stripe)
+   * Cashfree payment gateway webhook
    */
   public static async handleWebhook(req: Request, res: Response) {
-    try {
-      const signature = req.headers['x-razorpay-signature'] as string;
-      const result = await PaymentService.handleWebhook(req.body, signature);
-      return res.json({ success: true, ...result });
-    } catch (err: any) {
-      return res.status(400).json({ success: false, error: err.message });
-    }
-  }
+  try {
+    const signature = req.headers['x-webhook-signature'] as string;
+    const timestamp = req.headers['x-webhook-timestamp'] as string;
+    const rawBody = (req as any).rawBody as string;
 
+    const result = await PaymentService.handleWebhook(
+      req.body,
+      signature,
+      timestamp,
+      rawBody
+    );
+
+    return res.json({ success: true, ...result });
+  } catch (err: any) {
+    console.error('Cashfree webhook error:', err);
+    return res.status(400).json({
+      success: false,
+      error: err.message
+    });
+  }
+}
   /**
    * Get payment details and status for a booking
    */

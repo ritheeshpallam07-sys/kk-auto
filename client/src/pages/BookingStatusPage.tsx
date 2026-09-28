@@ -236,7 +236,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
 
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Pay Online CTA */}
-          {!isPaid && !isCancelled && (
+          {isCompleted && !isPaid && !isCancelled && (
             <button
               onClick={() => setIsPayModalOpen(true)}
               className="px-4 py-2 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-transform hover:scale-105 flex items-center gap-1.5"
@@ -548,18 +548,22 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
             <div className="p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between text-xs">
               <span className="font-semibold text-slate-600">Payment Status:</span>
               {isPaid ? (
-                <span className="font-black text-emerald-600 flex items-center gap-1">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Paid ({payment?.payment_method || 'UPI'})</span>
-                </span>
-              ) : (
-                <button
-                  onClick={() => setIsPayModalOpen(true)}
-                  className="px-3 py-1 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold rounded-lg text-xs"
-                >
-                  Pay Online
-                </button>
-              )}
+  <span className="font-black text-emerald-600 flex items-center gap-1">
+    <CheckCircle2 className="w-4 h-4" />
+    <span>Paid ({payment?.payment_method || 'UPI'})</span>
+  </span>
+) : isCompleted && !isCancelled ? (
+  <button
+    onClick={() => setIsPayModalOpen(true)}
+    className="px-3 py-1 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold rounded-lg text-xs"
+  >
+    Pay Online
+  </button>
+) : (
+  <span className="font-semibold text-slate-500">
+    Payment after ride
+  </span>
+)}
             </div>
 
             <div className="space-y-2 text-xs text-slate-600">

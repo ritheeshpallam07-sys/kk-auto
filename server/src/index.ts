@@ -21,8 +21,13 @@ app.use(cors({
   origin: true,
   credentials: true
 }));
-app.use(express.json());
-
+app.use(express.json({
+  verify: (req, _res, buf) => {
+    if (req.path === '/api/payments/webhook') {
+      (req as any).rawBody = buf.toString('utf8');
+    }
+  }
+}));
 // Request logger
 app.use((req, res, next) => {
   const start = Date.now();
