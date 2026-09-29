@@ -10,7 +10,17 @@
     "build": "npm run build:server && npm run build:client",
     "start": "cd server && npm start"
   },
-  "keywords": ["auto-rickshaw", "ride-booking", "react", "typescript", "express", "postgresql"],
+  "keywords": [
+    "auto-rickshaw",
+    "ride-booking",
+    "react",
+    "typescript",
+    "express",
+    "postgresql"
+  ],
   "author": "Kk_Auto Team",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "@types/web-push": "^3.6.4"
+  }
 }

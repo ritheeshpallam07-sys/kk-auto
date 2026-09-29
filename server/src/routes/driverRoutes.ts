@@ -7,6 +7,19 @@ const router = Router();
 router.get('/', authenticateToken, DriverController.getAllDrivers);
 router.get('/me', authenticateToken, requireRole(['driver']), DriverController.getDriverProfile);
 router.patch('/status', authenticateToken, requireRole(['driver']), DriverController.updateAvailability);
+router.post(
+  '/push-subscription',
+  authenticateToken,
+  requireRole(['driver']),
+  DriverController.savePushSubscription
+);
+router.get(
+  '/push-public-key',
+  authenticateToken,
+  requireRole(['driver']),
+  DriverController.getPushPublicKey
+);
+
 router.get('/requests', authenticateToken, requireRole(['driver']), DriverController.getIncomingRequests);
 router.post('/rides/:id/accept', authenticateToken, requireRole(['driver']), DriverController.acceptBooking);
 router.patch('/rides/:id/status', authenticateToken, requireRole(['driver']), DriverController.updateRideStatus);

@@ -33,6 +33,9 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
+  typeof Notification !== 'undefined' ? Notification.permission : 'default'
+);
 
   useEffect(() => {
     loadDriverData();
@@ -76,6 +79,78 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
       setIsLoading(false);
     }
   };
+
+  const handleEnableNotifications = async () => {
+  if (!('Notification' in window)) {
+    setActionError('Notifications are not supported on this device/browser.');
+    return;
+  }
+
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    setActionError('Push notifications are not supported on this device/browser.');
+    return;
+  }
+
+  try {
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+
+    if (permission !== 'granted') {
+      if (permission === 'denied') {
+        setActionError(
+          'Notifications are blocked. Please allow notifications for Kk_Auto in your browser settings.'
+        );
+      }
+      return;
+    }
+
+    const registration = await navigator.serviceWorker.ready;
+
+    const vapidRes = await api.driver.getPushPublicKey();
+
+    if (!vapidRes.success || !vapidRes.data?.publicKey) {
+      throw new Error(vapidRes.error || 'Unable to get push notification key.');
+    }
+
+    const base64ToUint8Array = (base64String: string) => {
+      const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+      const base64 = (base64String + padding)
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
+
+      const rawData = window.atob(base64);
+      return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
+    };
+
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: base64ToUint8Array(vapidRes.data.publicKey)
+    });
+
+    const subscriptionJson = subscription.toJSON();
+
+    const saveRes = await api.driver.savePushSubscription({
+      endpoint: subscriptionJson.endpoint || '',     
+      expirationTime: subscriptionJson.expirationTime ?? null,
+      keys: {
+        p256dh: subscriptionJson.keys?.p256dh || '',
+        auth: subscriptionJson.keys?.auth || ''
+      }
+    });
+
+    if (!saveRes.success) {
+      throw new Error(saveRes.error || 'Unable to save push subscription.');
+    }
+
+    new Notification('Kk_Auto Notifications Enabled', {
+      body: 'You will now receive new customer ride requests.',
+      icon: '/pwa-192x192.png'
+    });
+  } catch (error: any) {
+    console.error('Push notification setup error:', error);
+    setActionError(error.message || 'Unable to enable push notifications.');
+  }
+};
 
   const handleToggleAvailability = async () => {
     if (!profile) return;
@@ -154,8 +229,23 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
           </div>
         </div>
 
-        {/* On-Duty Toggle */}
-        <div className="flex items-center gap-3">
+        {/* Notifications + On-Duty Toggle */}
+        <div className="flex items-center gap-3 flex-wrap">
+          {notificationPermission !== 'granted' && (
+  <button
+    onClick={handleEnableNotifications}
+    className="px-5 py-3.5 rounded-2xl font-bold text-xs bg-amber-400 hover:bg-amber-500 text-slate-950 shadow-lg transition-all flex items-center gap-2.5"
+  >
+    🔔
+    <span>ALLOW NOTIFICATIONS</span>
+  </button>
+)}
+
+{notificationPermission === 'granted' && (
+  <span className="px-4 py-3 rounded-2xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center gap-2">
+    🔔 Notifications ON
+  </span>
+)}
           {isApproved ? (
             <button
               onClick={handleToggleAvailability}

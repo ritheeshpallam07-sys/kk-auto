@@ -253,41 +253,6 @@ export class DriverController {
         [status, id]
       );
 
-      // If ride completed, ensure marketplace split payment record exists
-      if (status === 'Ride Completed') {
-        const existingPay = await query('SELECT id FROM payments WHERE booking_id = $1 LIMIT 1', [booking.id]);
-        if (existingPay.rows.length === 0) {
-          // Record cash payment
-          const commissionPerTrip = await PaymentService.getCommissionPerTrip();
-          const totalFare = Number(booking.estimated_fare);
-          const ownerAmount = Math.min(commissionPerTrip, totalFare);
-          const driverAmount = Math.max(0, totalFare - ownerAmount);
-          const rand = Math.floor(100000 + Math.random() * 900000);
-
-          await query(
-            `INSERT INTO payments (
-              booking_id, customer_id, driver_id, total_amount, driver_amount, owner_amount, commission_amount,
-              payment_status, settlement_status, payment_method, transaction_reference, gateway_order_id,
-              created_at, updated_at
-            ) VALUES (
-              $1, $2, $3, $4, $5, $6, $7,
-              'COMPLETED', 'PENDING', 'Cash', $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-            )`,
-            [
-              booking.id,
-              booking.customer_id,
-              driverId,
-              totalFare,
-              driverAmount,
-              ownerAmount,
-              ownerAmount,
-              `TXN_CASH_${rand}`,
-              `ORDER_CASH_${rand}`
-            ]
-          );
-        }
-      }
-
       // If ride completed or cancelled, make driver available again
       if (status === 'Ride Completed' || status === 'Cancelled') {
         await query(`UPDATE drivers SET availability_status = 'available' WHERE id = $1`, [driverId]);
@@ -302,6 +267,95 @@ export class DriverController {
       return res.status(500).json({ success: false, error: err.message });
     }
   }
+
+    /**
+   * Save the driver's browser Web Push subscription
+   */
+  public static async savePushSubscription(req: Request, res: Response) {
+    try {
+      const user = req.user!;
+      const { endpoint, expirationTime, keys } = req.body;
+
+      if (
+        !endpoint ||
+        !keys ||
+        !keys.p256dh ||
+        !keys.auth
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid push subscription data.'
+        });
+      }
+
+      const driverRes = await query(
+        `SELECT id
+         FROM drivers
+         WHERE user_id = $1
+         LIMIT 1`,
+        [user.id]
+      );
+
+      if (driverRes.rows.length === 0) {
+        return res.status(403).json({
+          success: false,
+          error: 'Driver profile not found.'
+        });
+      }
+
+      const driverId = driverRes.rows[0].id;
+
+      const subscriptionRes = await query(
+        `INSERT INTO driver_push_subscriptions
+          (driver_id, endpoint, p256dh, auth, updated_at)
+         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+         ON CONFLICT (endpoint)
+         DO UPDATE SET
+           driver_id = EXCLUDED.driver_id,
+           p256dh = EXCLUDED.p256dh,
+           auth = EXCLUDED.auth,
+           updated_at = CURRENT_TIMESTAMP
+         RETURNING *`,
+        [
+          driverId,
+          endpoint,
+          keys.p256dh,
+          keys.auth
+        ]
+      );
+
+      return res.json({
+        success: true,
+        message: 'Push notification subscription saved.',
+        data: subscriptionRes.rows[0]
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        error: err.message
+      });
+    }
+  }
+  /**
+ * Get the public VAPID key for Web Push subscription
+ */
+public static getPushPublicKey(req: Request, res: Response) {
+  const publicKey = process.env.VAPID_PUBLIC_KEY;
+
+  if (!publicKey) {
+    return res.status(500).json({
+      success: false,
+      error: 'Push notifications are not configured.'
+    });
+  }
+
+  return res.json({
+    success: true,
+    data: {
+      publicKey
+    }
+  });
+}
 
   /**
    * List all drivers (for directory or admin)

@@ -256,6 +256,21 @@ export const api = {
   },
   driver: {
     getProfile: () => request<DriverProfile>('/drivers/me'),
+    getPushPublicKey: () =>
+  request<{ publicKey: string }>('/drivers/push-public-key'),
+
+savePushSubscription: (subscription: {
+  endpoint: string;
+  expirationTime?: number | null;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+}) =>
+  request('/drivers/push-subscription', {
+    method: 'POST',
+    body: JSON.stringify(subscription)
+  }),
     updateStatus: (status: string) => request('/drivers/status', {
       method: 'PATCH',
       body: JSON.stringify({ status })
