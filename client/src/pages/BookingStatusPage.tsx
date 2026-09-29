@@ -220,8 +220,9 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   const currentStepIndex = steps.findIndex(s => s.label === booking.status);
   const isCancelled = booking.status === 'Cancelled';
   const isCompleted = booking.status === 'Ride Completed';
-  const isPaid = payment?.payment_status === 'COMPLETED';
-
+  const isPaid =
+         payment?.payment_status === 'COMPLETED' &&
+         payment?.payment_method !== 'Cash';
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
       {/* Navigation Header */}

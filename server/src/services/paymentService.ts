@@ -122,8 +122,11 @@ export class PaymentService {
     [bookingId]
   );
 
-  if (existingPayment.rows.length > 0) {
-    return existingPayment.rows[0];
+  if (
+  existingPayment.rows.length > 0 &&
+  existingPayment.rows[0].payment_method !== 'Cash'
+  ) {
+  return existingPayment.rows[0];
   }
 
   // 2. Calculate marketplace split
