@@ -34,6 +34,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
+  const [isNotificationEnabled, setIsNotificationEnabled] = useState(false);
   typeof Notification !== 'undefined' ? Notification.permission : 'default'
 );
 
@@ -137,6 +138,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
         auth: subscriptionJson.keys?.auth || ''
       }
     });
+    setIsNotificationEnabled(true);
 
     if (!saveRes.success) {
       throw new Error(saveRes.error || 'Unable to save push subscription.');
@@ -231,7 +233,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
 
         {/* Notifications + On-Duty Toggle */}
         <div className="flex items-center gap-3 flex-wrap">
-          {notificationPermission !== 'granted' && (
+          {!isNotificationEnabled && (
   <button
     onClick={handleEnableNotifications}
     className="px-5 py-3.5 rounded-2xl font-bold text-xs bg-amber-400 hover:bg-amber-500 text-slate-950 shadow-lg transition-all flex items-center gap-2.5"
@@ -239,12 +241,6 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
     🔔
     <span>ALLOW NOTIFICATIONS</span>
   </button>
-)}
-
-{notificationPermission === 'granted' && (
-  <span className="px-4 py-3 rounded-2xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center gap-2">
-    🔔 Notifications ON
-  </span>
 )}
           {isApproved ? (
             <button
