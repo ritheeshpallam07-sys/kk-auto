@@ -34,9 +34,9 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
-  const [isNotificationEnabled, setIsNotificationEnabled] = useState(false);
   typeof Notification !== 'undefined' ? Notification.permission : 'default'
 );
+const [isNotificationEnabled, setIsNotificationEnabled] = useState(false);
 
   useEffect(() => {
     loadDriverData();
