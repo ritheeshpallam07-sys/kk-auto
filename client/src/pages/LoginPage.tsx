@@ -93,13 +93,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
             >
               🛺 Driver
             </button>
-            <button
-              type="button"
-              onClick={() => autofill('admin@kkauto.com', 'admin123')}
-              className="px-2 py-1.5 bg-white hover:bg-amber-100 rounded-lg border border-amber-300 font-semibold text-[11px] text-slate-800 text-center shadow-2xs transition-colors"
-            >
-              🛡️ Admin
-            </button>
           </div>
         </div>
 
