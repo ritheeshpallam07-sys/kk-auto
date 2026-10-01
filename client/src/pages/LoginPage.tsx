@@ -118,17 +118,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
                 required
               />
 
-              <button
-  type="button"
-  onClick={() => setShowPassword(!showPassword)}
-  className="absolute right-3.5 top-2.5 text-slate-400 hover:text-slate-600"
->
-  {showPassword ? (
-    <EyeOff className="w-4 h-4" />
-  ) : (
-    <Eye className="w-4 h-4" />
-  )}
-</button>
             </div>
           </div>
 
@@ -156,6 +145,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
                 className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
                 required
               />
+
+              <button
+  type="button"
+  onClick={() => setShowPassword(!showPassword)}
+  className="absolute right-3.5 top-2.5 text-slate-400 hover:text-slate-600"
+>
+  {showPassword ? (
+    <EyeOff className="w-4 h-4" />
+  ) : (
+    <Eye className="w-4 h-4" />
+  )}
+</button>
               
             </div>
           </div>
