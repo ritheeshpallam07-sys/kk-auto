@@ -15,7 +15,7 @@ import {
   AlertCircle 
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { api, FareEstimate } from '../api/client';
+import { api, FareEstimate } from '../api/client';  
 interface LandingPageProps {
   navigate: (path: string) => void;
 }
@@ -127,7 +127,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ navigate }) => {
               {/* Action Buttons */}
               <div className="flex flex-wrap items-center gap-4 pt-2">
                 <button
-                  onClick={() => navigate('/book')}
+                  onClick={() => navigate('/dashboard')}
                   className="px-8 py-4 text-base font-bold text-slate-950 bg-amber-400 hover:bg-amber-500 rounded-2xl shadow-lg shadow-amber-400/30 transition-all hover:scale-105 flex items-center gap-2.5"
                 >
                   <span>Book an Auto</span>
@@ -283,8 +283,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ navigate }) => {
                     </div>
 
                     <button
-                      onClick={() => navigate(`/book?pickup=${encodeURIComponent(quickPickup)}&dest=${encodeURIComponent(quickDest)}&passengers=${passengers}`)}
-                      className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-sm transition-transform hover:scale-102 flex items-center justify-center gap-2"
+                  onClick={() => navigate('/dashboard')}    
+                  className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-sm transition-transform hover:scale-102 flex items-center justify-center gap-2"
                     >
                       <span>Proceed to Book This Auto</span>
                       <ArrowRight className="w-4 h-4" />
@@ -430,7 +430,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ navigate }) => {
           </p>
           <div className="pt-2 flex justify-center gap-4">
             <button
-              onClick={() => navigate('/book')}
+              onClick={() => navigate('/dashboard')}
               className="px-8 py-3.5 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold rounded-xl shadow-lg transition-transform hover:scale-105"
             >
               Book Auto Now
