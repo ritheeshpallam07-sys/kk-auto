@@ -39,12 +39,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
 
     if (res.success) {
   if (res.data?.user?.role === 'driver') {
-    navigate('/driver');
-  } else if (res.data?.user?.role === 'admin') {
-    navigate('/admin');
-  } else {
-    navigate('/dashboard');
-  }
+  navigate('/driver');
+} else if (res.data?.user?.role === 'admin') {
+  navigate('/owner/dashboard');
+} else {
+  navigate('/dashboard');
+}
 } else {
       setError(res.error || 'Invalid credentials.');
     }
