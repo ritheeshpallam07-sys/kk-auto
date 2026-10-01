@@ -108,7 +108,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
               <User className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
               <input
                 type="text"
-                autoComplete="off"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 placeholder="name@email.com or 9876543210"
