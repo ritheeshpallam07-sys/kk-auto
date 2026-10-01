@@ -78,17 +78,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
             <Sparkles className="w-3.5 h-3.5 text-amber-600" />
             <span>1-Click Demo Login</span>
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => autofill('rahul@gmail.com', 'customer123')}
               className="px-2 py-1.5 bg-white hover:bg-amber-100 rounded-lg border border-amber-300 font-semibold text-[11px] text-slate-800 text-center shadow-2xs transition-colors"
             >
               👤 Customer
             </button>
+            
+            
+            
             <button
               type="button"
-              onClick={() => autofill('ramesh@kkauto.com', 'driver123')}
               className="px-2 py-1.5 bg-white hover:bg-amber-100 rounded-lg border border-amber-300 font-semibold text-[11px] text-slate-800 text-center shadow-2xs transition-colors"
             >
               🛺 Driver
