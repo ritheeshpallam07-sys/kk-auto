@@ -23,7 +23,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   navigate,
 }) => {
   const { user, logout, isDriver, isAdmin } = useAuth();
-
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
 
@@ -53,7 +52,6 @@ export const Navbar: React.FC<NavbarProps> = ({
    */
 
   const isCustomer = !!user && !isDriver && !isAdmin;
-  const isOwner = !!user && isAdmin;
 
   return (
     <nav className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
@@ -163,22 +161,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
-            {/* =========================
-                OWNER / ADMIN NAVIGATION
-            ========================== */}
-            {isOwner && (
-              <button
-                onClick={() => handleNav('/admin')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                  currentPath === '/admin'
-                    ? 'text-indigo-700 bg-indigo-50'
-                    : 'text-indigo-600 hover:bg-indigo-50'
-                }`}
-              >
-                <Shield className="w-4 h-4" />
-                <span>Admin</span>
-              </button>
-            )}
+            
           </div>
 
           {/* =========================
@@ -282,18 +265,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </>
                     )}
 
-                    {/* =========================
-                        OWNER / ADMIN DROPDOWN
-                    ========================== */}
-                    {isOwner && (
-                      <button
-                        onClick={() => handleNav('/admin')}
-                        className="w-full text-left px-4 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 flex items-center gap-2.5"
-                      >
-                        <Shield className="w-4 h-4 text-indigo-500" />
-                        <span>Admin Console</span>
-                      </button>
-                    )}
+                    
 
                     {/* Logout */}
                     <div className="border-t border-slate-100 my-1" />
@@ -478,15 +450,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </>
               )}
 
-              {/* OWNER / ADMIN */}
-              {isOwner && (
-                <button
-                  onClick={() => handleNav('/admin')}
-                  className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-indigo-700 bg-indigo-50"
-                >
-                  Admin Console
-                </button>
-              )}
+              
 
               {/* Logout */}
               <button

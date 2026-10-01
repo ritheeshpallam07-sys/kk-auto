@@ -186,16 +186,7 @@ export const App: React.FC = () => {
     // OLD ADMIN ROUTE
     // =========================
 
-    if (currentPath === '/admin') {
-      return (
-        <ProtectedRoute
-          allowedRoles={['admin']}
-          navigate={navigate}
-        >
-          <AdminDashboard navigate={navigate} />
-        </ProtectedRoute>
-      );
-    }
+    
 
     // =========================
     // 404
