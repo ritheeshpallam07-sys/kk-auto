@@ -50,12 +50,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
     }
   };
 
-  // Quick autofill for demo & testing
-  const autofill = (idVal: string, passVal: string) => {
-    setIdentifier(idVal);
-    setPassword(passVal);
-    setError(null);
-  };
+  
 
   return (
     <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-slate-50">
@@ -76,7 +71,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
         <div className="p-3.5 bg-amber-50/80 rounded-2xl border border-amber-200 text-xs">
           <div className="flex items-center gap-1.5 font-bold text-amber-900 mb-2">
             <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-            <span>1-Click Demo Login</span>
+
           </div>
           <div className="grid grid-cols-2 gap-2">
             <button
@@ -113,6 +108,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
               <User className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
               <input
                 type="text"
+                autoComplete="off"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 placeholder="name@email.com or 9876543210"
@@ -139,6 +135,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
               <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
               <input
                 type="password"
+                autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter password"
