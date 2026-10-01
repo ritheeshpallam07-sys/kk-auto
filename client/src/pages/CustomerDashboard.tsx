@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { api, Booking } from '../api/client';
+import { api, Booking, FareEstimate } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
 import { 
   Car, 
@@ -27,6 +27,11 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
   const [pickup, setPickup] = useState('');
   const [destination, setDestination] = useState('');
   const [passengers, setPassengers] = useState(1);
+  const [fareEstimate, setFareEstimate] = useState<FareEstimate | null>(null);
+const [isCalculating, setIsCalculating] = useState(false);
+const [isBooking, setIsBooking] = useState(false);
+const [bookingError, setBookingError] = useState<string | null>(null);
+const [successBooking, setSuccessBooking] = useState<any | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -51,10 +56,74 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
     ['Searching for Auto', 'Driver Assigned', 'Driver Arriving', 'Ride Started'].includes(b.status)
   );
 
-  const handleQuickBook = (e: React.FormEvent) => {
-    e.preventDefault();
-    navigate(`/book?pickup=${encodeURIComponent(pickup)}&dest=${encodeURIComponent(destination)}&passengers=${passengers}`);
-  };
+  const handleQuickBook = async (e: React.FormEvent) => {
+  e.preventDefault();
+
+  setBookingError(null);
+  setFareEstimate(null);
+
+  if (!pickup) {
+    setBookingError('Please select a pickup location.');
+    return;
+  }
+
+  if (!destination) {
+    setBookingError('Please select a destination.');
+    return;
+  }
+
+  if (pickup === destination) {
+    setBookingError('Pickup and destination cannot be the same.');
+    return;
+  }
+
+  setIsCalculating(true);
+
+  const res = await api.bookings.getFareEstimate({
+    fromLocation: pickup,
+    toLocation: destination,
+    passengers
+  });
+
+  setIsCalculating(false);
+
+  if (res.success && res.data && res.data.available) {
+    setFareEstimate(res.data);
+  } else {
+    setBookingError(
+      res.error || 'Sorry, this route is currently unavailable.'
+    );
+  }
+};
+
+const handleBookAuto = async () => {
+  if (!user) {
+    navigate('/login');
+    return;
+  }
+
+  if (!fareEstimate?.available) {
+    return;
+  }
+
+  setBookingError(null);
+  setIsBooking(true);
+
+  const res = await api.bookings.create({
+    pickupAddress: pickup,
+    destinationAddress: destination,
+    pickupDateTime: new Date().toISOString(),
+    passengers
+  });
+
+  setIsBooking(false);
+
+  if (res.success && res.data) {
+    setSuccessBooking(res.data);
+  } else {
+    setBookingError(res.error || 'Failed to book auto.');
+  }
+};
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -75,7 +144,11 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
 
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/book')}
+            onClick={() =>
+  document.getElementById('dashboard-booking-form')?.scrollIntoView({
+    behavior: 'smooth'
+  })
+}
             className="px-6 py-3.5 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-sm rounded-2xl shadow-lg transition-transform hover:scale-105 flex items-center gap-2"
           >
             <Car className="w-4 h-4" />
@@ -128,8 +201,10 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
         {/* Left: Prominent Booking Form */}
-        <div className="lg:col-span-7 bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80">
-          <div className="flex items-center justify-between mb-6">
+<div
+  id="dashboard-booking-form"
+  className="lg:col-span-7 bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80"
+>          <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-xl font-extrabold text-slate-900">Book an Auto</h2>
               <p className="text-xs text-slate-500">Fast doorstep pickup with official fixed-route fare schedule</p>
@@ -201,12 +276,49 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
                   type="submit"
                   className="w-full py-3 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-sm rounded-xl shadow-md transition-all hover:scale-102 flex items-center justify-center gap-2"
                 >
-                  <span>Get Fare & Book Auto</span>
+                  <span>
+  {isCalculating ? 'Checking Fare...' : 'Get Fare'}
+</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
           </form>
+
+          {bookingError && (
+  <div className="mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+    {bookingError}
+  </div>
+)}
+
+{fareEstimate && fareEstimate.available && (
+  <div className="mt-5 p-5 rounded-2xl bg-amber-50 border border-amber-200">
+    <div className="flex items-center justify-between mb-4">
+      <div>
+        <p className="text-xs font-bold text-slate-500 uppercase">
+          Estimated Fare
+        </p>
+
+        <p className="text-3xl font-black text-slate-900">
+          ₹{fareEstimate.estimatedFare}
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleBookAuto}
+        disabled={isBooking}
+        className="px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl shadow-md disabled:opacity-50"
+      >
+        {isBooking ? 'Booking...' : 'Book Auto'}
+      </button>
+    </div>
+
+    <p className="text-xs text-slate-600">
+      {pickup} → {destination}
+    </p>
+  </div>
+)}
 
           {/* Fare Guarantee Notice */}
           <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">

@@ -255,6 +255,31 @@ useEffect(() => {
     }
   };
 
+  useEffect(() => {
+  if (!initialPickup || !initialDest) return;
+
+  const calculateInitialFare = async () => {
+    setIsCalculating(true);
+    setRouteError(null);
+
+    const res = await api.bookings.getFareEstimate({
+      fromLocation: initialPickup,
+      toLocation: initialDest,
+      passengers: initialPassengers,
+    });
+
+    setIsCalculating(false);
+
+    if (res.success && res.data && res.data.available) {
+      setFareEstimate(res.data);
+    } else {
+      setRouteError(res.error || 'Sorry, this route is currently unavailable.');
+    }
+  };
+
+  calculateInitialFare();
+}, [initialPickup, initialDest, initialPassengers]);
+
   // Handle Book Auto
   const handleBookAuto = async () => {
     if (!user) {
