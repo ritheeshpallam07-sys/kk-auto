@@ -36,13 +36,42 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
   typeof Notification !== 'undefined' ? Notification.permission : 'default'
 );
-const [isNotificationEnabled, setIsNotificationEnabled] = useState(false);
+  const [isNotificationEnabled, setIsNotificationEnabled] = useState(false);
 
   useEffect(() => {
     loadDriverData();
     const interval = setInterval(loadDriverData, 6000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+  const checkNotificationSubscription = async () => {
+    try {
+      if (
+        !('Notification' in window) ||
+        !('serviceWorker' in navigator) ||
+        !('PushManager' in window)
+      ) {
+        return;
+      }
+
+      if (Notification.permission !== 'granted') {
+        setIsNotificationEnabled(false);
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+
+      setIsNotificationEnabled(!!subscription);
+    } catch (error) {
+      console.error('Failed to check notification subscription:', error);
+      setIsNotificationEnabled(false);
+    }
+  };
+
+  checkNotificationSubscription();
+}, []);
 
   const loadDriverData = async () => {
     try {
@@ -131,18 +160,29 @@ const [isNotificationEnabled, setIsNotificationEnabled] = useState(false);
     const subscriptionJson = subscription.toJSON();
 
     const saveRes = await api.driver.savePushSubscription({
-      endpoint: subscriptionJson.endpoint || '',     
-      expirationTime: subscriptionJson.expirationTime ?? null,
-      keys: {
-        p256dh: subscriptionJson.keys?.p256dh || '',
-        auth: subscriptionJson.keys?.auth || ''
-      }
-    });
-    setIsNotificationEnabled(true);
+  endpoint: subscriptionJson.endpoint || '',
+  expirationTime: subscriptionJson.expirationTime ?? null,
+  keys: {
+    p256dh: subscriptionJson.keys?.p256dh || '',
+    auth: subscriptionJson.keys?.auth || ''
+  }
+});
+
+if (!saveRes.success) {
+  throw new Error(saveRes.error || 'Unable to save push subscription.');
+}
+
+setIsNotificationEnabled(true);
+
+new Notification('Kk_Auto Notifications Enabled', {
+  body: 'You will now receive new customer ride requests.',
+  icon: '/pwa-192x192.png'
+});
 
     if (!saveRes.success) {
       throw new Error(saveRes.error || 'Unable to save push subscription.');
     }
+    setIsNotificationEnabled(true);
 
     new Notification('Kk_Auto Notifications Enabled', {
       body: 'You will now receive new customer ride requests.',

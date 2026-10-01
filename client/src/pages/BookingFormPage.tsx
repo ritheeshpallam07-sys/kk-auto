@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api, FareEstimate } from '../api/client';
 import { 
@@ -36,6 +36,33 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
   // Form states
   const [fromLocation, setFromLocation] = useState(initialPickup);
   const [toLocation, setToLocation] = useState(initialDest);
+  const [mapReady, setMapReady] = useState(false);
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const pickupInputRef = useRef<HTMLInputElement>(null);
+  const destinationInputRef = useRef<HTMLInputElement>(null);
+  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+  const [pickupPlace, setPickupPlace] = useState<google.maps.places.PlaceResult | null>(null);
+  const [destinationPlace, setDestinationPlace] = useState<google.maps.places.PlaceResult | null>(null);
+  const [routeDistance, setRouteDistance] = useState<number | null>(null);
+
+  useEffect(() => {
+  if (!mapReady || !mapRef.current || !window.google?.maps) return;
+
+  const map = new window.google.maps.Map(mapRef.current, {
+    center: { lat: 13.6288, lng: 79.4192 },
+    zoom: 13,
+    mapTypeControl: false,
+    streetViewControl: false,
+    fullscreenControl: true,
+  });
+
+  directionsRendererRef.current =
+    new window.google.maps.DirectionsRenderer({
+      map,
+      suppressMarkers: false,
+    });
+}, [mapReady]);
 
   // Time options: 'now' vs 'schedule'
   const [timeMode, setTimeMode] = useState<'now' | 'schedule'>('now');
@@ -59,6 +86,39 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
   const [successBooking, setSuccessBooking] = useState<any | null>(null);
 
   useEffect(() => {
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
+  if (!apiKey) {
+    console.error('Google Maps API key is missing.');
+    return;
+  }
+
+  if (window.google?.maps) {
+    setMapReady(true);
+    return;
+  }
+
+  const existingScript = document.querySelector(
+    'script[src*="maps.googleapis.com/maps/api/js"]'
+  );
+
+  if (existingScript) {
+    existingScript.addEventListener('load', () => setMapReady(true));
+    return;
+  }
+
+  const script = document.createElement('script');
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+  script.async = true;
+  script.defer = true;
+  script.onload = () => setMapReady(true);
+  script.onerror = () => console.error('Failed to load Google Maps.');
+
+  document.head.appendChild(script);
+}, []);
+
+
+  useEffect(() => {
     async function loadLocations() {
       setIsLoadingLocations(true);
       const res = await api.bookings.getLocations();
@@ -69,6 +129,88 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
     }
     loadLocations();
   }, []);
+
+  useEffect(() => {
+  if (!mapReady || !window.google?.maps?.places) return;
+  if (!pickupInputRef.current || !destinationInputRef.current) return;
+
+  const pickupAutocomplete =
+    new window.google.maps.places.Autocomplete(pickupInputRef.current, {
+      fields: ['formatted_address', 'geometry', 'name'],
+    });
+
+  const destinationAutocomplete =
+    new window.google.maps.places.Autocomplete(destinationInputRef.current, {
+      fields: ['formatted_address', 'geometry', 'name'],
+    });
+
+  pickupAutocomplete.addListener('place_changed', () => {
+    const place = pickupAutocomplete.getPlace();
+
+    if (!place.geometry?.location) {
+      setRouteError('Please select a valid pickup location from the suggestions.');
+      return;
+    }
+
+    setPickupPlace(place);
+    setFromLocation(place.formatted_address || place.name || '');
+    setFareEstimate(null);
+    setRouteError(null);
+  });
+
+  destinationAutocomplete.addListener('place_changed', () => {
+    const place = destinationAutocomplete.getPlace();
+
+    if (!place.geometry?.location) {
+      setRouteError('Please select a valid destination from the suggestions.');
+      return;
+    }
+
+    setDestinationPlace(place);
+    setToLocation(place.formatted_address || place.name || '');
+    setFareEstimate(null);
+    setRouteError(null);
+  });
+}, [mapReady]);
+
+useEffect(() => {
+  if (
+    !pickupPlace?.geometry?.location ||
+    !destinationPlace?.geometry?.location ||
+    !window.google?.maps ||
+    !directionsRendererRef.current
+  ) {
+    return;
+  }
+
+  const directionsService = new window.google.maps.DirectionsService();
+
+  directionsService.route(
+    {
+      origin: pickupPlace.geometry.location,
+      destination: destinationPlace.geometry.location,
+      travelMode: window.google.maps.TravelMode.DRIVING,
+    },
+    (result, status) => {
+      if (status !== 'OK' || !result?.routes?.[0]?.legs?.[0]) {
+        setRouteError('Unable to calculate the driving route. Please try again.');
+        setRouteDistance(null);
+        return;
+      }
+
+      directionsRendererRef.current?.setDirections(result);
+
+      const leg = result.routes[0].legs[0];
+
+      if (leg.distance?.value != null) {
+        const distanceKm = leg.distance.value / 1000;
+        setRouteDistance(Number(distanceKm.toFixed(2)));
+      }
+
+      setRouteError(null);
+    }
+  );
+}, [pickupPlace, destinationPlace]);
 
   // Handle Get Fare button click
   const handleGetFare = async (e: React.FormEvent) => {
@@ -266,6 +408,15 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
       {/* Main Booking Card */}
       <div className="bg-white rounded-3xl p-6 sm:p-10 shadow-sm border border-slate-200/80 space-y-6">
         <form onSubmit={handleGetFare} className="space-y-6">
+
+         {/* GOOGLE MAP */}
+  <div className="mb-6 overflow-hidden rounded-3xl border border-slate-200 shadow-sm">
+    <div
+      ref={mapRef}
+      className="w-full h-[300px]"
+    />
+  </div>
+           
           
           {/* FROM Dropdown */}
           <div>
@@ -273,23 +424,20 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
               <MapPin className="w-4 h-4 text-emerald-600" />
               <span>From (Pickup Location) *</span>
             </label>
-            <select
-              value={fromLocation}
-              onChange={(e) => {
-                setFromLocation(e.target.value);
-                setFareEstimate(null);
-                setRouteError(null);
-              }}
-              className="w-full px-4 py-3.5 rounded-xl border border-slate-200 text-sm font-semibold bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"
-              required
-            >
-              <option value="">Select pickup location</option>
-              {locations.map((loc) => (
-                <option key={loc} value={loc}>
-                  {loc}
-                </option>
-              ))}
-            </select>
+            <input
+  ref={pickupInputRef}
+  type="text"
+  value={fromLocation}
+  onChange={(e) => {
+    setFromLocation(e.target.value);
+    setPickupPlace(null);
+    setFareEstimate(null);
+    setRouteError(null);
+  }}
+  placeholder="Search pickup location"
+  className="w-full px-4 py-3.5 rounded-xl border border-slate-200 text-sm font-semibold bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+  required
+/>
           </div>
 
           {/* TO Dropdown */}
@@ -298,23 +446,20 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
               <Navigation className="w-4 h-4 text-rose-500" />
               <span>To (Destination) *</span>
             </label>
-            <select
-              value={toLocation}
-              onChange={(e) => {
-                setToLocation(e.target.value);
-                setFareEstimate(null);
-                setRouteError(null);
-              }}
-              className="w-full px-4 py-3.5 rounded-xl border border-slate-200 text-sm font-semibold bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"
-              required
-            >
-              <option value="">Select destination</option>
-              {locations.map((loc) => (
-                <option key={loc} value={loc}>
-                  {loc}
-                </option>
-              ))}
-            </select>
+            <input
+  ref={destinationInputRef}
+  type="text"
+  value={toLocation}
+  onChange={(e) => {
+    setToLocation(e.target.value);
+    setDestinationPlace(null);
+    setFareEstimate(null);
+    setRouteError(null);
+  }}
+  placeholder="Search destination"
+  className="w-full px-4 py-3.5 rounded-xl border border-slate-200 text-sm font-semibold bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+  required
+/>
           </div>
 
           {/* PICKUP TIME (Ride Now vs Schedule Ride) */}
@@ -351,6 +496,18 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
                 <span>Schedule Ride</span>
               </button>
             </div>
+            {routeDistance !== null && (
+  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200">
+    <div className="flex items-center justify-between">
+      <span className="text-xs font-bold text-emerald-800 uppercase">
+        Road Distance
+      </span>
+      <span className="text-lg font-black text-emerald-900">
+        {routeDistance} km
+      </span>
+    </div>
+  </div>
+)}
 
             {/* Schedule Date/Time */}
             {timeMode === 'schedule' && (
