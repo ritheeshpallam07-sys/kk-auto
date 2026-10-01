@@ -306,7 +306,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Book Auto - CUSTOMER ONLY */}
             {isCustomer && (
               <button
-                onClick={() => handleNav('/book')}
+                onClick={() => handleNav('/dashboard')}
                 className="px-4 py-2.5 text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl shadow-md transition-all hover:scale-102 flex items-center gap-2"
               >
                 <span>Book an Auto</span>
