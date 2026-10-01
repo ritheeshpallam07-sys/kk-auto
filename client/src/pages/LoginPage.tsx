@@ -4,6 +4,8 @@ import { Logo } from '../components/Logo';
 import { 
   User, 
   Lock, 
+  Eye,
+  EyeOff,
   ArrowRight, 
   AlertCircle, 
   Sparkles, 
@@ -20,6 +22,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [forgotModalOpen, setForgotModalOpen] = useState(false);
@@ -114,6 +117,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
                 className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
                 required
               />
+
+              <button
+  type="button"
+  onClick={() => setShowPassword(!showPassword)}
+  className="absolute right-3.5 top-2.5 text-slate-400 hover:text-slate-600"
+>
+  {showPassword ? (
+    <EyeOff className="w-4 h-4" />
+  ) : (
+    <Eye className="w-4 h-4" />
+  )}
+</button>
             </div>
           </div>
 
@@ -133,7 +148,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
             <div className="relative">
               <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}              
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -141,6 +156,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
                 className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
                 required
               />
+              
             </div>
           </div>
 
