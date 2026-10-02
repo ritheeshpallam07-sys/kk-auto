@@ -13,6 +13,12 @@ router.get('/contact', authenticateToken, TripBookingController.getOwnerContact)
 router.get('/owner/all', authenticateToken, requireRole(['admin']), TripBookingController.getAllByOwner);
 router.patch('/owner/:id', authenticateToken, requireRole(['admin']), TripBookingController.updateByOwner);
 
+// Chat routes
+
+router.get('/:id/messages', authenticateToken, TripBookingController.getTripMessages);
+
+router.post('/:id/messages', authenticateToken, TripBookingController.sendTripMessage);
+
 // Single booking details (customer owns or admin)
 router.get('/:id', authenticateToken, TripBookingController.getById);
 

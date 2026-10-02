@@ -217,4 +217,58 @@ export class TripBookingController {
       });
     }
   }
+  public static async getTripMessages(req: Request, res: Response) {
+  try {
+    const tripBookingId = Number(req.params.id);
+    const userId = Number(req.user?.id);
+
+    const messages = await TripBookingService.getTripMessages(
+      tripBookingId,
+      userId
+    );
+
+    return res.json(messages);
+  } catch (error: any) {
+    return res.status(400).json({
+      message: error?.message || 'Unable to load messages'
+    });
+  }
+}
+
+public static async sendTripMessage(req: Request, res: Response) {
+  try {
+    const tripBookingId = Number(req.params.id);
+    const userId = Number(req.user?.id);
+    const { message } = req.body;
+
+    const result = await TripBookingService.sendTripMessage(
+      tripBookingId,
+      userId,
+      message
+    );
+
+    return res.status(201).json(result);
+  } catch (error: any) {
+    return res.status(400).json({
+      message: error?.message || 'Unable to send message'
+    });
+  }
+}
+ public static async confirmTrip(req: Request, res: Response) {
+  try {
+    const tripBookingId = Number(req.params.id);
+    const customerId = Number(req.user?.id);
+
+    const trip = await TripBookingService.confirmTripBooking(
+      tripBookingId,
+      customerId
+    );
+
+    return res.json(trip);
+  } catch (error: any) {
+    return res.status(400).json({
+      message: error?.message || 'Unable to confirm trip'
+    });
+  }
+}
 }

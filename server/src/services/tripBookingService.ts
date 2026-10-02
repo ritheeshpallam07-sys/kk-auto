@@ -14,6 +14,8 @@ export interface TripBooking {
   pickup_time: string;
   status: 'NEW' | 'CONTACTED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
   quoted_price: number | null;
+  customer_confirmed: boolean;
+  customer_confirmed_at: string | null;
   payment_status: 'PENDING' | 'PAID' | 'FAILED';
   payment_reference: string | null;
   payment_method: string | null;
@@ -250,6 +252,10 @@ export class TripBookingService {
     paymentMethod: string = 'UPI'
   ): Promise<TripBooking & { payment_session_id?: string }> {
     const trip = await this.getTripBookingById(tripId, customerId);
+    
+    if (!trip.customer_confirmed) {
+      throw new Error('Please confirm the trip before making payment.');
+    }
 
     if (trip.status !== 'CONFIRMED') {
       throw new Error('Payment is available only after the booking is confirmed by the owner.');
@@ -396,4 +402,153 @@ export class TripBookingService {
       whatsapp: clean
     };
   }
+    /**
+   * Customer confirms the final trip quote
+   */
+  public static async confirmTripBooking(
+    tripBookingId: number,
+    customerId: number
+  ): Promise<TripBooking> {
+    const trip = await this.getTripBookingById(tripBookingId, customerId);
+
+    if (trip.status !== 'CONFIRMED') {
+      throw new Error('Trip can be confirmed only after the owner confirms the booking.');
+    }
+
+    if (!trip.quoted_price || trip.quoted_price <= 0) {
+      throw new Error('Final quoted price has not been set by the owner.');
+    }
+
+    if (trip.customer_confirmed) {
+      return trip;
+    }
+
+    const result = await query<TripBooking>(
+      `UPDATE trip_bookings
+       SET customer_confirmed = TRUE,
+           customer_confirmed_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING *`,
+      [tripBookingId]
+    );
+
+    return result.rows[0];
+  }
+    /**
+   * Get chat messages for a trip booking
+   */
+  public static async getTripMessages(
+    tripBookingId: number,
+    userId: number
+  ) {
+    const bookingResult = await query(
+      `SELECT id, customer_id
+       FROM trip_bookings
+       WHERE id = $1`,
+      [tripBookingId]
+    );
+
+    if (bookingResult.rows.length === 0) {
+      throw new Error('Trip booking not found');
+    }
+
+    const booking = bookingResult.rows[0];
+
+    const userResult = await query(
+      `SELECT role
+       FROM users
+       WHERE id = $1`,
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      throw new Error('User not found');
+    }
+
+    const role = userResult.rows[0].role;
+
+    if (role !== 'admin' && Number(booking.customer_id) !== Number(userId)) {
+      throw new Error('Unauthorized');
+    }
+
+    const result = await query(
+      `SELECT
+         id,
+         trip_booking_id,
+         sender_id,
+         sender_role,
+         message,
+         created_at
+       FROM trip_booking_messages
+       WHERE trip_booking_id = $1
+       ORDER BY created_at ASC`,
+      [tripBookingId]
+    );
+
+    return result.rows;
+  }
+
+  /**
+   * Send a chat message for a trip booking
+   */
+  public static async sendTripMessage(
+    tripBookingId: number,
+    userId: number,
+    message: string
+  ) {
+    const cleanMessage = message.trim();
+
+    if (!cleanMessage) {
+      throw new Error('Message cannot be empty');
+    }
+
+    const bookingResult = await query(
+      `SELECT id, customer_id
+       FROM trip_bookings
+       WHERE id = $1`,
+      [tripBookingId]
+    );
+
+    if (bookingResult.rows.length === 0) {
+      throw new Error('Trip booking not found');
+    }
+
+    const booking = bookingResult.rows[0];
+
+    const userResult = await query(
+      `SELECT role
+       FROM users
+       WHERE id = $1`,
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      throw new Error('User not found');
+    }
+
+    const role = userResult.rows[0].role;
+
+    if (role !== 'admin' && Number(booking.customer_id) !== Number(userId)) {
+      throw new Error('Unauthorized');
+    }
+
+    const result = await query(
+      `INSERT INTO trip_booking_messages
+        (trip_booking_id, sender_id, sender_role, message)
+       VALUES ($1, $2, $3, $4)
+       RETURNING
+         id,
+         trip_booking_id,
+         sender_id,
+         sender_role,
+         message,
+         created_at`,
+      [tripBookingId, userId, role, cleanMessage]
+    );
+
+    return result.rows[0];
+  }
 }
+
+  

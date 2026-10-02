@@ -141,12 +141,30 @@ CREATE TABLE IF NOT EXISTS trip_bookings (
   pickup_time VARCHAR(50) NOT NULL,
   status VARCHAR(50) NOT NULL DEFAULT 'NEW',
   quoted_price DOUBLE PRECISION,
+  customer_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+  customer_confirmed_at TIMESTAMP WITH TIME ZONE,
   payment_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
   payment_reference VARCHAR(100),
   payment_method VARCHAR(50),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Owner <-> Customer chat for Car / Trip Bookings
+CREATE TABLE IF NOT EXISTS trip_booking_messages (
+  id SERIAL PRIMARY KEY,
+  trip_booking_id INTEGER NOT NULL REFERENCES trip_bookings(id) ON DELETE CASCADE,
+  sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  sender_role VARCHAR(20) NOT NULL,
+  message TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_trip_messages_booking
+  ON trip_booking_messages(trip_booking_id);
+
+CREATE INDEX IF NOT EXISTS idx_trip_messages_created
+  ON trip_booking_messages(created_at);
 
 CREATE INDEX IF NOT EXISTS idx_trip_bookings_customer ON trip_bookings(customer_id);
 CREATE INDEX IF NOT EXISTS idx_trip_bookings_ref ON trip_bookings(booking_reference);

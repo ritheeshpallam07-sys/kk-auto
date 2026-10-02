@@ -68,6 +68,13 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
   const [ownerContact, setOwnerContact] = useState<{ phone: string; whatsapp: string } | null>(null);
   const [tripPayingId, setTripPayingId] = useState<number | null>(null);
   const [tripPayError, setTripPayError] = useState<string | null>(null);
+  const [activeTripChatId, setActiveTripChatId] = useState<number | null>(null);
+  const [tripMessages, setTripMessages] = useState<any[]>([]);
+  const [tripMessageText, setTripMessageText] = useState('');
+  const [isLoadingTripMessages, setIsLoadingTripMessages] = useState(false);
+  const [isSendingTripMessage, setIsSendingTripMessage] = useState(false);
+  const [tripConfirmingId, setTripConfirmingId] = useState<number | null>(null);
+  const [tripConfirmError, setTripConfirmError] = useState<string | null>(null);
 
   // ── Load data ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -199,6 +206,55 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
       setTripPayingId(null);
     }
   };
+  const openTripChat = async (tripId: number) => {
+  setActiveTripChatId(tripId);
+  setIsLoadingTripMessages(true);
+  setTripConfirmError(null);
+
+  const res = await api.tripBookings.getTripMessages(tripId);
+
+  if (res.success && res.data) {
+    setTripMessages(res.data);
+  } else {
+    setTripMessages([]);
+  }
+
+  setIsLoadingTripMessages(false);
+};
+  const sendTripChatMessage = async () => {
+  if (!activeTripChatId || !tripMessageText.trim()) return;
+
+  setIsSendingTripMessage(true);
+
+  const res = await api.tripBookings.sendTripMessage(
+    activeTripChatId,
+    tripMessageText.trim()
+  );
+
+  if (res.success && res.data) {
+    setTripMessages(prev => [...prev, res.data]);
+    setTripMessageText('');
+  }
+
+  setIsSendingTripMessage(false);
+};
+  const handleTripConfirm = async (tripId: number) => {
+  setTripConfirmingId(tripId);
+  setTripConfirmError(null);
+
+  const res = await api.tripBookings.confirmTrip(tripId);
+
+  if (res.success && res.data) {
+    setMyTripBookings(prev =>
+      prev.map(trip => trip.id === tripId ? res.data! : trip)
+    );
+    setActiveTripChatId(tripId);
+  } else {
+    setTripConfirmError(res.error || 'Unable to confirm trip.');
+  }
+
+  setTripConfirmingId(null);
+};
 
   const buildWhatsAppLink = (trip: TripBooking) => {
     const num = ownerContact?.whatsapp || ownerContact?.phone || '';
@@ -478,7 +534,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
               <span>🚗</span>
               <span>My Car / Trip Bookings</span>
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">Track your car trip requests and pay once the owner confirms</p>
+            <p className="text-xs text-slate-500 mt-0.5">Chat with the owner, confirm your final trip price, then pay securely</p>
           </div>
           <button
             onClick={() => setShowTripForm(true)}
@@ -547,43 +603,142 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
 
                   {/* Actions */}
                   <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
-                    {canPay && (
-                      <button
-                        onClick={() => handleTripPay(trip.id)}
-                        disabled={tripPayingId === trip.id}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-sm transition-transform hover:scale-105 disabled:opacity-50 flex items-center gap-1"
-                      >
-                        <CreditCard className="w-3 h-3" />
-                        <span>{tripPayingId === trip.id ? 'Processing...' : `Pay ₹${trip.quoted_price}`}</span>
-                      </button>
-                    )}
-                    {ownerContact?.phone && (
-                      <a
-                        href={`tel:${ownerContact.phone}`}
-                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-lg flex items-center gap-1 transition-colors"
-                      >
-                        <Phone className="w-3 h-3" />
-                        <span>Call</span>
-                      </a>
-                    )}
-                    {ownerContact?.whatsapp && (
-                      <a
-                        href={buildWhatsAppLink(trip)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-3 py-1.5 bg-green-100 hover:bg-green-200 text-green-800 font-bold text-xs rounded-lg flex items-center gap-1 transition-colors"
-                      >
-                        <MessageCircle className="w-3 h-3" />
-                        <span>WhatsApp</span>
-                      </a>
-                    )}
-                  </div>
+  <button
+    onClick={() => openTripChat(trip.id)}
+    className="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold text-xs rounded-lg flex items-center gap-1 transition-colors"
+  >
+    <MessageCircle className="w-3 h-3" />
+    <span>Chat with Owner</span>
+  </button>
+
+  {trip.status === 'CONFIRMED' &&
+    trip.quoted_price &&
+    !trip.customer_confirmed && (
+      <button
+        onClick={() => handleTripConfirm(trip.id)}
+        disabled={tripConfirmingId === trip.id}
+        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-lg disabled:opacity-50"
+      >
+        {tripConfirmingId === trip.id ? 'Confirming...' : 'Confirm Trip'}
+      </button>
+    )}
+
+  {trip.status === 'CONFIRMED' &&
+    trip.customer_confirmed &&
+    trip.payment_status === 'PENDING' &&
+    trip.quoted_price && (
+      <button
+        onClick={() => handleTripPay(trip.id)}
+        disabled={tripPayingId === trip.id}
+        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg disabled:opacity-50 flex items-center gap-1"
+      >
+        <CreditCard className="w-3 h-3" />
+        <span>
+          {tripPayingId === trip.id
+            ? 'Processing...'
+            : `Pay ₹${trip.quoted_price}`}
+        </span>
+      </button>
+    )}
+</div>
                 </div>
               );
             })}
           </div>
         )}
       </div>
+
+
+      {/* ── Trip Chat Modal ─────────────────────────────────────────────────── */}
+{activeTripChatId && (
+  <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+
+      <div className="bg-gradient-to-r from-blue-700 to-blue-900 px-6 py-5 flex items-center justify-between">
+        <div>
+          <h3 className="text-white font-extrabold text-base">
+            Chat with Owner
+          </h3>
+          <p className="text-blue-200 text-xs">
+            Discuss your trip and final charges
+          </p>
+        </div>
+
+        <button
+          onClick={() => {
+            setActiveTripChatId(null);
+            setTripMessages([]);
+            setTripMessageText('');
+          }}
+          className="text-blue-200 hover:text-white"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className="p-4 h-80 overflow-y-auto space-y-3 bg-slate-50">
+        {isLoadingTripMessages ? (
+          <div className="text-center text-xs text-slate-400 py-10">
+            Loading messages...
+          </div>
+        ) : tripMessages.length === 0 ? (
+          <div className="text-center text-xs text-slate-400 py-10">
+            No messages yet. Start the conversation with the owner.
+          </div>
+        ) : (
+          tripMessages.map((msg) => (
+            <div
+              key={msg.id}
+              className={`flex ${
+                msg.sender_role === 'admin'
+                  ? 'justify-start'
+                  : 'justify-end'
+              }`}
+            >
+              <div
+                className={`max-w-[80%] px-3 py-2 rounded-2xl text-xs ${
+                  msg.sender_role === 'admin'
+                    ? 'bg-white border border-slate-200 text-slate-800'
+                    : 'bg-blue-600 text-white'
+                }`}
+              >
+                {msg.message}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {tripConfirmError && (
+        <div className="mx-4 mt-3 p-2 rounded-lg bg-rose-50 text-rose-700 text-xs">
+          {tripConfirmError}
+        </div>
+      )}
+
+      <div className="p-4 border-t border-slate-200 flex gap-2">
+        <input
+          type="text"
+          value={tripMessageText}
+          onChange={(e) => setTripMessageText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') sendTripChatMessage();
+          }}
+          placeholder="Type your message..."
+          className="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
+
+        <button
+          onClick={sendTripChatMessage}
+          disabled={isSendingTripMessage || !tripMessageText.trim()}
+          className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl disabled:opacity-50"
+        >
+          {isSendingTripMessage ? '...' : 'Send'}
+        </button>
+      </div>
+
+    </div>
+  </div>
+)}
 
       {/* ── Trip Booking Modal ───────────────────────────────────────────────── */}
       {showTripForm && (

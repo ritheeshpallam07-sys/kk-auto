@@ -65,6 +65,8 @@ export interface TripBooking {
   pickup_time: string;
   status: 'NEW' | 'CONTACTED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
   quoted_price: number | null;
+  customer_confirmed: boolean;
+  customer_confirmed_at: string | null;
   payment_status: 'PENDING' | 'PAID' | 'FAILED';
   payment_reference: string | null;
   payment_method: string | null;
@@ -379,6 +381,21 @@ savePushSubscription: (subscription: {
       request<TripBooking>(`/trip-bookings/owner/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(data)
-      })
+      }),
+      getTripMessages: (id: number) =>
+  request<any[]>(`/trip-bookings/${id}/messages`),
+
+sendTripMessage: (id: number, message: string) =>
+  request<any>(`/trip-bookings/${id}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ message })
+  }),
+
+confirmTrip: (id: number) =>
+  request<TripBooking>(`/trip-bookings/${id}/confirm`, {
+    method: 'POST'
+  })
+
+      
   }
 };
