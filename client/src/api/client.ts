@@ -51,6 +51,29 @@ export interface Booking {
   updated_at: string;
 }
 
+export interface TripBooking {
+  id: number;
+  booking_reference: string;
+  customer_id: number;
+  customer_name: string;
+  phone_number: string;
+  members: number;
+  email?: string;
+  trip_place: string;
+  days: number;
+  trip_date: string;
+  pickup_time: string;
+  status: 'NEW' | 'CONTACTED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
+  quoted_price: number | null;
+  payment_status: 'PENDING' | 'PAID' | 'FAILED';
+  payment_reference: string | null;
+  payment_method: string | null;
+  created_at: string;
+  updated_at: string;
+  customer_account_email?: string;
+  payment_session_id?: string;
+}
+
 export interface PaymentRecord {
   id: number;
   booking_id: number;
@@ -322,6 +345,40 @@ savePushSubscription: (subscription: {
       request<{ settledCount: number; settledAmount: number }>('/admin/settlements/settle', {
         method: 'POST',
         body: JSON.stringify(params)
+      })
+  },
+  tripBookings: {
+    create: (data: {
+      customerName: string;
+      phoneNumber: string;
+      members: number;
+      tripPlace: string;
+      days: number;
+      tripDate: string;
+      pickupTime: string;
+    }) =>
+      request<TripBooking>('/trip-bookings', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+    getMy: () => request<TripBooking[]>('/trip-bookings/my'),
+    getById: (id: number) => request<TripBooking>(`/trip-bookings/${id}`),
+    createOrder: (id: number, paymentMethod?: string) =>
+      request<TripBooking>(`/trip-bookings/${id}/create-order`, {
+        method: 'POST',
+        body: JSON.stringify({ paymentMethod })
+      }),
+    sandboxPay: (id: number, paymentMethod?: string) =>
+      request<TripBooking>(`/trip-bookings/${id}/sandbox-pay`, {
+        method: 'POST',
+        body: JSON.stringify({ paymentMethod })
+      }),
+    getOwnerContact: () => request<{ phone: string; whatsapp: string }>('/trip-bookings/contact'),
+    getAllOwner: () => request<TripBooking[]>('/trip-bookings/owner/all'),
+    updateByOwner: (id: number, data: { quotedPrice?: number; status?: string }) =>
+      request<TripBooking>(`/trip-bookings/owner/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data)
       })
   }
 };

@@ -126,3 +126,29 @@ CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(payment_status);
 CREATE INDEX IF NOT EXISTS idx_payments_settlement ON payments(settlement_status);
 CREATE INDEX IF NOT EXISTS idx_driver_push_subscriptions_driver
 ON driver_push_subscriptions(driver_id);
+
+-- Car / Outstation Trip Bookings (Separate from 3-wheeler Auto Bookings)
+CREATE TABLE IF NOT EXISTS trip_bookings (
+  id SERIAL PRIMARY KEY,
+  booking_reference VARCHAR(50) UNIQUE NOT NULL,
+  customer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  customer_name VARCHAR(255) NOT NULL,
+  phone_number VARCHAR(50) NOT NULL,
+  members INTEGER NOT NULL CHECK (members > 0),
+  trip_place VARCHAR(255) NOT NULL,
+  days INTEGER NOT NULL CHECK (days > 0),
+  trip_date VARCHAR(50) NOT NULL,
+  pickup_time VARCHAR(50) NOT NULL,
+  status VARCHAR(50) NOT NULL DEFAULT 'NEW',
+  quoted_price DOUBLE PRECISION,
+  payment_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+  payment_reference VARCHAR(100),
+  payment_method VARCHAR(50),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_trip_bookings_customer ON trip_bookings(customer_id);
+CREATE INDEX IF NOT EXISTS idx_trip_bookings_ref ON trip_bookings(booking_reference);
+CREATE INDEX IF NOT EXISTS idx_trip_bookings_status ON trip_bookings(status);
+CREATE INDEX IF NOT EXISTS idx_trip_bookings_payment ON trip_bookings(payment_status);

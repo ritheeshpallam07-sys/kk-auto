@@ -258,7 +258,7 @@ export class PaymentService {
       return_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/booking/${bookingId}?order_id={order_id}`,
       notify_url: 'https://kk-auto.onrender.com/api/payments/webhook'
     },
-    order_note: `Kk_Auto booking #${bookingId}`
+    order_note: `KkAuto booking ${bookingId}`
   };
 
   try {

@@ -12,6 +12,7 @@ import bookingRoutes from './routes/bookingRoutes';
 import driverRoutes from './routes/driverRoutes';
 import adminRoutes from './routes/adminRoutes';
 import paymentRoutes from './routes/paymentRoutes';
+import tripBookingRoutes from './routes/tripBookingRoutes';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -55,6 +56,8 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/drivers', driverRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/trip-bookings', tripBookingRoutes);
+app.use('/api/car-bookings', tripBookingRoutes);
 
 // Serve static frontend in production if built
 const clientDistPath = path.resolve(__dirname, '../../client/dist');
