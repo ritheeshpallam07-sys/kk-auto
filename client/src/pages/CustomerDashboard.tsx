@@ -237,9 +237,11 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
   );
 
   if (res.success && res.data) {
-    setTripMessages(prev => [...prev, res.data]);
-    setTripMessageText('');
-  }
+  setTripMessages(prev => [...prev, res.data]);
+  setTripMessageText('');
+} else {
+  setTripConfirmError(res.error || 'Unable to send message');
+}
 
   setIsSendingTripMessage(false);
 };
