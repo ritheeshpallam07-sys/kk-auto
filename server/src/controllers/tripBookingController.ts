@@ -247,7 +247,10 @@ public static async sendTripMessage(req: Request, res: Response) {
       message
     );
 
-    return res.status(201).json(result);
+    return res.status(201).json({
+  success: true,
+  data: result
+});
   } catch (error: any) {
     return res.status(400).json({
       message: error?.message || 'Unable to send message'
