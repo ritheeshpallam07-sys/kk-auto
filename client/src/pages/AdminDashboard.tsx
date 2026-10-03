@@ -160,6 +160,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
 
     setIsLoadingTripMessages(false);
   };
+  useEffect(() => {
+  if (!activeTripChatId) return;
+
+  const interval = setInterval(async () => {
+    const res = await api.tripBookings.getTripMessages(activeTripChatId);
+
+    if (res.success && res.data) {
+      setTripMessages(res.data);
+    }
+  }, 3000);
+
+  return () => clearInterval(interval);
+}, [activeTripChatId]);
 
   const sendTripChatMessage = async () => {
     if (!activeTripChatId || !tripMessageText.trim()) return;
