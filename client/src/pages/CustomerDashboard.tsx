@@ -214,7 +214,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
   const res = await api.tripBookings.getTripMessages(tripId);
 
   if (res.success && res.data) {
-    setTripMessages(res.data);
+    setTripMessages([...res.data]);
   } else {
     setTripMessages([]);
   }
