@@ -229,13 +229,17 @@ useEffect(() => {
 useEffect(() => {
   if (!activeTripChatId) return;
 
-  const interval = setInterval(async () => {
+  const loadMessages = async () => {
     const res = await api.tripBookings.getTripMessages(activeTripChatId);
 
     if (res.success && res.data) {
       setTripMessages(res.data);
     }
-  }, 3000);
+  };
+
+  loadMessages();
+
+  const interval = setInterval(loadMessages, 3000);
 
   return () => clearInterval(interval);
 }, [activeTripChatId]);
