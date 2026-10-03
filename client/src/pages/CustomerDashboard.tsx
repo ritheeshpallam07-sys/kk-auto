@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api, Booking, FareEstimate, TripBooking } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
@@ -73,6 +73,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
   const [tripMessageText, setTripMessageText] = useState('');
   const [isLoadingTripMessages, setIsLoadingTripMessages] = useState(false);
   const [isSendingTripMessage, setIsSendingTripMessage] = useState(false);
+  const tripMessagesEndRef = useRef<HTMLDivElement | null>(null);
   const [tripConfirmingId, setTripConfirmingId] = useState<number | null>(null);
   const [tripConfirmError, setTripConfirmError] = useState<string | null>(null);
 
@@ -214,7 +215,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
   const res = await api.tripBookings.getTripMessages(tripId);
 
   if (res.success && res.data) {
-    setTripMessages([...res.data]);
+    setTripMessages(res.data);
   } else {
     setTripMessages([]);
   }
@@ -223,6 +224,10 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
 };
   const sendTripChatMessage = async () => {
   if (!activeTripChatId || !tripMessageText.trim()) return;
+
+  useEffect(() => {
+  tripMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+}, [tripMessages]);
 
   setIsSendingTripMessage(true);
 
@@ -707,6 +712,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
             </div>
           ))
         )}
+        <div ref={tripMessagesEndRef} />
       </div>
 
       {tripConfirmError && (
