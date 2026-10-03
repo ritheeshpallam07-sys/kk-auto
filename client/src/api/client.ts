@@ -209,9 +209,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   try {
     const res = await fetch(`${API_BASE}${endpoint}`, {
-      ...options,
-      headers
-    });
+  ...options,
+  headers,
+  cache: 'no-store'
+});
     const data = await res.json();
     if (!res.ok) {
       throw new Error(data.error || 'Something went wrong');
