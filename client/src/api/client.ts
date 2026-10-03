@@ -384,7 +384,7 @@ savePushSubscription: (subscription: {
         body: JSON.stringify(data)
       }),
       getTripMessages: (id: number) =>
-  request<any[]>(`/trip-bookings/${id}/messages`),
+  request<any[]>(`/trip-bookings/${id}/messages?t=${Date.now()}`),
 
 sendTripMessage: (id: number, message: string) =>
   request<any>(`/trip-bookings/${id}/messages`, {
