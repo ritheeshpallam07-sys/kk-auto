@@ -27,7 +27,8 @@ import {
   Building2,
   Calendar,
   Layers,
-  Percent
+  Percent,
+  MessageCircle
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -44,6 +45,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
   const [tripSearchQuery, setTripSearchQuery] = useState('');
   const [tripStatusFilter, setTripStatusFilter] = useState('all');
   const [tripQuoteInputs, setTripQuoteInputs] = useState<Record<number, number>>({});
+  const [activeTripChatId, setActiveTripChatId] = useState<number | null>(null);
+  const [tripMessages, setTripMessages] = useState<any[]>([]);
+  const [tripMessageText, setTripMessageText] = useState('');
+  const [isLoadingTripMessages, setIsLoadingTripMessages] = useState(false);
+  const [isSendingTripMessage, setIsSendingTripMessage] = useState(false);
   const [drivers, setDrivers] = useState<DriverAdminDetail[]>([]);
   const [settlements, setSettlements] = useState<SettlementOverview | null>(null);
   const [routes, setRoutes] = useState<FareRoute[]>([]);
@@ -138,6 +144,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+    const openTripChat = async (tripId: number) => {
+    setActiveTripChatId(tripId);
+    setIsLoadingTripMessages(true);
+
+    const res = await api.tripBookings.getTripMessages(tripId);
+
+    if (res.success && res.data) {
+      setTripMessages(res.data);
+    } else {
+      setTripMessages([]);
+    }
+
+    setIsLoadingTripMessages(false);
+  };
+
+  const sendTripChatMessage = async () => {
+    if (!activeTripChatId || !tripMessageText.trim()) return;
+
+    setIsSendingTripMessage(true);
+
+    const res = await api.tripBookings.sendTripMessage(
+      activeTripChatId,
+      tripMessageText.trim()
+    );
+
+    if (res.success && res.data) {
+      setTripMessages(prev => [...prev, res.data]);
+      setTripMessageText('');
+    }
+
+    setIsSendingTripMessage(false);
   };
 
   // Driver approval action
@@ -998,6 +1037,13 @@ const handleSaveTripQuote = async (tripId: number) => {
                   >
                     Save Quote
                   </button>
+                  <button
+  onClick={() => openTripChat(trip.id)}
+  className="mt-2 px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-lg text-[10px] font-bold flex items-center gap-1"
+>
+  <MessageCircle className="w-3 h-3" />
+  Chat with Customer
+</button>
                 </td>
 
                 <td className="px-4 py-4">
@@ -1166,7 +1212,98 @@ const handleSaveTripQuote = async (tripId: number) => {
             </table>
           </div>
         </div>
+            )}
+
+      {/* ADMIN TRIP CHAT MODAL */}
+      {activeTripChatId && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+
+            <div className="bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-5 flex items-center justify-between">
+              <div>
+                <h3 className="text-white font-extrabold text-base">
+                  Chat with Customer
+                </h3>
+                <p className="text-slate-300 text-xs">
+                  Discuss trip details and final charges
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setActiveTripChatId(null);
+                  setTripMessages([]);
+                  setTripMessageText('');
+                }}
+                className="text-slate-300 hover:text-white text-xl"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 h-80 overflow-y-auto space-y-3 bg-slate-50">
+              {isLoadingTripMessages ? (
+                <div className="text-center text-xs text-slate-400 py-10">
+                  Loading messages...
+                </div>
+              ) : tripMessages.length === 0 ? (
+                <div className="text-center text-xs text-slate-400 py-10">
+                  No messages yet.
+                </div>
+              ) : (
+                tripMessages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${
+                      msg.sender_role === 'admin'
+                        ? 'justify-end'
+                        : 'justify-start'
+                    }`}
+                  >
+                    <div
+                      className={`max-w-[80%] px-3 py-2 rounded-2xl text-xs ${
+                        msg.sender_role === 'admin'
+                          ? 'bg-slate-800 text-white'
+                          : 'bg-white border border-slate-200 text-slate-800'
+                      }`}
+                    >
+                      {msg.message}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-200 flex gap-2">
+              <input
+                type="text"
+                value={tripMessageText}
+                onChange={(e) => setTripMessageText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    sendTripChatMessage();
+                  }
+                }}
+                placeholder="Type your message..."
+                className="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+              />
+
+              <button
+                onClick={sendTripChatMessage}
+                disabled={
+                  isSendingTripMessage ||
+                  !tripMessageText.trim()
+                }
+                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl disabled:opacity-50"
+              >
+                {isSendingTripMessage ? '...' : 'Send'}
+              </button>
+            </div>
+
+          </div>
+        </div>
       )}
+
     </div>
   );
 };
