@@ -222,13 +222,13 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
 
   setIsLoadingTripMessages(false);
 };
+useEffect(() => {
+  tripMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+}, [tripMessages]);
   const sendTripChatMessage = async () => {
   if (!activeTripChatId || !tripMessageText.trim()) return;
 
-  useEffect(() => {
-  tripMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-}, [tripMessages]);
-
+ 
   setIsSendingTripMessage(true);
 
   const res = await api.tripBookings.sendTripMessage(
