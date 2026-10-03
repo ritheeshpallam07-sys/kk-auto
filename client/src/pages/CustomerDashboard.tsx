@@ -74,6 +74,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
   const [isLoadingTripMessages, setIsLoadingTripMessages] = useState(false);
   const [isSendingTripMessage, setIsSendingTripMessage] = useState(false);
   const tripMessagesEndRef = useRef<HTMLDivElement | null>(null);
+  const tripMessagesContainerRef = useRef<HTMLDivElement | null>(null);
   const [tripConfirmingId, setTripConfirmingId] = useState<number | null>(null);
   const [tripConfirmError, setTripConfirmError] = useState<string | null>(null);
 
@@ -223,7 +224,13 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
   setIsLoadingTripMessages(false);
 };
 useEffect(() => {
-  tripMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const container = tripMessagesContainerRef.current;
+
+  if (!container) return;
+
+  requestAnimationFrame(() => {
+    container.scrollTop = container.scrollHeight;
+  });
 }, [tripMessages]);
 
 useEffect(() => {
@@ -701,7 +708,10 @@ useEffect(() => {
         </button>
       </div>
 
-      <div className="p-4 h-80 overflow-y-auto space-y-3 bg-slate-50">
+      <div
+  ref={tripMessagesContainerRef}
+  className="p-4 h-80 overflow-y-auto space-y-3 bg-slate-50"
+>
         {isLoadingTripMessages ? (
           <div className="text-center text-xs text-slate-400 py-10">
             Loading messages...
