@@ -225,6 +225,20 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
 useEffect(() => {
   tripMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
 }, [tripMessages]);
+
+useEffect(() => {
+  if (!activeTripChatId) return;
+
+  const interval = setInterval(async () => {
+    const res = await api.tripBookings.getTripMessages(activeTripChatId);
+
+    if (res.success && res.data) {
+      setTripMessages(res.data);
+    }
+  }, 3000);
+
+  return () => clearInterval(interval);
+}, [activeTripChatId]);
   const sendTripChatMessage = async () => {
   if (!activeTripChatId || !tripMessageText.trim()) return;
 
@@ -240,7 +254,7 @@ useEffect(() => {
   setTripMessages(prev => [...prev, res.data]);
   setTripMessageText('');
 } else {
-  setTripConfirmError(res.error || 'Unable to send message');
+  setTripConfirmError(JSON.stringify(res));
 }
 
   setIsSendingTripMessage(false);
