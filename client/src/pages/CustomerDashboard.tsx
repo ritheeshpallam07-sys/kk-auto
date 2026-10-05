@@ -68,13 +68,6 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
   const [ownerContact, setOwnerContact] = useState<{ phone: string; whatsapp: string } | null>(null);
   const [tripPayingId, setTripPayingId] = useState<number | null>(null);
   const [tripPayError, setTripPayError] = useState<string | null>(null);
-  const [activeTripChatId, setActiveTripChatId] = useState<number | null>(null);
-  const [tripMessages, setTripMessages] = useState<any[]>([]);
-  const [tripMessageText, setTripMessageText] = useState('');
-  const [isLoadingTripMessages, setIsLoadingTripMessages] = useState(false);
-  const [isSendingTripMessage, setIsSendingTripMessage] = useState(false);
-  const tripMessagesEndRef = useRef<HTMLDivElement | null>(null);
-  const tripMessagesContainerRef = useRef<HTMLDivElement | null>(null);
   const [tripConfirmingId, setTripConfirmingId] = useState<number | null>(null);
   const [tripConfirmError, setTripConfirmError] = useState<string | null>(null);
 
@@ -208,68 +201,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
       setTripPayingId(null);
     }
   };
-  const openTripChat = async (tripId: number) => {
-  setActiveTripChatId(tripId);
-  setIsLoadingTripMessages(true);
-  setTripConfirmError(null);
 
-  const res = await api.tripBookings.getTripMessages(tripId);
-
-  if (res.success && res.data) {
-    setTripMessages(res.data);
-  } else {
-    setTripMessages([]);
-  }
-
-  setIsLoadingTripMessages(false);
-};
-useEffect(() => {
-  const container = tripMessagesContainerRef.current;
-
-  if (!container) return;
-
-  requestAnimationFrame(() => {
-    container.scrollTop = container.scrollHeight;
-  });
-}, [tripMessages]);
-
-useEffect(() => {
-  if (!activeTripChatId) return;
-
-  const loadMessages = async () => {
-    const res = await api.tripBookings.getTripMessages(activeTripChatId);
-
-    if (res.success && res.data) {
-      setTripMessages(res.data);
-    }
-  };
-
-  loadMessages();
-
-  const interval = setInterval(loadMessages, 3000);
-
-  return () => clearInterval(interval);
-}, [activeTripChatId]);
-  const sendTripChatMessage = async () => {
-  if (!activeTripChatId || !tripMessageText.trim()) return;
-
- 
-  setIsSendingTripMessage(true);
-
-  const res = await api.tripBookings.sendTripMessage(
-    activeTripChatId,
-    tripMessageText.trim()
-  );
-
-  if (res.success && res.data) {
-  setTripMessages(prev => [...prev, res.data]);
-  setTripMessageText('');
-} else {
-  setTripConfirmError(JSON.stringify(res));
-}
-
-  setIsSendingTripMessage(false);
-};
   const handleTripConfirm = async (tripId: number) => {
   setTripConfirmingId(tripId);
   setTripConfirmError(null);
@@ -280,7 +212,6 @@ useEffect(() => {
     setMyTripBookings(prev =>
       prev.map(trip => trip.id === tripId ? res.data! : trip)
     );
-    setActiveTripChatId(tripId);
   } else {
     setTripConfirmError(res.error || 'Unable to confirm trip.');
   }
@@ -566,7 +497,7 @@ useEffect(() => {
               <span>🚗</span>
               <span>My Car / Trip Bookings</span>
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">Chat with the owner, confirm your final trip price, then pay securely</p>
+            <p className="text-xs text-slate-500 mt-0.5">Confirm your final trip price, then pay securely</p>
           </div>
           <button
             onClick={() => setShowTripForm(true)}
@@ -635,18 +566,13 @@ useEffect(() => {
 
                   {/* Actions */}
                   <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
-  <button
-    onClick={() => openTripChat(trip.id)}
-    className="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold text-xs rounded-lg flex items-center gap-1 transition-colors"
-  >
-    <MessageCircle className="w-3 h-3" />
-    <span>Chat with Owner</span>
-  </button>
+  
 
   {trip.status === 'CONFIRMED' &&
     trip.quoted_price &&
     !trip.customer_confirmed && (
       <button
+        type="button"
         onClick={() => handleTripConfirm(trip.id)}
         disabled={tripConfirmingId === trip.id}
         className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-lg disabled:opacity-50"
@@ -681,100 +607,7 @@ useEffect(() => {
       </div>
 
 
-      {/* ── Trip Chat Modal ─────────────────────────────────────────────────── */}
-{activeTripChatId && (
-  <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-    <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
-
-      <div className="bg-gradient-to-r from-blue-700 to-blue-900 px-6 py-5 flex items-center justify-between">
-        <div>
-          <h3 className="text-white font-extrabold text-base">
-            Chat with Owner
-          </h3>
-          <p className="text-blue-200 text-xs">
-            Discuss your trip and final charges
-          </p>
-        </div>
-
-        <button
-          onClick={() => {
-            setActiveTripChatId(null);
-            setTripMessages([]);
-            setTripMessageText('');
-          }}
-          className="text-blue-200 hover:text-white"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
-
-      <div
-  ref={tripMessagesContainerRef}
-  className="p-4 h-80 overflow-y-auto space-y-3 bg-slate-50"
->
-        {isLoadingTripMessages ? (
-          <div className="text-center text-xs text-slate-400 py-10">
-            Loading messages...
-          </div>
-        ) : tripMessages.length === 0 ? (
-          <div className="text-center text-xs text-slate-400 py-10">
-            No messages yet. Start the conversation with the owner.
-          </div>
-        ) : (
-          tripMessages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex ${
-                msg.sender_role === 'admin'
-                  ? 'justify-start'
-                  : 'justify-end'
-              }`}
-            >
-              <div
-                className={`max-w-[80%] px-3 py-2 rounded-2xl text-xs ${
-                  msg.sender_role === 'admin'
-                    ? 'bg-white border border-slate-200 text-slate-800'
-                    : 'bg-blue-600 text-white'
-                }`}
-              >
-                {msg.message}
-              </div>
-            </div>
-          ))
-        )}
-        <div ref={tripMessagesEndRef} />
-      </div>
-
-      {tripConfirmError && (
-        <div className="mx-4 mt-3 p-2 rounded-lg bg-rose-50 text-rose-700 text-xs">
-          {tripConfirmError}
-        </div>
-      )}
-
-      <div className="p-4 border-t border-slate-200 flex gap-2">
-        <input
-          type="text"
-          value={tripMessageText}
-          onChange={(e) => setTripMessageText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') sendTripChatMessage();
-          }}
-          placeholder="Type your message..."
-          className="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-        />
-
-        <button
-          onClick={sendTripChatMessage}
-          disabled={isSendingTripMessage || !tripMessageText.trim()}
-          className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl disabled:opacity-50"
-        >
-          {isSendingTripMessage ? '...' : 'Send'}
-        </button>
-      </div>
-
-    </div>
-  </div>
-)}
+      
 
       {/* ── Trip Booking Modal ───────────────────────────────────────────────── */}
       {showTripForm && (

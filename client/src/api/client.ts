@@ -383,14 +383,7 @@ savePushSubscription: (subscription: {
         method: 'PATCH',
         body: JSON.stringify(data)
       }),
-      getTripMessages: (id: number) =>
-  request<any[]>(`/trip-bookings/${id}/messages?t=${Date.now()}`),
-
-sendTripMessage: (id: number, message: string) =>
-  request<any>(`/trip-bookings/${id}/messages`, {
-    method: 'POST',
-    body: JSON.stringify({ message })
-  }),
+      
 
 confirmTrip: (id: number) =>
   request<TripBooking>(`/trip-bookings/${id}/confirm`, {
