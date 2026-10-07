@@ -33,7 +33,28 @@ export class BookingController {
         });
       }
 
-      const result = await FareService.calculateFare(fromLoc, toLoc);
+      const pickupLatitude = Number(req.body.pickupLatitude);
+      const pickupLongitude = Number(req.body.pickupLongitude);
+      const destinationLatitude = Number(req.body.destinationLatitude);
+      const destinationLongitude = Number(req.body.destinationLongitude);
+
+      console.log('FARE REQUEST:', {
+  fromLoc,
+  toLoc,
+  pickupLatitude: req.body.pickupLatitude,
+  pickupLongitude: req.body.pickupLongitude,
+  destinationLatitude: req.body.destinationLatitude,
+  destinationLongitude: req.body.destinationLongitude,
+});
+
+const result = await FareService.calculateFare(
+  fromLoc,
+  toLoc,
+  Number.isFinite(pickupLatitude) ? pickupLatitude : undefined,
+  Number.isFinite(pickupLongitude) ? pickupLongitude : undefined,
+  Number.isFinite(destinationLatitude) ? destinationLatitude : undefined,
+  Number.isFinite(destinationLongitude) ? destinationLongitude : undefined
+);
 
       if (!result.available) {
         return res.status(404).json({
@@ -75,14 +96,7 @@ export class BookingController {
         return res.status(400).json({ success: false, error: 'Pickup and destination locations are required.' });
       }
 
-      // Strictly verify route in the database
-      const routeCheck = await RouteService.getRouteFare(pickupAddress, destinationAddress);
-      if (!routeCheck.available || routeCheck.fare === undefined) {
-        return res.status(400).json({
-          success: false,
-          error: routeCheck.error || 'Sorry, this route is currently unavailable.'
-        });
-      }
+      
 
       const numPassengers = Math.min(4, Math.max(1, Number(passengers) || 1));
 
@@ -100,34 +114,78 @@ export class BookingController {
       // Generate unique Booking Reference (KK-XXXXXX)
       const randomCode = Math.floor(100000 + Math.random() * 900000);
       const bookingReference = `KK-${randomCode}`;
+      const pickupLatitude = Number(req.body.pickupLatitude);
+const pickupLongitude = Number(req.body.pickupLongitude);
+const destinationLatitude = Number(req.body.destinationLatitude);
+const destinationLongitude = Number(req.body.destinationLongitude);
+
+if (
+  !Number.isFinite(pickupLatitude) ||
+  !Number.isFinite(pickupLongitude) ||
+  !Number.isFinite(destinationLatitude) ||
+  !Number.isFinite(destinationLongitude)
+) {
+  return res.status(400).json({
+    success: false,
+    error: 'Valid pickup and destination GPS locations are required.'
+  });
+}
+
+const fareResult = await FareService.calculateFare(
+  pickupAddress,
+  destinationAddress,
+  pickupLatitude,
+  pickupLongitude,
+  destinationLatitude,
+  destinationLongitude
+);
+
+if (!fareResult.available || fareResult.fare === undefined) {
+  return res.status(400).json({
+    success: false,
+    error: fareResult.error || 'Unable to calculate fare for this route.'
+  });
+}
+
+const estimatedFare = Number(fareResult.fare) * numPassengers;
+const pickupAreaName = fareResult.fromLocation;
+const destinationAreaName = fareResult.toLocation;
 
       const insertResult = await query(
-        `INSERT INTO bookings (
-          booking_reference,
-          customer_id,
-          pickup_address,
-          destination_address,
-          pickup_datetime,
-          passengers,
-          estimated_fare,
-          status,
-          created_at,
-          updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        RETURNING *;`,
-        [
-          bookingReference,
-          customerId,
-          routeCheck.fromLocation,
-          routeCheck.toLocation,
-          scheduledTime.toISOString(),
-          numPassengers,
-          routeCheck.fare * numPassengers,
-          'Searching for Auto'
-        ]
-      );
+  `INSERT INTO bookings (
+  booking_reference,
+  customer_id,
+  pickup_address,
+  destination_address,
+  pickup_area_name,
+  destination_area_name,
+  pickup_datetime,
+    passengers,
+    estimated_fare,
+    status,
+    created_at,
+    updated_at
+  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+  RETURNING *;`,
+  [
+  bookingReference,
+  customerId,
+  pickupAddress,
+  destinationAddress,
+  pickupAreaName,
+  destinationAreaName,
+  scheduledTime.toISOString(),
+  numPassengers,
+  estimatedFare,
+  'Searching for Auto'
+]
+);
 
       const booking = insertResult.rows[0];
+      console.log('BOOKING AREA NAMES:', {
+  pickupAreaName: booking.pickup_area_name,
+  destinationAreaName: booking.destination_area_name,
+});
 
       return res.status(201).json({
         success: true,
@@ -139,6 +197,7 @@ export class BookingController {
       return res.status(500).json({ success: false, error: err.message || 'Failed to create booking.' });
     }
   }
+
 
   /**
    * Get all bookings for logged-in customer (or all if admin)

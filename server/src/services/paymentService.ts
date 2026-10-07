@@ -103,6 +103,12 @@ export class PaymentService {
   }
 
   const booking = bookingRes.rows[0];
+  console.log('PAYMENT AUTH CHECK:', {
+  bookingId,
+  bookingCustomerId: booking.customer_id,
+  loggedInCustomerId: customerId,
+  bookingStatus: booking.status
+});
 
   // Make sure the logged-in customer owns this booking
   if (Number(booking.customer_id) !== Number(customerId)) {

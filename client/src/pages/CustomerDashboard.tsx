@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { api, Booking, FareEstimate, TripBooking } from '../api/client';
+import { api, Booking, TripBooking } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
 import { load } from '@cashfreepayments/cashfree-js';
 import {
@@ -36,17 +36,11 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
 
   // ── Auto booking state ──────────────────────────────────────────────────────
   const [recentBookings, setRecentBookings] = useState<Booking[]>([]);
-  const [locations, setLocations] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [pickup, setPickup] = useState('');
-  const [destination, setDestination] = useState('');
-  const [passengers, setPassengers] = useState(1);
-  const [fareEstimate, setFareEstimate] = useState<FareEstimate | null>(null);
-  const [isCalculating, setIsCalculating] = useState(false);
-  const [isBooking, setIsBooking] = useState(false);
-  const [bookingError, setBookingError] = useState<string | null>(null);
-  const [successBooking, setSuccessBooking] = useState<any | null>(null);
+  const activeBooking = recentBookings.find(b =>
+  ['Searching for Auto', 'Driver Assigned', 'Driver Arriving', 'Ride Started'].includes(b.status)
+);
 
   // ── Trip booking state ──────────────────────────────────────────────────────
   const [showTripForm, setShowTripForm] = useState(false);
@@ -75,12 +69,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
   useEffect(() => {
     async function loadData() {
       setIsLoading(true);
-      const [bookingsRes, locsRes] = await Promise.all([
-        api.bookings.getMyBookings(),
-        api.bookings.getLocations()
-      ]);
+      const bookingsRes = await api.bookings.getMyBookings();
       if (bookingsRes.success && bookingsRes.data) setRecentBookings(bookingsRes.data);
-      if (locsRes.success && locsRes.data) setLocations(locsRes.data);
       setIsLoading(false);
     }
     loadData();
@@ -96,52 +86,6 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
     if (tripsRes.success && tripsRes.data) setMyTripBookings(tripsRes.data);
     if (contactRes.success && contactRes.data) setOwnerContact(contactRes.data);
     setIsLoadingTrips(false);
-  };
-
-  // ── Auto booking helpers ────────────────────────────────────────────────────
-  const activeBooking = recentBookings.find(b =>
-    ['Searching for Auto', 'Driver Assigned', 'Driver Arriving', 'Ride Started'].includes(b.status)
-  );
-
-  const handleQuickBook = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBookingError(null);
-    setFareEstimate(null);
-
-    if (!pickup) { setBookingError('Please select a pickup location.'); return; }
-    if (!destination) { setBookingError('Please select a destination.'); return; }
-    if (pickup === destination) { setBookingError('Pickup and destination cannot be the same.'); return; }
-
-    setIsCalculating(true);
-    const res = await api.bookings.getFareEstimate({ fromLocation: pickup, toLocation: destination, passengers });
-    setIsCalculating(false);
-
-    if (res.success && res.data && res.data.available) {
-      setFareEstimate(res.data);
-    } else {
-      setBookingError(res.error || 'Sorry, this route is currently unavailable.');
-    }
-  };
-
-  const handleBookAuto = async () => {
-    if (!user) { navigate('/login'); return; }
-    if (!fareEstimate?.available) return;
-
-    setBookingError(null);
-    setIsBooking(true);
-    const res = await api.bookings.create({
-      pickupAddress: pickup,
-      destinationAddress: destination,
-      pickupDateTime: new Date().toISOString(),
-      passengers
-    });
-    setIsBooking(false);
-
-    if (res.success && res.data) {
-      setSuccessBooking(res.data);
-    } else {
-      setBookingError(res.error || 'Failed to book auto.');
-    }
   };
 
   // ── Trip booking helpers ────────────────────────────────────────────────────
@@ -248,12 +192,12 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
 
         <div className="flex flex-wrap items-center gap-3">
           <button
-            onClick={() => document.getElementById('dashboard-booking-form')?.scrollIntoView({ behavior: 'smooth' })}
-            className="px-6 py-3.5 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-sm rounded-2xl shadow-lg transition-transform hover:scale-105 flex items-center gap-2"
-          >
-            <Car className="w-4 h-4" />
-            <span>Book an Auto</span>
-          </button>
+  onClick={() => navigate('/book-auto')}
+  className="px-6 py-3.5 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-sm rounded-2xl shadow-lg transition-transform hover:scale-105 flex items-center gap-2"
+>
+  <Car className="w-4 h-4" />
+  <span>Book an Auto</span>
+</button>
           <button
             onClick={() => setShowTripForm(true)}
             className="px-6 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-2xl shadow-lg transition-transform hover:scale-105 flex items-center gap-2"
@@ -318,123 +262,10 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
       {/* Main Grid: Auto Booking Form + Recent History */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
 
-        {/* Left: Auto Booking Form */}
-        <div id="dashboard-booking-form" className="lg:col-span-7 bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-xl font-extrabold text-slate-900">Book an Auto</h2>
-              <p className="text-xs text-slate-500">Fast doorstep pickup with official fixed-route fare schedule</p>
-            </div>
-            <span className="text-2xl">🛺</span>
-          </div>
-
-          <form onSubmit={handleQuickBook} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                <span>From (Pickup Location) *</span>
-              </label>
-              <select
-                value={pickup}
-                onChange={(e) => setPickup(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"
-                required
-              >
-                <option value="">Select pickup location</option>
-                {locations.map((loc) => <option key={loc} value={loc}>{loc}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center gap-1.5">
-                <Navigation className="w-3.5 h-3.5 text-rose-500" />
-                <span>To (Destination) *</span>
-              </label>
-              <select
-                value={destination}
-                onChange={(e) => setDestination(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"
-                required
-              >
-                <option value="">Select destination</option>
-                {locations.map((loc) => <option key={loc} value={loc}>{loc}</option>)}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Number of Passengers</span>
-                </label>
-                <select
-                  value={passengers}
-                  onChange={(e) => setPassengers(Number(e.target.value))}
-                  className="w-full px-3 py-3 rounded-xl border border-slate-200 text-sm font-semibold bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
-                >
-                  <option value={1}>1 Passenger</option>
-                  <option value={2}>2 Passengers</option>
-                  <option value={3}>3 Passengers</option>
-                  <option value={4}>4 Passengers (Max)</option>
-                </select>
-              </div>
-
-              <div className="flex items-end">
-                <button
-                  type="submit"
-                  className="w-full py-3 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-sm rounded-xl shadow-md transition-all hover:scale-102 flex items-center justify-center gap-2"
-                >
-                  <span>{isCalculating ? 'Checking Fare...' : 'Get Fare'}</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </form>
-
-          {bookingError && (
-            <div className="mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
-              {bookingError}
-            </div>
-          )}
-
-          {fareEstimate && fareEstimate.available && (
-            <div className="mt-5 p-5 rounded-2xl bg-amber-50 border border-amber-200">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-xs font-bold text-slate-500 uppercase">Estimated Fare</p>
-                  <p className="text-3xl font-black text-slate-900">₹{fareEstimate.estimatedFare}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleBookAuto}
-                  disabled={isBooking}
-                  className="px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl shadow-md disabled:opacity-50"
-                >
-                  {isBooking ? 'Booking...' : 'Book Auto'}
-                </button>
-              </div>
-              <p className="text-xs text-slate-600">{pickup} → {destination}</p>
-            </div>
-          )}
-
-          {successBooking && (
-            <div className="mt-4 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-semibold">
-              ✅ Auto booked! Ref: <span className="font-mono font-black">{successBooking.booking_reference}</span>
-            </div>
-          )}
-
-          {/* Fare Guarantee Notice */}
-          <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-            <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>JNTUA ↔ Cross (₹20) • JNTUA ↔ Bus Stand (₹25) • JNTUA ↔ Marava (₹30)</span>
-            </div>
-            <span className="font-semibold text-amber-600">Fixed Rate</span>
-          </div>
-        </div>
+       
 
         {/* Right: Recent Rides */}
-        <div className="lg:col-span-5 bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80 space-y-4">
+        <div className="lg:col-span-12 bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Clock className="w-4 h-4 text-slate-500" />

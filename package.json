@@ -21,6 +21,11 @@
   "author": "Kk_Auto Team",
   "license": "ISC",
   "devDependencies": {
+    "@types/leaflet": "^1.9.22",
     "@types/web-push": "^3.6.4"
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4",
+    "react-leaflet": "^5.0.0"
   }
 }

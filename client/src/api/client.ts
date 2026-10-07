@@ -37,6 +37,8 @@ export interface Booking {
   license_number?: string;
   pickup_address: string;
   destination_address: string;
+  pickup_area_name?: string;
+  destination_area_name?: string;
   pickup_datetime: string;
   passengers: number;
   estimated_fare: number;
@@ -241,7 +243,15 @@ export const api = {
   },
   bookings: {
     getLocations: () => request<string[]>('/bookings/locations'),
-    getFareEstimate: (params: { fromLocation: string; toLocation: string; passengers?: number }) =>
+    getFareEstimate: (params: {
+      fromLocation: string;
+      toLocation: string;
+      passengers?: number;
+      pickupLatitude?: number;
+      pickupLongitude?: number;
+      destinationLatitude?: number;
+      destinationLongitude?: number;
+    }) =>
       request<FareEstimate>('/bookings/fare-estimate', {
         method: 'POST',
         body: JSON.stringify(params)
@@ -251,6 +261,10 @@ export const api = {
       destinationAddress: string;
       pickupDateTime?: string;
       passengers?: number;
+      pickupLatitude?: number;
+      pickupLongitude?: number;
+      destinationLatitude?: number;
+      destinationLongitude?: number;
     }) => request<Booking>('/bookings', {
       method: 'POST',
       body: JSON.stringify(data)

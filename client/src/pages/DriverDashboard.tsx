@@ -372,12 +372,14 @@ new Notification('Kk_Auto Notifications Enabled', {
         </div>
       </div>
 
-      {/* ACTIVE ONGOING RIDE CONTROLLER */}
+            {/* ACTIVE ONGOING RIDE CONTROLLER */}
       {activeRide && (
         <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-md border-2 border-amber-400 space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
             <div>
-              <span className="text-[10px] font-bold uppercase text-amber-600">Active Ride Assignment</span>
+              <span className="text-[10px] font-bold uppercase text-amber-600">
+                Active Ride Assignment
+              </span>
               <h2 className="text-xl font-black text-slate-900 font-mono">
                 {activeRide.booking_reference}
               </h2>
@@ -387,32 +389,59 @@ new Notification('Kk_Auto Notifications Enabled', {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-3 text-xs">
+
               <div className="flex items-start gap-2.5">
                 <MapPin className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
                 <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Pickup</span>
-                  <div className="font-bold text-slate-800 text-sm">{activeRide.pickup_address}</div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400">
+                    Pickup
+                  </span>
+                  <div className="font-black text-slate-900 text-sm">
+                    {activeRide.pickup_area_name || 'Pickup'}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    {activeRide.pickup_address}
+                  </div>
                 </div>
               </div>
 
               <div className="flex items-start gap-2.5">
                 <Navigation className="w-4 h-4 text-rose-600 mt-0.5 flex-shrink-0" />
                 <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Destination</span>
-                  <div className="font-bold text-slate-800 text-sm">{activeRide.destination_address}</div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400">
+                    Destination
+                  </span>
+                  <div className="font-black text-slate-900 text-sm">
+                    {activeRide.destination_area_name || 'Destination'}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    {activeRide.destination_address}
+                  </div>
                 </div>
               </div>
 
               <div className="pt-2 flex items-center gap-6 text-xs text-slate-600">
-                <div>Passenger(s): <span className="font-bold text-slate-800">{activeRide.passengers}</span></div>
-                <div>Customer Fare: <span className="font-black text-amber-600 text-sm">₹{activeRide.estimated_fare}</span></div>
+                <div>
+                  Passenger(s):{' '}
+                  <span className="font-bold text-slate-800">
+                    {activeRide.passengers}
+                  </span>
+                </div>
+                <div>
+                  Customer Fare:{' '}
+                  <span className="font-black text-amber-600 text-sm">
+                    ₹{activeRide.estimated_fare}
+                  </span>
+                </div>
               </div>
             </div>
 
             {/* Status advancement buttons */}
             <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200/70 space-y-3 flex flex-col justify-center">
-              <span className="text-[10px] font-bold uppercase text-slate-500">Update Ride Progression</span>
-              
+              <span className="text-[10px] font-bold uppercase text-slate-500">
+                Update Ride Progression
+              </span>
+
               {activeRide.status === 'Driver Assigned' && (
                 <button
                   onClick={() => handleProgressRide('Driver Arriving')}
@@ -482,13 +511,26 @@ new Notification('Kk_Auto Notifications Enabled', {
                   <span className="font-black text-amber-600 text-sm">₹{req.estimated_fare}</span>
                 </div>
 
-                <div className="space-y-1 text-xs text-slate-700">
-                  <div className="truncate"><span className="text-slate-400">From:</span> {req.pickup_address}</div>
-                  <div className="truncate"><span className="text-slate-400">To:</span> {req.destination_address}</div>
-                  <div className="text-[11px] text-slate-500">
-                    Passengers: {req.passengers} • Fixed Route
-                  </div>
-                </div>
+                <div className="space-y-2 text-xs text-slate-700">
+  <div>
+    <div className="font-bold text-slate-800">
+      {req.pickup_area_name || 'Pickup'} → {req.destination_area_name || 'Destination'}
+    </div>
+    <div className="mt-1 truncate">
+      <span className="text-slate-400">Pickup:</span> {req.pickup_address}
+    </div>
+  </div>
+
+  <div>
+    <div className="truncate">
+      <span className="text-slate-400">Drop:</span> {req.destination_address}
+    </div>
+  </div>
+
+  <div className="text-[11px] text-slate-500">
+    Passengers: {req.passengers}
+  </div>
+</div>
 
                 <div className="flex items-center gap-2 pt-2 border-t border-slate-200/70">
                   <button

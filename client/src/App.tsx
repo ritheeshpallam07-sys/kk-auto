@@ -105,6 +105,7 @@ export const App: React.FC = () => {
 
     if (
       currentPath === '/book' ||
+      currentPath === '/book-auto' ||
       currentPath === '/fare-estimate'
     ) {
       return (
