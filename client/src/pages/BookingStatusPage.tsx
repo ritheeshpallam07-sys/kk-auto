@@ -113,7 +113,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
 
     if (res.success && res.data?.payment_session_id) {
       const cashfree = await load({
-        mode: 'sandbox'
+        mode: 'production'
       });
 
       if (!cashfree) {
