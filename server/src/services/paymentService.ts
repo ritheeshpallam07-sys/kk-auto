@@ -282,7 +282,7 @@ const response = await new Promise<any>((resolve, reject) => {
   const requestBody = JSON.stringify(cashfreeRequest);
 
   const req = https.request(
-    'https://sandbox.cashfree.com/pg/orders',
+      'https://api.cashfree.com/pg/orders',
     {
       method: 'POST',
       headers: {
