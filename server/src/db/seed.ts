@@ -73,10 +73,14 @@ export async function runSeed() {
     );
     const d1UserId = d1UserRes.rows[0].id;
     const d1Res = await query(
-      `INSERT INTO drivers (user_id, auto_number, auto_model, license_number, availability_status, approval_status, payout_upi, payout_bank_account, payout_ifsc)
-       VALUES ($1, $2, $3, $4, 'available', 'APPROVED', 'ramesh@oksbi', '302910482910', 'SBIN0001234') RETURNING id`,
-      [d1UserId, 'KA-01-AK-1984', 'Bajaj RE 4S CNG', 'DL-KA-2018-009871']
-    );
+  `INSERT INTO drivers (
+    user_id, auto_number, auto_model, license_number,
+    availability_status, approval_status, payout_upi, cashfree_vendor_id,
+    payout_bank_account, payout_ifsc
+  )
+   VALUES ($1, $2, $3, $4, 'available', 'APPROVED', 'ramesh@oksbi', 'KKDRIVER001', '302910482910', 'SBIN0001234') RETURNING id`,
+  [d1UserId, 'KA-01-AK-1984', 'Bajaj RE 4S CNG', 'DL-KA-2018-009871']
+);
     driver1Id = d1Res.rows[0].id;
 
     // 3. Driver 2 - Suresh Gowda (Approved)

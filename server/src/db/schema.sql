@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS drivers (
   availability_status VARCHAR(50) NOT NULL DEFAULT 'available',
   approval_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
   payout_upi VARCHAR(100),
+  cashfree_vendor_id VARCHAR(100),
   payout_bank_account VARCHAR(100),
   payout_ifsc VARCHAR(50),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -220,7 +221,18 @@ ALTER TABLE drivers ADD COLUMN IF NOT EXISTS approval_status VARCHAR(50) NOT NUL
 ALTER TABLE drivers ADD COLUMN IF NOT EXISTS payout_upi VARCHAR(100);
 ALTER TABLE drivers ADD COLUMN IF NOT EXISTS payout_bank_account VARCHAR(100);
 ALTER TABLE drivers ADD COLUMN IF NOT EXISTS payout_ifsc VARCHAR(50);
+ALTER TABLE drivers ADD COLUMN IF NOT EXISTS cashfree_vendor_id VARCHAR(100);
 ALTER TABLE fare_routes ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+UPDATE drivers
+SET cashfree_vendor_id = 'KKDRIVER001'
+WHERE id = (
+  SELECT d.id
+  FROM drivers d
+  JOIN users u ON u.id = d.user_id
+  WHERE u.email = 'ramesh@kkauto.com'
+  LIMIT 1
+)
+AND cashfree_vendor_id IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_mobile ON users(mobile);

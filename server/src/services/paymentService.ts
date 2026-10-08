@@ -134,6 +134,24 @@ export class PaymentService {
   ) {
   return existingPayment.rows[0];
   }
+  // Get the Cashfree Easy Split vendor linked to the assigned driver
+let cashfreeVendorId: string | null = null;
+
+if (booking.driver_id) {
+  const driverRes = await query<{ cashfree_vendor_id: string | null }>(
+    `SELECT cashfree_vendor_id
+     FROM drivers
+     WHERE id = $1
+     LIMIT 1`,
+    [booking.driver_id]
+  );
+
+  cashfreeVendorId = driverRes.rows[0]?.cashfree_vendor_id || null;
+}
+
+if (!cashfreeVendorId) {
+  throw new Error('Cashfree vendor is not configured for this driver.');
+}
 
   // 2. Calculate marketplace split
   const totalFare = Number(booking.estimated_fare);
@@ -254,6 +272,12 @@ export class PaymentService {
     order_amount: Number(totalFare.toFixed(2)),
     order_currency: 'INR',
     order_id: cashfreeOrderId,
+    order_splits: [
+  {
+    vendor_id: cashfreeVendorId,
+    amount: Number(driverAmount.toFixed(2))
+  }
+],
     customer_details: {
       customer_id: String(customerId),
       customer_name: booking.customer_name || `Customer ${customerId}`,
