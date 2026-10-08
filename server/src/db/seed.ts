@@ -56,11 +56,11 @@ export async function runSeed() {
     console.log('[Seed] Seeding sample users...');
 
     // 1. Admin User
-    const adminHash = await AuthService.hashPassword('admin123');
+    const adminHash = await AuthService.hashPassword('@Kumar_00');
     const adminRes = await query(
       `INSERT INTO users (name, email, mobile, password_hash, role)
        VALUES ($1, $2, $3, $4, 'admin') RETURNING id`,
-      ['Kk_Auto Admin', 'admin@kkauto.com', '9876543210', adminHash]
+      ['Kk_Auto Admin', 'kumar@auto.com', '9876543210', adminHash]
     );
     adminId = adminRes.rows[0].id;
 
