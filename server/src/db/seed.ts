@@ -261,24 +261,6 @@ export async function runSeed() {
          payout_ifsc = COALESCE(payout_ifsc, 'SBIN0001234')
        WHERE approval_status IS NULL OR payout_upi IS NULL`
     );
-
-    // Check if we have at least one PENDING driver for admin approval testing
-    const pendingCheck = await query(`SELECT id FROM drivers WHERE approval_status = 'PENDING' LIMIT 1`);
-    if (pendingCheck.rows.length === 0) {
-      const driverHash = await AuthService.hashPassword('driver123');
-      const d3User = await query(
-        `INSERT INTO users (name, email, mobile, password_hash, role)
-         VALUES ('Venkatesh Rao', 'venkat@kkauto.com', '9876543215', $1, 'driver')
-         ON CONFLICT (email) DO UPDATE SET role = 'driver' RETURNING id`,
-        [driverHash]
-      );
-      await query(
-        `INSERT INTO drivers (user_id, auto_number, auto_model, license_number, availability_status, approval_status, payout_upi, payout_bank_account, payout_ifsc)
-         VALUES ($1, 'KA-05-AB-7890', 'Bajaj Maxima Z Electric', 'DL-KA-2022-005678', 'available', 'PENDING', 'venkat@apl', '552019482088', 'ICIC0000789')
-         ON CONFLICT DO NOTHING`,
-        [d3User.rows[0].id]
-      );
-    }
   }
 
   console.log('[Seed] Database seeded successfully with fixed routes, users, split payments, and driver records!');
