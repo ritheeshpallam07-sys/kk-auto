@@ -44,6 +44,21 @@ export async function runSeed() {
   // Check if users already seeded
   const existing = await query('SELECT COUNT(*) as count FROM users');
   const userCount = parseInt(existing.rows[0].count, 10);
+    if (process.env.UPDATE_ADMIN_CREDENTIALS === 'true') {
+    console.log('[Seed] Updating admin credentials...');
+
+    const adminHash = await AuthService.hashPassword('@Kumar_00');
+
+    await query(
+      `UPDATE users
+       SET email = $1,
+           password_hash = $2
+       WHERE role = 'admin'`,
+      ['kumar@auto.com', adminHash]
+    );
+
+    console.log('[Seed] Admin credentials updated.');
+  }
 
   let adminId: number;
   let driver1Id: number;
