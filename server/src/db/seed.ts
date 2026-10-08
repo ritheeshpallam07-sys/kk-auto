@@ -59,6 +59,16 @@ export async function runSeed() {
 
     console.log('[Seed] Admin credentials updated.');
   }
+    if (process.env.CLEAN_TEST_DATA === 'true') {
+    console.log('[Seed] Cleaning test users and dependent test data...');
+
+    await query(
+      `DELETE FROM users
+       WHERE role <> 'admin'`
+    );
+
+    console.log('[Seed] Test users and dependent test data cleaned.');
+  }
 
   let adminId: number;
   let driver1Id: number;
