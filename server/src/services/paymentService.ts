@@ -2,7 +2,7 @@ import { query } from '../config/db';
 import crypto from 'crypto';
 import { Cashfree, CFEnvironment } from 'cashfree-pg';
 const cashfree = new Cashfree(
-  CFEnvironment.SANDBOX,
+  CFEnvironment.PRODUCTION,
   process.env.CASHFREE_APP_ID || '',
   process.env.CASHFREE_SECRET_KEY || ''
 );
@@ -134,37 +134,16 @@ export class PaymentService {
   ) {
   return existingPayment.rows[0];
   }
-  // Get the Cashfree Easy Split vendor linked to the assigned driver
-let cashfreeVendorId: string | null = null;
-
-if (booking.driver_id) {
-  const driverRes = await query<{ cashfree_vendor_id: string | null }>(
-    `SELECT cashfree_vendor_id
-     FROM drivers
-     WHERE id = $1
-     LIMIT 1`,
-    [booking.driver_id]
-  );
-
-  cashfreeVendorId = driverRes.rows[0]?.cashfree_vendor_id || null;
-}
-
-if (!cashfreeVendorId) {
-  throw new Error('Cashfree vendor is not configured for this driver.');
-}
-
-  // 2. Calculate marketplace split
+  
+  // Normal Cashfree payment: no Easy Split.
   const totalFare = Number(booking.estimated_fare);
+  
 
   if (!Number.isFinite(totalFare) || totalFare <= 0) {
     throw new Error('Invalid booking fare.');
   }
-
-  // Owner commission = 10% of the total fare
   const ownerAmount = Number((totalFare * 0.10).toFixed(2));
-
-  // Driver receives the remaining 90%
-  const driverAmount = Number((totalFare - ownerAmount).toFixed(2));
+const driverAmount = Number((totalFare - ownerAmount).toFixed(2));
   // Reuse an existing pending payment if one exists
   const pendingPayment = await query<PaymentRecord>(
     `SELECT * FROM payments
@@ -269,32 +248,26 @@ if (!cashfreeVendorId) {
   paymentRecord = updatedPayment.rows[0];
 
   const cashfreeRequest = {
-    order_amount: Number(totalFare.toFixed(2)),
-    order_currency: 'INR',
-    order_id: cashfreeOrderId,
-    order_splits: [
-  {
-    vendor_id: cashfreeVendorId,
-    amount: Number(driverAmount.toFixed(2))
-  }
-],
-    customer_details: {
-      customer_id: String(customerId),
-      customer_name: booking.customer_name || `Customer ${customerId}`,
-      customer_email: booking.customer_email || 'customer@example.com',
-      customer_phone: booking.customer_mobile
-    },
-    order_meta: {
-      return_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/booking/${bookingId}?order_id={order_id}`,
-      notify_url: 'https://kk-auto.onrender.com/api/payments/webhook'
-    },
-    order_note: `KkAuto booking ${bookingId}`
-  };
+  order_amount: Number(totalFare.toFixed(2)),
+  order_currency: 'INR',
+  order_id: cashfreeOrderId,
+  customer_details: {
+    customer_id: String(customerId),
+    customer_name: booking.customer_name || `Customer ${customerId}`,
+    customer_email: booking.customer_email || 'customer@example.com',
+    customer_phone: booking.customer_mobile
+  },
+  order_meta: {
+    return_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/booking/${bookingId}?order_id={order_id}`,
+    notify_url: 'https://kk-auto.onrender.com/api/payments/webhook'
+  },
+  order_note: `KkAuto booking ${bookingId}`
+};
 
   try {
     console.log('Cashfree SDK diagnostics:', {
   apiVersion: cashfree.XApiVersion,
-  environment: CFEnvironment.SANDBOX,
+  environment: CFEnvironment.PRODUCTION,
   hasClientId: !!process.env.CASHFREE_APP_ID,
   clientIdLength: process.env.CASHFREE_APP_ID?.length,
   hasClientSecret: !!process.env.CASHFREE_SECRET_KEY,
@@ -477,33 +450,110 @@ const response = await new Promise<any>((resolve, reject) => {
     );
   }
 
-  const normalizedStatus = String(webhookStatus).toUpperCase();
+  
+const existingPayment = paymentRes.rows[0];
 
-const paymentStatus =
-  normalizedStatus === 'SUCCESS'
-    ? 'COMPLETED'
-    : normalizedStatus === 'PENDING'
-      ? 'PENDING'
-      : 'FAILED';
+// Cashfree payment ID lekunte payment ni verify cheyyalem.
+if (!gatewayPaymentId) {
+throw new Error('Cashfree payment ID missing from webhook.');
+}
 
-  const updated = await query<PaymentRecord>(
-    `UPDATE payments
-     SET payment_status = $1,
-         gateway_payment_id = $2,
-         updated_at = CURRENT_TIMESTAMP
-     WHERE id = $3
-     RETURNING *`,
-    [
-      paymentStatus,
-      gatewayPaymentId || null,
-      paymentRes.rows[0].id
-    ]
-  );
+// Cashfree API nunchi actual payment details fetch cheyyi.
+const cashfreeResponse = await cashfree.PGOrderFetchPayments(
+String(gatewayOrderId)
+);
 
-  return {
-    processed: true,
-    payment: updated.rows[0]
-  };
+const cashfreePayments = cashfreeResponse.data || [];
+
+const verifiedPayment = cashfreePayments.find(
+(item) =>
+String(item.cf_payment_id) === String(gatewayPaymentId)
+);
+
+if (!verifiedPayment) {
+throw new Error('Payment ID could not be verified with Cashfree.');
+}
+
+// Order ID match avvali.
+if (String(verifiedPayment.order_id) !== String(gatewayOrderId)) {
+throw new Error('Cashfree order ID mismatch.');
+}
+
+// Expected amount database nunchi teesuko.
+const expectedAmount = Number(
+Number(existingPayment.total_amount).toFixed(2)
+);
+
+const orderAmount = Number(
+Number(verifiedPayment.order_amount).toFixed(2)
+);
+
+const paymentAmount = Number(
+Number(verifiedPayment.payment_amount).toFixed(2)
+);
+
+const currency =
+verifiedPayment.order_currency ||
+verifiedPayment.payment_currency;
+
+// Currency INR undali; order and payment amounts match avvali.
+if (
+currency !== 'INR' ||
+!Number.isFinite(expectedAmount) ||
+!Number.isFinite(orderAmount) ||
+!Number.isFinite(paymentAmount) ||
+orderAmount !== expectedAmount ||
+paymentAmount !== expectedAmount
+) {
+throw new Error(
+'Cashfree payment amount or currency verification failed.'
+);
+}
+
+const normalizedStatus = String(
+verifiedPayment.payment_status || ''
+).toUpperCase();
+
+let paymentStatus: 'COMPLETED' | 'PENDING' | 'FAILED';
+
+if (normalizedStatus === 'SUCCESS') {
+paymentStatus = 'COMPLETED';
+} else if (normalizedStatus === 'PENDING') {
+paymentStatus = 'PENDING';
+} else if (
+['FAILED', 'USER_DROPPED', 'CANCELLED', 'VOID'].includes(
+normalizedStatus
+)
+) {
+paymentStatus = 'FAILED';
+} else {
+return { processed: false, payment: existingPayment };
+}
+
+// Completed payment ni later webhook downgrade cheyyakudadhu.
+if (existingPayment.payment_status === 'COMPLETED') {
+return { processed: true, payment: existingPayment };
+}
+
+const updated = await query<PaymentRecord>(
+`UPDATE payments
+   SET payment_status = $1,
+       gateway_payment_id = COALESCE($2, gateway_payment_id),
+       updated_at = CURRENT_TIMESTAMP
+   WHERE id = $3
+     AND payment_status <> 'COMPLETED'
+   RETURNING *`,
+[
+paymentStatus,
+String(verifiedPayment.cf_payment_id),
+existingPayment.id
+]
+);
+
+return {
+processed: true,
+payment: updated.rows[0] || existingPayment
+};
 }
 
   /**

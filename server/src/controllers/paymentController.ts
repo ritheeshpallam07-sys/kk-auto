@@ -33,30 +33,50 @@ export class PaymentController {
   /**
    * Simulate sandbox online payment (UPI / Card / NetBanking)
    */
+  /**
+
+* Sandbox payment simulation — disabled in production
+  */
   public static async sandboxPay(req: Request, res: Response) {
-    try {
-      const user = req.user!;
-      const { bookingId, paymentMethod } = req.body;
-
-      if (!bookingId) {
-        return res.status(400).json({ success: false, error: 'Booking ID is required.' });
-      }
-
-      const payment = await PaymentService.processSandboxPayment(
-        Number(bookingId),
-        user.id,
-        paymentMethod || 'UPI'
-      );
-
-      return res.json({
-        success: true,
-        message: 'Online payment processed successfully!',
-        data: payment
-      });
-    } catch (err: any) {
-      return res.status(400).json({ success: false, error: err.message });
-    }
+  if (process.env.NODE_ENV === 'production') {
+  return res.status(403).json({
+  success: false,
+  error: 'Sandbox payments are disabled in production.'
+  });
   }
+
+try {
+
+  const user = req.user!;
+  const { bookingId, paymentMethod } = req.body;
+
+  if (!bookingId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Booking ID is required.'
+    });
+  }
+
+  const payment = await PaymentService.processSandboxPayment(
+    Number(bookingId),
+    user.id,
+    paymentMethod || 'UPI'
+  );
+
+  return res.json({
+    success: true,
+    message: 'Sandbox payment processed successfully.',
+    data: payment
+  });
+} catch (err: any) {
+  return res.status(400).json({
+    success: false,
+    error: err.message
+  });
+}
+
+}
+
 
   /**
    * Cashfree payment gateway webhook

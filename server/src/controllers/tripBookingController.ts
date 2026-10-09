@@ -171,34 +171,50 @@ export class TripBookingController {
   /**
    * Customer completes sandbox payment simulation for confirmed trip
    */
+  /**
+
+* Sandbox payment simulation — disabled in production
+  */
   public static async processSandboxPayment(req: Request, res: Response) {
-    try {
-      const user = req.user!;
-      const tripId = Number(req.params.id);
-      const { paymentMethod } = req.body;
-
-      if (isNaN(tripId)) {
-        return res.status(400).json({ success: false, error: 'Invalid trip booking ID.' });
-      }
-
-      const updated = await TripBookingService.processTripSandboxPayment(
-        tripId,
-        user.id,
-        paymentMethod || 'UPI'
-      );
-
-      return res.json({
-        success: true,
-        message: 'Trip payment completed successfully!',
-        data: updated
-      });
-    } catch (err: any) {
-      return res.status(400).json({
-        success: false,
-        error: err.message || 'Payment simulation failed.'
-      });
-    }
+  if (process.env.NODE_ENV === 'production') {
+  return res.status(403).json({
+  success: false,
+  error: 'Sandbox payments are disabled in production.'
+  });
   }
+
+try {
+  const user = req.user!;
+  const tripId = Number(req.params.id);
+  const { paymentMethod } = req.body;
+
+  if (!Number.isInteger(tripId) || tripId <= 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid trip booking ID.'
+    });
+  }
+
+  const updated = await TripBookingService.processTripSandboxPayment(
+    tripId,
+    user.id,
+    paymentMethod || 'UPI'
+  );
+
+  return res.json({
+    success: true,
+    message: 'Sandbox payment completed successfully.',
+    data: updated
+  });
+} catch (err: any) {
+  return res.status(400).json({
+    success: false,
+    error: err.message || 'Payment simulation failed.'
+  });
+}
+
+}
+
 
   /**
    * Customer fetches Owner business contact details (Phone & WhatsApp)
