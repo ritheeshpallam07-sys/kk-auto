@@ -169,52 +169,37 @@ public static async getUserById(id: number): Promise<AuthUser | null> {
    * Do not create the user yet.
    * Store registration details temporarily and send OTP.
    */
-  if (role === 'customer') {
-    const passwordHash = await this.hashPassword(data.password);
-    const otp = this.generateOtp();
+  // TEMPORARY: Skip email verification for customer registration.
+if (role === 'customer') {
+const passwordHash = await this.hashPassword(data.password);
 
-    // OTP valid for 10 minutes
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    await query(
-      `INSERT INTO email_verifications (
-        email,
-        name,
-        mobile,
-        password_hash,
-        role,
-        otp,
-        expires_at,
-        created_at
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
-      ON CONFLICT (email)
-      DO UPDATE SET
-        name = EXCLUDED.name,
-        mobile = EXCLUDED.mobile,
-        password_hash = EXCLUDED.password_hash,
-        role = EXCLUDED.role,
-        otp = EXCLUDED.otp,
-        expires_at = EXCLUDED.expires_at,
-        created_at = CURRENT_TIMESTAMP`,
-      [
-        email,
-        name,
-        mobile,
-        passwordHash,
-        role,
-        otp,
-        expiresAt
-      ]
-    );
+const userResult = await query(
+  `INSERT INTO users (
+    name,
+    email,
+    mobile,
+    password_hash,
+    role,
+    created_at,
+    updated_at
+  )
+  VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+  RETURNING id, name, email, mobile, role`,
+  [name, email, mobile, passwordHash, role]
+);
 
-    await EmailService.sendVerificationOtp(email, otp);
+const newUser: AuthUser = userResult.rows[0];
+const token = this.generateToken(newUser);
 
-    return {
-      requiresVerification: true,
-      email
-    };
-  }
+return {
+  user: newUser,
+  token
+};
+
+
+}
+
 
   /*
    * DRIVER:
