@@ -112,16 +112,39 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
       payoutBankAccount: role === 'driver' ? payoutBankAccount : undefined,
       payoutIfsc: role === 'driver' ? payoutIfsc : undefined
     });
-    setIsSubmitting(false);
+        setIsSubmitting(true);
 
-    if (res.success) {
-      if (role === 'driver') {
-        navigate('/driver');
+    try {
+      const res = await register({
+        name,
+        email,
+        mobile,
+        password,
+        confirmPassword,
+        role,
+        autoNumber: role === 'driver' ? autoNumber : undefined,
+        autoModel: role === 'driver' ? autoModel : undefined,
+        licenseNumber: role === 'driver' ? licenseNumber : undefined,
+        payoutUpi: role === 'driver' ? payoutUpi : undefined,
+        payoutBankAccount: role === 'driver' ? payoutBankAccount : undefined,
+        payoutIfsc: role === 'driver' ? payoutIfsc : undefined
+      });
+
+      if (res.success) {
+        if (role === 'driver') {
+          navigate('/driver');
+        } else if (res.requiresVerification && res.email) {
+          navigate(`/verify-email?email=${encodeURIComponent(res.email)}`);
+        } else {
+          navigate('/dashboard');
+        }
       } else {
-        navigate('/dashboard');
+        setError(res.error || 'Failed to create account.');
       }
-    } else {
-      setError(res.error || 'Failed to create account.');
+    } catch {
+      setError('Registration failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

@@ -230,10 +230,18 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
 export const api = {
   auth: {
-    register: (data: any) => request<{ user: User; token: string }>('/auth/register', {
+    register: (data: any) =>request<
+  | { requiresVerification: true; email: string }
+  | { user: User; token: string }
+>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(data)
     }),
+    verifyEmailOtp: (email: string, otp: string) =>
+  request<{ user: User; token: string }>('/auth/verify-email-otp', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp })
+  }),
     login: (identifier: string, password: string) => request<{ user: User; token: string }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ identifier, password })

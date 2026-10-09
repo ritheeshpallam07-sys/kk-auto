@@ -15,6 +15,7 @@ import { MyRidesPage } from './pages/MyRidesPage';
 import { DriverDashboard } from './pages/DriverDashboard';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { ProfilePage } from './pages/ProfilePage';
+import { VerifyEmailPage } from './pages/VerifyEmailPage';
 
 export const App: React.FC = () => {
   const [currentPath, setCurrentPath] = useState<string>(
@@ -59,6 +60,9 @@ export const App: React.FC = () => {
 
     if (currentPath === '/register') {
       return <RegisterPage navigate={navigate} />;
+    }
+    if (currentPath === '/verify-email') {
+      return <VerifyEmailPage navigate={navigate} />;
     }
 
     // =========================

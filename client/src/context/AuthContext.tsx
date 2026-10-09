@@ -12,7 +12,12 @@ login: (identifier: string, pass: string) => Promise<{
     user: User;
     token: string;
   };
-}>;  register: (data: any) => Promise<{ success: boolean; error?: string }>;
+}>;  register: (data: any) => Promise<{
+  success: boolean;
+  error?: string;
+  requiresVerification?: boolean;
+  email?: string;
+}>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   isCustomer: boolean;
@@ -61,30 +66,66 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const register = async (data: any) => {
-    setIsLoading(true);
-    const res = await api.auth.register(data);
-    setIsLoading(false);
+  setIsLoading(true);
 
-    if (res.success && res.data) {
+  try {
+    const res = await api.auth.register(data);
+
+    if (!res.success || !res.data) {
+      return {
+        success: false,
+        error: res.error || 'Registration failed'
+      };
+    }
+
+    // Customer: OTP verification required
+    if (
+      'requiresVerification' in res.data &&
+      res.data.requiresVerification === true
+      ) {
+        return {
+          success: true,
+          requiresVerification: true,
+          email: res.data.email
+        };
+      }
+
+
+    // Driver: keep existing registration flow
+    if ('user' in res.data && 'token' in res.data) {
       setUser(res.data.user);
       setToken(res.data.token);
       localStorage.setItem('kk_token', res.data.token);
+
       return { success: true };
     }
-    return { success: false, error: res.error || 'Registration failed' };
-  };
 
+    return {
+      success: false,
+      error: 'Unexpected registration response.'
+    };
+  } catch {
+    return {
+      success: false,
+      error: 'Registration failed. Please try again.'
+    };
+  } finally {
+    setIsLoading(false);
+  }
+};
   const logout = () => {
     localStorage.removeItem('kk_token');
-    setUser(null);
     setToken(null);
-    api.auth.logout();
+    setUser(null);
   };
 
   const refreshUser = async () => {
     const res = await api.auth.me();
+
     if (res.success && res.data) {
       setUser(res.data);
+    } else {
+      logout();
     }
   };
 
