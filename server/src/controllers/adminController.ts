@@ -92,47 +92,47 @@ export class AdminController {
     }
   }
 
-  /**
-   * Update any booking status
-   */
-  public static async updateBookingStatus(req: Request, res: Response) {
-    try {
-      const id = String(req.params.id);
-      const { status } = req.body;
+    /**
+     * Update any booking status
+     */
+    public static async updateBookingStatus(req: Request, res: Response) {
+      try {
+        const id = String(req.params.id);
+        const { status } = req.body;
 
-      const validStatuses = [
-        'Searching for Auto',
-        'Driver Assigned',
-        'Driver Arriving',
-        'Ride Started',
-        'Ride Completed',
-        'Cancelled'
-      ];
+        const validStatuses = [
+          'Searching for Auto',
+          'Driver Assigned',
+          'Driver Arriving',
+          'Ride Started',
+          'Ride Completed',
+          'Cancelled'
+        ];
 
-      if (!validStatuses.includes(status)) {
-        return res.status(400).json({ success: false, error: 'Invalid booking status.' });
+        if (!validStatuses.includes(status)) {
+          return res.status(400).json({ success: false, error: 'Invalid booking status.' });
+        }
+
+        const updateRes = await query(
+          `UPDATE bookings SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+          [status, id]
+        );
+
+        if (updateRes.rows.length === 0) {
+          return res.status(404).json({ success: false, error: 'Booking not found.' });
+        }
+
+        const booking = updateRes.rows[0];
+
+        return res.json({
+          success: true,
+          message: `Booking status updated to ${status}`,
+          data: booking
+        });
+      } catch (err: any) {
+        return res.status(500).json({ success: false, error: err.message });
       }
-
-      const updateRes = await query(
-        `UPDATE bookings SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
-        [status, id]
-      );
-
-      if (updateRes.rows.length === 0) {
-        return res.status(404).json({ success: false, error: 'Booking not found.' });
-      }
-
-      const booking = updateRes.rows[0];
-
-      return res.json({
-        success: true,
-        message: `Booking status updated to ${status}`,
-        data: booking
-      });
-    } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
     }
-  }
 
   /**
    * Get all registered drivers with approval status, auto details, and payout info
@@ -324,6 +324,20 @@ export class AdminController {
       return res.status(500).json({ success: false, error: err.message });
     }
   }
+  /**
+ * View customer ratings in owner portal
+ */
+public static async getDriverRatings(req: Request, res: Response) {
+  try {
+    const ratings = await PaymentService.getAllDriverRatings();
+    return res.json({ success: true, data: ratings });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+}
 
   /**
    * View pending driver settlements & history

@@ -10,6 +10,7 @@ router.use(authenticateToken, requireRole(['admin']));
 // Metrics & Overview
 router.get('/dashboard', AdminController.getDashboardStats);
 router.get('/financials', AdminController.getFinancials);
+router.get('/ratings', AdminController.getDriverRatings);
 
 // Bookings
 router.get('/bookings', AdminController.getAllBookings);

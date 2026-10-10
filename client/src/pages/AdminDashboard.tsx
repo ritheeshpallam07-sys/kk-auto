@@ -7,7 +7,8 @@ import {
   DriverAdminDetail, 
   SettlementOverview, 
   PlatformFinancials,
-  TripBooking
+  TripBooking,
+  RatingRecord
 } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
 import { 
@@ -35,7 +36,7 @@ interface AdminDashboardProps {
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'drivers' | 'settlements' | 'routes' | 'commission' | 'bookings' | 'tripBookings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'drivers' | 'settlements' | 'routes' | 'commission' | 'bookings' | 'tripBookings' |'ratings'>('overview');
   
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [financials, setFinancials] = useState<PlatformFinancials | null>(null);
@@ -46,6 +47,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
   const [tripQuoteInputs, setTripQuoteInputs] = useState<Record<number, number>>({});
   const [drivers, setDrivers] = useState<DriverAdminDetail[]>([]);
   const [settlements, setSettlements] = useState<SettlementOverview | null>(null);
+  const [driverRatings, setDriverRatings] = useState<RatingRecord[]>([]);
   const [routes, setRoutes] = useState<FareRoute[]>([]);
   const [commissionInput, setCommissionInput] = useState<number>(5);
   const [isLoading, setIsLoading] = useState(true);
@@ -77,14 +79,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
   const loadAllData = async () => {
     setIsLoading(true);
     try {
-      const [dashRes, bookRes, drivRes, setlRes, commRes, finRes, tripRes] = await Promise.all([
+      const [dashRes, bookRes, drivRes, setlRes, commRes, finRes, tripRes, ratRes] = await Promise.all([
   api.admin.getDashboard(),
   api.admin.getAllBookings(),
   api.admin.getDrivers(),
   api.admin.getSettlements(),
   api.admin.getCommission(),
   api.admin.getFinancials(),
-  api.tripBookings.getAllOwner()
+  api.tripBookings.getAllOwner(),
+  api.admin.getDriverRatings()
 ]);
 
       if (dashRes.success && dashRes.data) {
@@ -114,6 +117,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
       if (setlRes.success && setlRes.data) {
         setSettlements(setlRes.data);
       }
+      if (ratRes.success && ratRes.data) {
+  setDriverRatings(
+    Array.isArray(ratRes.data)
+      ? ratRes.data
+      : (ratRes.data as any).data || []
+  );
+}
 
       if (commRes.success && commRes.data) {
         setCommissionInput(commRes.data.commissionPerTrip);
@@ -389,6 +399,16 @@ const handleSaveTripQuote = async (tripId: number) => {
 >
   <Calendar className="w-3.5 h-3.5" />
   <span>All Bookings ({bookings.length})</span>
+</button>
+<button
+  onClick={() => setActiveTab('ratings')}
+  className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 ${
+    activeTab === 'ratings'
+      ? 'bg-white text-slate-900 shadow-sm'
+      : 'text-slate-600 hover:text-slate-900'
+  }`}
+>
+  <span>⭐ Driver Ratings ({driverRatings.length})</span>
 </button>
       </div>
 
@@ -1165,10 +1185,74 @@ const handleSaveTripQuote = async (tripId: number) => {
             </table>
           </div>
         </div>
-            )}
+      )}
 
-      
+      {activeTab === 'ratings' && ( 
+        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-slate-900">
+              Driver Ratings & Reviews
+            </h2>
+            <span className="text-xs font-bold text-slate-500">
+              {driverRatings.length} Reviews
+            </span>
+          </div>
 
+          {driverRatings.length === 0 ? (
+            <div className="py-12 text-center text-sm text-slate-400">
+              No driver ratings submitted yet.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-slate-100">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Driver</th>
+                    <th className="px-4 py-3">Rating</th>
+                    <th className="px-4 py-3">Review</th>
+                    <th className="px-4 py-3">Customer</th>
+                    <th className="px-4 py-3">Booking</th>
+                    <th className="px-4 py-3">Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {driverRatings.map((r) => (
+                    <tr key={r.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 font-bold text-slate-900">
+                        {r.driver_name || `Driver #${r.driver_id}`}
+                        <div className="text-[10px] text-slate-400">
+                          {r.auto_number || ''}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="text-amber-500">
+                          {'★'.repeat(Math.max(0, Math.min(5, Number(r.rating) || 0)))}
+                        </span>
+                        {' '}{r.rating}/5
+                      </td>
+                      <td className="px-4 py-3">
+                        {r.review?.trim() || 'No written review'}
+                      </td>
+                      <td className="px-4 py-3">
+                        {r.customer_name || `Customer #${r.customer_id}`}
+                      </td>
+                      <td className="px-4 py-3">
+                        {r.booking_reference || `#${r.booking_id}`}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {r.created_at
+                          ? new Date(r.created_at).toLocaleDateString()
+                          : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
+

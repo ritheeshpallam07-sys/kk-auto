@@ -743,4 +743,25 @@ payment: updated.rows[0] || existingPayment
     const res = await query('SELECT * FROM ratings WHERE booking_id = $1 LIMIT 1', [bookingId]);
     return res.rows.length > 0 ? res.rows[0] : null;
   }
+  /**
+ * Get all customer ratings for the owner dashboard
+ */
+public static async getAllDriverRatings(): Promise<any[]> {
+  const res = await query(
+    `SELECT r.id, r.booking_id, r.driver_id, r.customer_id,
+            r.rating, r.review, r.created_at,
+            d.auto_number,
+            u.name AS driver_name,
+            c.name AS customer_name,
+            b.booking_reference
+     FROM ratings r
+     LEFT JOIN drivers d ON d.id = r.driver_id
+     LEFT JOIN users u ON u.id = d.user_id
+     LEFT JOIN users c ON c.id = r.customer_id
+     LEFT JOIN bookings b ON b.id = r.booking_id
+     ORDER BY r.created_at DESC`
+  );
+
+  return res.rows;
+}
 }

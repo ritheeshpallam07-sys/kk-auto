@@ -196,6 +196,10 @@ export interface RatingRecord {
   rating: number;
   review?: string;
   created_at: string;
+    driver_name?: string;
+  customer_name?: string;
+  auto_number?: string;
+  booking_reference?: string;
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
@@ -336,6 +340,7 @@ savePushSubscription: (subscription: {
   admin: {
     getDashboard: () => request<AdminStats>('/admin/dashboard'),
     getFinancials: () => request<PlatformFinancials>('/admin/financials'),
+    getDriverRatings: () => request<any>('/admin/ratings'),
     getAllBookings: () => request<Booking[]>('/admin/bookings'),
     updateBookingStatus: (id: number, status: string) => request<Booking>(`/admin/bookings/${id}/status`, {
       method: 'PATCH',

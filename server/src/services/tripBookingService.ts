@@ -45,7 +45,7 @@ export class TripBookingService {
     if (!appId || !secretKey) {
       return null;
     }
-    const client = new Cashfree(CFEnvironment.SANDBOX, appId, secretKey);
+    const client = new Cashfree(CFEnvironment.PRODUCTION, appId, secretKey);
     client.XApiVersion = '2025-01-01';
     return client;
   }
