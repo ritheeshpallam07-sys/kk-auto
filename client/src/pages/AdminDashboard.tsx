@@ -363,8 +363,6 @@ const handleSaveTripQuote = async (tripId: number) => {
             activeTab === 'routes' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <Sliders className="w-3.5 h-3.5" />
-          <span>Fixed Routes & Fares</span>
         </button>
 
         <button
