@@ -130,7 +130,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
     try {
       const res = await api.tripBookings.createOrder(tripId, 'UPI');
       if (res.success && (res.data as any)?.payment_session_id) {
-        const cashfree = await load({ mode: 'sandbox' });
+        const cashfree = await load({ mode: 'production' });
         if (!cashfree) throw new Error('Unable to load Cashfree Checkout.');
         await cashfree.checkout({
           paymentSessionId: (res.data as any).payment_session_id,
@@ -192,12 +192,12 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
 
         <div className="flex flex-wrap items-center gap-3">
           <button
-  onClick={() => navigate('/book-auto')}
-  className="px-6 py-3.5 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-sm rounded-2xl shadow-lg transition-transform hover:scale-105 flex items-center gap-2"
->
-  <Car className="w-4 h-4" />
-  <span>Book an Auto</span>
-</button>
+    onClick={() => navigate('/book-auto')}
+    className="px-6 py-3.5 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-sm rounded-2xl shadow-lg transition-transform hover:scale-105 flex items-center gap-2"
+  >
+    <Car className="w-4 h-4" />
+    <span>Book an Auto</span>
+  </button>
           <button
             onClick={() => setShowTripForm(true)}
             className="px-6 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-2xl shadow-lg transition-transform hover:scale-105 flex items-center gap-2"

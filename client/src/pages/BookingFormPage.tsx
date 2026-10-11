@@ -149,6 +149,11 @@ export const BookingFormPage: React.FC<
     useState<'pickup' | 'destination'>(
       'pickup'
     );
+    const mapModeRef = useRef<'pickup' | 'destination'>('pickup');
+
+useEffect(() => {
+  mapModeRef.current = mapMode;
+}, [mapMode]);
 
   const [
     isGettingLocation,
@@ -323,7 +328,7 @@ export const BookingFormPage: React.FC<
       lng: event.latLng.lng(),
     };
 
-    if (mapMode === 'destination') {
+    if (mapModeRef.current === 'destination') {
       await setDestinationFromCoordinates(coordinates);
     } else {
       await setPickupFromCoordinates(coordinates);

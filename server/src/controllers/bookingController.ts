@@ -151,34 +151,46 @@ const estimatedFare = Number(fareResult.fare) * numPassengers;
 const pickupAreaName = fareResult.fromLocation;
 const destinationAreaName = fareResult.toLocation;
 
-      const insertResult = await query(
+      
+const insertResult = await query(
   `INSERT INTO bookings (
-  booking_reference,
-  customer_id,
-  pickup_address,
-  destination_address,
-  pickup_area_name,
-  destination_area_name,
-  pickup_datetime,
+    booking_reference,
+    customer_id,
+    pickup_address,
+    destination_address,
+    pickup_area_name,
+    destination_area_name,
+    pickup_latitude,
+    pickup_longitude,
+    destination_latitude,
+    destination_longitude,
+    pickup_datetime,
     passengers,
     estimated_fare,
     status,
     created_at,
     updated_at
-  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+  ) VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+  )
   RETURNING *;`,
   [
-  bookingReference,
-  customerId,
-  pickupAddress,
-  destinationAddress,
-  pickupAreaName,
-  destinationAreaName,
-  scheduledTime.toISOString(),
-  numPassengers,
-  estimatedFare,
-  'Searching for Auto'
-]
+    bookingReference,
+    customerId,
+    pickupAddress,
+    destinationAddress,
+    pickupAreaName,
+    destinationAreaName,
+    pickupLatitude,
+    pickupLongitude,
+    destinationLatitude,
+    destinationLongitude,
+    scheduledTime.toISOString(),
+    numPassengers,
+    estimatedFare,
+    'Searching for Auto'
+  ]
 );
 
       const booking = insertResult.rows[0];

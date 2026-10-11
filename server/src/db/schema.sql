@@ -295,3 +295,17 @@ ADD COLUMN IF NOT EXISTS pickup_area_name VARCHAR(100);
 
 ALTER TABLE bookings
 ADD COLUMN IF NOT EXISTS destination_area_name VARCHAR(100);
+
+
+-- GPS coordinates for accurate driver navigation
+ALTER TABLE bookings
+ADD COLUMN IF NOT EXISTS pickup_latitude DOUBLE PRECISION;
+
+ALTER TABLE bookings
+ADD COLUMN IF NOT EXISTS pickup_longitude DOUBLE PRECISION;
+
+ALTER TABLE bookings
+ADD COLUMN IF NOT EXISTS destination_latitude DOUBLE PRECISION;
+
+ALTER TABLE bookings
+ADD COLUMN IF NOT EXISTS destination_longitude DOUBLE PRECISION;

@@ -220,6 +220,64 @@ new Notification('Kk_Auto Notifications Enabled', {
   const handleRejectRide = (bookingId: number) => {
     setRequests(prev => prev.filter(r => r.id !== bookingId));
   };
+  
+  
+
+
+const handleOpenNavigation = () => {
+  if (!activeRide) return;
+
+  const isGoingToPickup = activeRide.status === 'Driver Assigned';
+
+  const pickupLat = activeRide.pickup_latitude;
+  const pickupLng = activeRide.pickup_longitude;
+  const destinationLat = activeRide.destination_latitude;
+  const destinationLng = activeRide.destination_longitude;
+
+  let origin: string | undefined;
+  let destination: string;
+
+  if (isGoingToPickup) {
+    // Stage 1: Driver current location -> Customer pickup
+    if (pickupLat == null || pickupLng == null) {
+      setActionError('Customer pickup GPS location is missing.');
+      return;
+    }
+
+    destination = `${pickupLat},${pickupLng}`;
+  } else {
+    // Stage 2: Customer pickup -> Customer destination
+    if (
+      pickupLat == null ||
+      pickupLng == null ||
+      destinationLat == null ||
+      destinationLng == null
+    ) {
+      setActionError('Pickup or destination GPS location is missing.');
+      return;
+    }
+
+    origin = `${pickupLat},${pickupLng}`;
+    destination = `${destinationLat},${destinationLng}`;
+  }
+
+  const mapsUrl =
+    'https://www.google.com/maps/dir/?api=1' +
+    (origin ? `&origin=${encodeURIComponent(origin)}` : '') +
+    `&destination=${encodeURIComponent(destination)}` +
+    '&travelmode=driving';
+
+  console.log('NAVIGATION STATUS:', activeRide.status);
+  console.log('NAVIGATION ORIGIN:', origin ?? 'Driver current location');
+  console.log('NAVIGATION DESTINATION:', destination);
+  console.log('FINAL GOOGLE MAPS URL:', mapsUrl);
+
+  window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+};
+
+
+
+
 
   const handleProgressRide = async (nextStatus: string) => {
     if (!activeRide) return;
@@ -441,6 +499,17 @@ new Notification('Kk_Auto Notifications Enabled', {
               <span className="text-[10px] font-bold uppercase text-slate-500">
                 Update Ride Progression
               </span>
+              
+  <button
+    onClick={handleOpenNavigation}
+    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center justify-center gap-2"
+  >
+    <Navigation className="w-4 h-4" />
+    {activeRide.status === 'Driver Assigned'
+      ? 'Navigate to Pickup'
+      : 'Navigate to Destination'}
+  </button>
+
 
               {activeRide.status === 'Driver Assigned' && (
                 <button
