@@ -12,7 +12,7 @@ export class EmailService {
     }
 
     const { error } = await resend.emails.send({
-      from: 'Kk_Auto <onboarding@resend.dev>',
+      from: 'Kk_Auto <noreply@clik2go.in>',
       to: [email],
       subject: 'Kk_Auto Email Verification OTP',
       html: `
