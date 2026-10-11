@@ -96,24 +96,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
       setError('Please accept the Terms and Conditions to continue.');
       return;
     }
-
     setIsSubmitting(true);
-    const res = await register({
-      name,
-      email,
-      mobile,
-      password,
-      confirmPassword,
-      role,
-      autoNumber: role === 'driver' ? autoNumber : undefined,
-      autoModel: role === 'driver' ? autoModel : undefined,
-      licenseNumber: role === 'driver' ? licenseNumber : undefined,
-      payoutUpi: role === 'driver' ? payoutUpi : undefined,
-      payoutBankAccount: role === 'driver' ? payoutBankAccount : undefined,
-      payoutIfsc: role === 'driver' ? payoutIfsc : undefined
-    });
-        setIsSubmitting(true);
-
     try {
       const res = await register({
         name,
@@ -131,10 +114,10 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
       });
 
       if (res.success) {
-        if (role === 'driver') {
-          navigate('/driver');
-        } else if (res.requiresVerification && res.email) {
+        if (res.requiresVerification && res.email) {
           navigate(`/verify-email?email=${encodeURIComponent(res.email)}`);
+        } else if (role === 'driver') {
+          navigate('/driver');
         } else {
           navigate('/dashboard');
         }
