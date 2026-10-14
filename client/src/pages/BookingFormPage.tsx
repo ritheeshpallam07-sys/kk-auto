@@ -623,19 +623,19 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
   };
 
   return (
-    <div className="min-h-screen bg-[#071426] text-white py-8 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[#071426] text-white py-4 sm:py-8 px-3 sm:px-6 lg:px-8">
       {/* Background ambient lighting */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
         <div className="absolute top-1/4 -left-48 w-96 h-96 bg-[#FF8A00]/10 rounded-full blur-3xl" />
         <div className="absolute top-1/3 -right-48 w-96 h-96 bg-[#FF8A00]/10 rounded-full blur-3xl" />
       </div>
 
-      <div className="max-w-6xl mx-auto space-y-6">
+      <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
         {/* Top Header bar with Back button and live status badge */}
-        <div className="flex items-center justify-between pb-2 border-b border-white/10">
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-white/10">
           <button
             onClick={() => navigate('/dashboard')}
-            className="inline-flex items-center gap-2 text-xs font-bold text-slate-300 hover:text-white transition-colors px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10"
+            className="inline-flex items-center gap-1.5 sm:gap-2 text-xs font-bold text-slate-300 hover:text-white transition-colors px-2.5 sm:px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10"
           >
             <ChevronLeft className="w-4 h-4 text-[#FF8A00]" />
             <span>Back to Dashboard</span>
@@ -643,16 +643,16 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
 
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs font-semibold text-slate-300">Google Maps Location Selection</span>
+            <span className="text-[11px] sm:text-xs font-semibold text-slate-300">Google Maps Selection</span>
           </div>
         </div>
 
         {/* Responsive Grid: Phone-Style Booking Form + Interactive Google Maps */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start">
 
           {/* LEFT COLUMN: Phone-Style Booking Card (Matches Reference Image Screen 1) */}
           <div className="lg:col-span-5 w-full max-w-md mx-auto">
-            <div className="bg-white text-slate-900 rounded-[2.5rem] shadow-2xl border-4 border-[#10243D] overflow-hidden p-6 sm:p-7 flex flex-col justify-between space-y-5 relative">
+            <div className="bg-white text-slate-900 rounded-3xl sm:rounded-[2.5rem] shadow-2xl border-2 sm:border-4 border-[#10243D] overflow-hidden p-4 sm:p-7 flex flex-col justify-between space-y-4 sm:space-y-5 relative">
 
               {/* Phone Header */}
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -706,7 +706,7 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
                         if (coords) setPickupCoords(coords);
                       }}
                       placeholder="Search pickup address, area, or landmark..."
-                      className="w-full bg-slate-50 border border-slate-200 hover:border-[#FF8A00]/50 rounded-2xl px-4 py-3 text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF8A00] transition-all pr-10"
+                      className="w-full bg-slate-50 border border-slate-200 hover:border-[#FF8A00]/50 rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF8A00] transition-all pr-9 sm:pr-10"
                     />
 
                     {fromLocation ? (
@@ -759,7 +759,7 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
                         if (coords) setDestCoords(coords);
                       }}
                       placeholder="Search destination, street, or landmark..."
-                      className="w-full bg-slate-50 border border-slate-200 hover:border-[#FF8A00]/50 rounded-2xl px-4 py-3 text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF8A00] transition-all pr-10"
+                      className="w-full bg-slate-50 border border-slate-200 hover:border-[#FF8A00]/50 rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF8A00] transition-all pr-9 sm:pr-10"
                     />
 
                     {toLocation ? (
@@ -984,10 +984,10 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
           {/* RIGHT COLUMN: Interactive Google Maps Experience */}
           <div className="lg:col-span-7 flex flex-col space-y-4">
 
-            <div className="bg-[#10243D] rounded-3xl p-6 border border-[#1A3353] shadow-2xl space-y-4">
+            <div className="bg-[#10243D] rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-[#1A3353] shadow-2xl space-y-3 sm:space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                     <Navigation className="w-5 h-5 text-[#FF8A00]" />
                     <span>Interactive Route Map</span>
                   </h2>
@@ -1045,16 +1045,16 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
               </div>
 
               {/* Map Canvas */}
-              <div className="relative w-full h-[380px] sm:h-[450px] rounded-2xl overflow-hidden border border-[#1A3353] bg-[#071426]">
+              <div className="relative w-full h-[280px] sm:h-[380px] lg:h-[450px] rounded-xl sm:rounded-2xl overflow-hidden border border-[#1A3353] bg-[#071426]">
 
                 {/* Google Maps Viewport */}
                 <div ref={mapContainerRef} className="w-full h-full" />
 
                 {/* Active Pin Placement Banner */}
                 {activePinMode && (
-                  <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 bg-[#FF8A00] text-[#071426] px-4 py-1.5 rounded-full text-xs font-black shadow-lg flex items-center gap-2 animate-bounce">
-                    <MapPin className="w-3.5 h-3.5" />
-                    <span>Click anywhere on the map to set {activePinMode === 'pickup' ? 'Pickup' : 'Destination'}</span>
+                  <div className="absolute top-2 sm:top-3 left-1/2 -translate-x-1/2 z-10 bg-[#FF8A00] text-[#071426] px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-black shadow-lg flex items-center gap-1.5 max-w-[90%] text-center animate-bounce">
+                    <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className="truncate">Click map to set {activePinMode === 'pickup' ? 'Pickup' : 'Destination'}</span>
                   </div>
                 )}
 

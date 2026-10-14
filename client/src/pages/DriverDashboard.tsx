@@ -304,35 +304,35 @@ const handleOpenNavigation = () => {
   const todayRidesCount = earnings?.completedRidesCount ?? completedRides.length;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-8 space-y-5 sm:space-y-8">
       {/* Top Driver Console Header matching Reference Screen 3 */}
-      <div className="bg-gradient-to-r from-[#071426] via-[#0B1B32] to-[#10243D] text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-[#1A3353] relative overflow-hidden">
+      <div className="bg-gradient-to-r from-[#071426] via-[#0B1B32] to-[#10243D] text-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-xl border border-[#1A3353] relative overflow-hidden">
         {/* Ambient orange glow */}
         <div className="absolute right-0 top-0 w-80 h-80 bg-[#FF8A00]/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#FF8A00] to-[#E67600] text-[#071426] flex items-center justify-center font-black text-2xl shadow-glow-orange flex-shrink-0">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6 relative">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-br from-[#FF8A00] to-[#E67600] text-[#071426] flex items-center justify-center font-black text-xl sm:text-2xl shadow-glow-orange flex-shrink-0">
               🛺
             </div>
             <div>
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#FF8A00]">Clik2Go Driver</span>
+                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-[#FF8A00]">Clik2Go Driver</span>
                 <span className="text-xs text-slate-400">•</span>
                 <span className="text-xs text-[#A9B7C9] font-mono uppercase">{profile?.auto_number}</span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-black text-white">
+              <h1 className="text-xl sm:text-3xl font-black text-white">
                 {getGreeting()}, {driverFirstName}
               </h1>
             </div>
           </div>
 
           {/* Online Toggle & Notifications */}
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="w-full sm:w-auto flex items-center gap-2.5 sm:gap-3 flex-wrap">
             {!isNotificationEnabled && (
               <button
                 onClick={handleEnableNotifications}
-                className="px-4 py-2.5 rounded-2xl font-black text-xs bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] shadow-glow-orange transition-all flex items-center gap-2"
+                className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-xs bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] shadow-glow-orange transition-all flex items-center justify-center gap-2"
               >
                 <span>🔔</span>
                 <span>Enable Alerts</span>
@@ -343,7 +343,7 @@ const handleOpenNavigation = () => {
               <button
                 onClick={handleToggleAvailability}
                 disabled={isUpdatingStatus || profile?.availability_status === 'on_ride'}
-                className={`px-5 py-2.5 rounded-2xl font-black text-xs shadow-md transition-all flex items-center gap-2.5 border ${
+                className={`flex-1 sm:flex-none px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 sm:gap-2.5 border ${
                   isAvailable
                     ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/30 shadow-emerald-500/20'
                     : 'bg-[#10243D] hover:bg-[#1A3353] text-[#A9B7C9] border-[#28476E]'
@@ -354,7 +354,7 @@ const handleOpenNavigation = () => {
                 <span>{isAvailable ? 'Online' : 'Offline'}</span>
               </button>
             ) : (
-              <div className="px-4 py-2.5 rounded-2xl bg-orange-500/10 border border-orange-400/30 text-orange-300 text-xs font-bold flex items-center gap-2">
+              <div className="px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl bg-orange-500/10 border border-orange-400/30 text-orange-300 text-xs font-bold flex items-center gap-2">
                 <Clock className="w-4 h-4 text-[#FF8A00]" />
                 <span>Status: {approvalStatus}</span>
               </div>
@@ -363,52 +363,52 @@ const handleOpenNavigation = () => {
         </div>
 
         {/* 3 Metric Cards matching Reference Screen 3 */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8 relative">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-6 sm:mt-8 relative">
           {/* Today's Rides */}
-          <div className="bg-[#10243D]/90 backdrop-blur-md rounded-2xl p-5 border border-[#1A3353] shadow-md flex items-center justify-between">
+          <div className="bg-[#10243D]/90 backdrop-blur-md rounded-xl sm:rounded-2xl p-4 sm:p-5 border border-[#1A3353] shadow-md flex items-center justify-between">
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Today's Rides</span>
-              <div className="text-3xl font-black text-white mt-1">{todayRidesCount}</div>
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Today's Rides</span>
+              <div className="text-2xl sm:text-3xl font-black text-white mt-1">{todayRidesCount}</div>
             </div>
-            <div className="w-12 h-12 rounded-xl bg-orange-500/15 text-[#FF8A00] flex items-center justify-center">
-              <Car className="w-6 h-6" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-orange-500/15 text-[#FF8A00] flex items-center justify-center">
+              <Car className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
           </div>
 
           {/* Earnings */}
-          <div className="bg-[#10243D]/90 backdrop-blur-md rounded-2xl p-5 border border-[#1A3353] shadow-md flex items-center justify-between">
+          <div className="bg-[#10243D]/90 backdrop-blur-md rounded-xl sm:rounded-2xl p-4 sm:p-5 border border-[#1A3353] shadow-md flex items-center justify-between">
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Earnings</span>
-              <div className="text-3xl font-black text-white mt-1">₹{earnings?.todayEarnings ?? 0}</div>
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Earnings</span>
+              <div className="text-2xl sm:text-3xl font-black text-white mt-1">₹{earnings?.todayEarnings ?? 0}</div>
             </div>
-            <div className="w-12 h-12 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
-              <IndianRupee className="w-6 h-6" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
+              <IndianRupee className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
           </div>
 
           {/* Rating */}
-          <div className="bg-[#10243D]/90 backdrop-blur-md rounded-2xl p-5 border border-[#1A3353] shadow-md flex items-center justify-between">
+          <div className="bg-[#10243D]/90 backdrop-blur-md rounded-xl sm:rounded-2xl p-4 sm:p-5 border border-[#1A3353] shadow-md flex items-center justify-between">
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Rating</span>
-              <div className="text-3xl font-black text-white mt-1 flex items-baseline gap-1">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Rating</span>
+              <div className="text-2xl sm:text-3xl font-black text-white mt-1 flex items-baseline gap-1">
                 <span>4.9</span>
                 <span className="text-amber-400 text-base">★</span>
               </div>
             </div>
-            <div className="w-12 h-12 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center">
-              <Star className="w-6 h-6 fill-amber-400" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center">
+              <Star className="w-5 h-5 sm:w-6 sm:h-6 fill-amber-400" />
             </div>
           </div>
         </div>
 
         {/* View Bookings Button & Recent Ride Quick Preview matching Screen 3 */}
-        <div className="mt-6 pt-6 border-t border-[#1A3353] grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+        <div className="mt-5 sm:mt-6 pt-5 sm:pt-6 border-t border-[#1A3353] grid grid-cols-1 md:grid-cols-12 gap-3 sm:gap-4 items-center">
           <div className="md:col-span-5">
             <button
               onClick={() => {
                 document.getElementById('incoming-requests-section')?.scrollIntoView({ behavior: 'smooth' });
               }}
-              className="w-full py-4 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-sm rounded-2xl shadow-glow-orange transition-all hover:scale-102 flex items-center justify-center gap-2"
+              className="w-full py-3.5 sm:py-4 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-sm rounded-xl sm:rounded-2xl shadow-glow-orange transition-all hover:scale-102 flex items-center justify-center gap-2"
             >
               <span>View Bookings</span>
               {requests.length > 0 && (
@@ -420,7 +420,7 @@ const handleOpenNavigation = () => {
           </div>
 
           {/* Recent Ride Card */}
-          <div className="md:col-span-7 bg-[#071426] rounded-2xl p-4 border border-[#1A3353] flex items-center justify-between gap-4">
+          <div className="md:col-span-7 bg-[#071426] rounded-xl sm:rounded-2xl p-3.5 sm:p-4 border border-[#1A3353] flex items-center justify-between gap-3 sm:gap-4">
             <div className="min-w-0">
               <span className="text-[10px] font-bold uppercase tracking-wider text-[#FF8A00] block mb-1">
                 Recent Ride
@@ -448,10 +448,10 @@ const handleOpenNavigation = () => {
 
       {/* APPROVAL STATUS BANNER */}
       {!isApproved && (
-        <div className="p-5 rounded-3xl bg-orange-50 border-2 border-orange-300 text-orange-950 shadow-sm flex items-start gap-4">
-          <AlertTriangle className="w-6 h-6 text-[#FF8A00] flex-shrink-0 mt-0.5" />
+        <div className="p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-orange-50 border-2 border-orange-300 text-orange-950 shadow-sm flex items-start gap-3 sm:gap-4">
+          <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-[#FF8A00] flex-shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <h3 className="text-sm font-black uppercase tracking-wide">
+            <h3 className="text-xs sm:text-sm font-black uppercase tracking-wide">
               {approvalStatus === 'PENDING' ? 'Account Pending Verification' : `Account Status: ${approvalStatus}`}
             </h3>
             <p className="text-xs text-orange-900 leading-relaxed">
@@ -464,84 +464,84 @@ const handleOpenNavigation = () => {
       )}
 
       {actionError && (
-        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+        <div className="p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           <span>{actionError}</span>
         </div>
       )}
 
       {/* DRIVER FINANCIALS & EARNINGS CARD */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-sm border border-slate-200/80 space-y-4 sm:space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 pb-4 border-b border-slate-100">
           <div>
-            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <IndianRupee className="w-5 h-5 text-emerald-600" />
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+              <IndianRupee className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600" />
               <span>Driver Earnings & Payout Settlements</span>
             </h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-[11px] sm:text-xs text-slate-500">
               Your split earnings from completed point-to-point auto rides (after platform commission)
             </p>
           </div>
 
           {profile?.payout_upi && (
-            <span className="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-semibold flex items-center gap-1.5">
-              <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 break-all">
+              <CreditCard className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
               <span>Payout UPI: {profile.payout_upi}</span>
             </span>
           )}
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
+          <div className="p-3.5 sm:p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl sm:rounded-2xl">
             <span className="text-[10px] font-bold uppercase text-emerald-800">Today's Earnings</span>
-            <div className="text-2xl font-black text-emerald-700 mt-1">₹{earnings?.todayEarnings ?? 0}</div>
+            <div className="text-xl sm:text-2xl font-black text-emerald-700 mt-1">₹{earnings?.todayEarnings ?? 0}</div>
           </div>
 
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+          <div className="p-3.5 sm:p-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl">
             <span className="text-[10px] font-bold uppercase text-slate-500">Lifetime Earnings</span>
-            <div className="text-2xl font-black text-slate-900 mt-1">₹{earnings?.totalEarnings ?? 0}</div>
+            <div className="text-xl sm:text-2xl font-black text-slate-900 mt-1">₹{earnings?.totalEarnings ?? 0}</div>
           </div>
 
-          <div className="p-4 bg-orange-50/70 border border-orange-200 rounded-2xl">
+          <div className="p-3.5 sm:p-4 bg-orange-50/70 border border-orange-200 rounded-xl sm:rounded-2xl">
             <span className="text-[10px] font-bold uppercase text-orange-900">Pending Settlement</span>
-            <div className="text-2xl font-black text-[#FF8A00] mt-1">₹{earnings?.pendingSettlement ?? 0}</div>
+            <div className="text-xl sm:text-2xl font-black text-[#FF8A00] mt-1">₹{earnings?.pendingSettlement ?? 0}</div>
           </div>
 
-          <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-2xl">
+          <div className="p-3.5 sm:p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl sm:rounded-2xl">
             <span className="text-[10px] font-bold uppercase text-indigo-800">Settled Payouts</span>
-            <div className="text-2xl font-black text-indigo-700 mt-1">₹{earnings?.settledAmount ?? 0}</div>
+            <div className="text-xl sm:text-2xl font-black text-indigo-700 mt-1">₹{earnings?.settledAmount ?? 0}</div>
           </div>
         </div>
       </div>
 
-            {/* ACTIVE ONGOING RIDE CONTROLLER */}
+      {/* ACTIVE ONGOING RIDE CONTROLLER */}
       {activeRide && (
-        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-md border-2 border-[#FF8A00] space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
+        <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-md border-2 border-[#FF8A00] space-y-4 sm:space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 pb-4 border-b border-slate-100">
             <div>
               <span className="text-[10px] font-bold uppercase text-[#FF8A00]">
                 Active Ride Assignment
               </span>
-              <h2 className="text-xl font-black text-slate-900 font-mono">
+              <h2 className="text-lg sm:text-xl font-black text-slate-900 font-mono break-all">
                 {activeRide.booking_reference}
               </h2>
             </div>
             <StatusBadge status={activeRide.status} size="lg" />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             <div className="space-y-3 text-xs">
 
               <div className="flex items-start gap-2.5">
                 <MapPin className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
-                <div>
+                <div className="min-w-0 flex-1">
                   <span className="text-[10px] uppercase font-bold text-slate-400">
                     Pickup
                   </span>
                   <div className="font-black text-slate-900 text-sm">
                     {activeRide.pickup_area_name || 'Pickup'}
                   </div>
-                  <div className="text-xs text-slate-500 mt-0.5">
+                  <div className="text-xs text-slate-500 mt-0.5 break-words">
                     {activeRide.pickup_address}
                   </div>
                 </div>
@@ -549,20 +549,20 @@ const handleOpenNavigation = () => {
 
               <div className="flex items-start gap-2.5">
                 <Navigation className="w-4 h-4 text-rose-600 mt-0.5 flex-shrink-0" />
-                <div>
+                <div className="min-w-0 flex-1">
                   <span className="text-[10px] uppercase font-bold text-slate-400">
                     Destination
                   </span>
                   <div className="font-black text-slate-900 text-sm">
                     {activeRide.destination_area_name || 'Destination'}
                   </div>
-                  <div className="text-xs text-slate-500 mt-0.5">
+                  <div className="text-xs text-slate-500 mt-0.5 break-words">
                     {activeRide.destination_address}
                   </div>
                 </div>
               </div>
 
-              <div className="pt-2 flex items-center gap-6 text-xs text-slate-600">
+              <div className="pt-2 flex flex-wrap items-center gap-4 sm:gap-6 text-xs text-slate-600">
                 <div>
                   Passenger(s):{' '}
                   <span className="font-bold text-slate-800">
@@ -579,26 +579,25 @@ const handleOpenNavigation = () => {
             </div>
 
             {/* Status advancement buttons */}
-            <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200/70 space-y-3 flex flex-col justify-center">
+            <div className="bg-slate-50 rounded-xl sm:rounded-2xl p-4 sm:p-5 border border-slate-200/70 space-y-2.5 sm:space-y-3 flex flex-col justify-center">
               <span className="text-[10px] font-bold uppercase text-slate-500">
                 Update Ride Progression
               </span>
               
-  <button
-    onClick={handleOpenNavigation}
-    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center justify-center gap-2"
-  >
-    <Navigation className="w-4 h-4" />
-    {activeRide.status === 'Driver Assigned'
-      ? 'Navigate to Pickup'
-      : 'Navigate to Destination'}
-  </button>
-
+              <button
+                onClick={handleOpenNavigation}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center justify-center gap-2 min-h-[44px]"
+              >
+                <Navigation className="w-4 h-4" />
+                {activeRide.status === 'Driver Assigned'
+                  ? 'Navigate to Pickup'
+                  : 'Navigate to Destination'}
+              </button>
 
               {activeRide.status === 'Driver Assigned' && (
                 <button
                   onClick={() => handleProgressRide('Driver Arriving')}
-                  className="w-full py-3 bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs rounded-xl shadow-sm transition-transform hover:scale-102"
+                  className="w-full py-3 bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs rounded-xl shadow-sm transition-transform hover:scale-102 min-h-[44px]"
                 >
                   Mark as "Driver Arriving at Pickup"
                 </button>
@@ -607,7 +606,7 @@ const handleOpenNavigation = () => {
               {activeRide.status === 'Driver Arriving' && (
                 <button
                   onClick={() => handleProgressRide('Ride Started')}
-                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-sm transition-transform hover:scale-102"
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-sm transition-transform hover:scale-102 min-h-[44px]"
                 >
                   Start Ride (Passenger Onboard)
                 </button>
@@ -616,7 +615,7 @@ const handleOpenNavigation = () => {
               {activeRide.status === 'Ride Started' && (
                 <button
                   onClick={() => handleProgressRide('Ride Completed')}
-                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-sm transition-transform hover:scale-102"
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-sm transition-transform hover:scale-102 min-h-[44px]"
                 >
                   Complete Ride (Fare: ₹{activeRide.estimated_fare})
                 </button>
@@ -627,13 +626,13 @@ const handleOpenNavigation = () => {
       )}
 
       {/* INCOMING RIDE REQUESTS QUEUE */}
-      <div id="incoming-requests-section" className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 space-y-6">
+      <div id="incoming-requests-section" className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-sm border border-slate-200/80 space-y-4 sm:space-y-6">
         <div className="flex items-center justify-between pb-4 border-b border-slate-100">
           <div>
-            <h2 className="text-xl font-bold text-slate-900">Incoming Ride Requests</h2>
-            <p className="text-xs text-slate-500">Available customer ride requests across authorized routes</p>
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900">Incoming Ride Requests</h2>
+            <p className="text-[11px] sm:text-xs text-slate-500">Available customer ride requests across authorized routes</p>
           </div>
-          <span className="px-3 py-1 bg-[#FF8A00]/15 text-[#FF8A00] border border-[#FF8A00]/25 font-bold text-xs rounded-full">
+          <span className="px-2.5 sm:px-3 py-1 bg-[#FF8A00]/15 text-[#FF8A00] border border-[#FF8A00]/25 font-bold text-xs rounded-full whitespace-nowrap">
             {requests.length} Available
           </span>
         </div>
@@ -653,49 +652,49 @@ const handleOpenNavigation = () => {
             <p className="text-xs text-slate-400">Keep your status "Online" to receive new customer bookings.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             {requests.map((req) => (
               <div
                 key={req.id}
-                className="p-5 rounded-2xl border-2 border-slate-200 hover:border-[#FF8A00] transition-all space-y-3 bg-slate-50/50"
+                className="p-4 sm:p-5 rounded-xl sm:rounded-2xl border-2 border-slate-200 hover:border-[#FF8A00] transition-all space-y-3 bg-slate-50/50"
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-mono font-bold text-xs text-slate-800">{req.booking_reference}</span>
+                  <span className="font-mono font-bold text-xs text-slate-800 break-all">{req.booking_reference}</span>
                   <span className="font-black text-[#FF8A00] text-sm">₹{req.estimated_fare}</span>
                 </div>
 
                 <div className="space-y-2 text-xs text-slate-700">
-  <div>
-    <div className="font-bold text-slate-800">
-      {req.pickup_area_name || 'Pickup'} → {req.destination_area_name || 'Destination'}
-    </div>
-    <div className="mt-1 truncate">
-      <span className="text-slate-400">Pickup:</span> {req.pickup_address}
-    </div>
-  </div>
+                  <div>
+                    <div className="font-bold text-slate-800">
+                      {req.pickup_area_name || 'Pickup'} → {req.destination_area_name || 'Destination'}
+                    </div>
+                    <div className="mt-1 break-words">
+                      <span className="text-slate-400">Pickup:</span> {req.pickup_address}
+                    </div>
+                  </div>
 
-  <div>
-    <div className="truncate">
-      <span className="text-slate-400">Drop:</span> {req.destination_address}
-    </div>
-  </div>
+                  <div>
+                    <div className="break-words">
+                      <span className="text-slate-400">Drop:</span> {req.destination_address}
+                    </div>
+                  </div>
 
-  <div className="text-[11px] text-slate-500">
-    Passengers: {req.passengers}
-  </div>
-</div>
+                  <div className="text-[11px] text-slate-500">
+                    Passengers: {req.passengers}
+                  </div>
+                </div>
 
                 <div className="flex items-center gap-2 pt-2 border-t border-slate-200/70">
                   <button
                     onClick={() => handleAcceptRide(req.id)}
-                    className="flex-1 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 min-h-[44px]"
                   >
                     <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Accept Ride</span>
                   </button>
                   <button
                     onClick={() => handleRejectRide(req.id)}
-                    className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-xl transition-colors"
+                    className="px-3.5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-xl transition-colors min-h-[44px] flex items-center justify-center"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -707,21 +706,21 @@ const handleOpenNavigation = () => {
       </div>
 
       {/* COMPLETED RIDE HISTORY */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 space-y-4">
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-sm border border-slate-200/80 space-y-4">
         <h3 className="text-base font-bold text-slate-900">Completed Ride History</h3>
         {completedRides.length === 0 ? (
           <p className="text-xs text-slate-400 py-4">No completed rides recorded yet.</p>
         ) : (
           <div className="divide-y divide-slate-100">
             {completedRides.map((ride) => (
-              <div key={ride.id} className="py-3 flex items-center justify-between text-xs">
-                <div>
+              <div key={ride.id} className="py-3 flex items-start sm:items-center justify-between gap-3 text-xs">
+                <div className="min-w-0 flex-1">
                   <span className="font-mono font-bold text-slate-900">{ride.booking_reference}</span>
-                  <div className="text-slate-500 text-[11px]">
+                  <div className="text-slate-500 text-[11px] break-words">
                     {ride.pickup_address} → {ride.destination_address}
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-right flex-shrink-0">
                   <div className="font-black text-slate-900">₹{ride.estimated_fare}</div>
                   <span className="text-[10px] text-emerald-600 font-bold">Completed</span>
                 </div>

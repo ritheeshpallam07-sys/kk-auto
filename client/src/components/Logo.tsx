@@ -47,7 +47,7 @@ export const Logo: React.FC<LogoProps> = ({ size = 'md', showTagline = false, th
           <span className="text-[#FF8A00]">2Go</span>
         </div>
         {showTagline && (
-          <span className={`font-semibold tracking-normal mt-1 leading-tight ${taglineSizes[size]} ${theme === 'light' ? 'text-[#A9B7C9]' : 'text-slate-500'}`}>
+          <span className={`font-semibold tracking-normal mt-1 leading-tight hidden sm:inline-block ${taglineSizes[size]} ${theme === 'light' ? 'text-[#A9B7C9]' : 'text-slate-500'}`}>
             Your Ride, Just a Tap Away
           </span>
         )}

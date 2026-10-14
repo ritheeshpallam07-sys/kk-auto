@@ -51,11 +51,11 @@ export const OwnerLoginPage: React.FC<OwnerLoginPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center py-12 px-4 bg-[#071426] relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center py-8 sm:py-12 px-3 sm:px-4 bg-[#071426] relative overflow-hidden">
       {/* Subtle ambient orange glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-[#FF8A00]/5 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="relative max-w-md w-full bg-[#10243D] p-8 sm:p-10 rounded-3xl shadow-2xl border border-[#1A3353]">
+      <div className="relative max-w-md w-full bg-[#10243D] p-5 sm:p-10 rounded-2xl sm:rounded-3xl shadow-2xl border border-[#1A3353]">
 
         {/* Logo & Portal Header */}
         <div className="text-center mb-8">

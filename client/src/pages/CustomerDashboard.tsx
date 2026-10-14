@@ -210,10 +210,10 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 bg-[#F8FAFC]">
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-8 space-y-5 sm:space-y-8 bg-[#F8FAFC]">
 
       {/* Top Welcome Banner */}
-      <div className="bg-gradient-to-r from-[#071426] via-[#0B1B32] to-[#10243D] rounded-3xl p-6 sm:p-8 text-white shadow-xl border border-[#1A3353] flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden">
+      <div className="bg-gradient-to-r from-[#071426] via-[#0B1B32] to-[#10243D] rounded-2xl sm:rounded-3xl p-5 sm:p-8 text-white shadow-xl border border-[#1A3353] flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden">
         {/* Subtle orange ambient light */}
         <div className="absolute right-0 top-0 w-80 h-80 bg-[#FF8A00]/10 rounded-full blur-3xl pointer-events-none" />
 
@@ -222,7 +222,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
             <Sparkles className="w-3.5 h-3.5" />
             <span>Clik2Go Customer Portal</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+          <h1 className="text-xl sm:text-3xl font-black tracking-tight text-white">
             Namaste, {user?.name.split(' ')[0]}! 👋
           </h1>
           <p className="text-[#A9B7C9] text-xs sm:text-sm max-w-xl leading-relaxed">
@@ -230,24 +230,24 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 relative">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 w-full md:w-auto relative">
           <button
             onClick={() => navigate('/book')}
-            className="px-6 py-3.5 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-sm rounded-2xl shadow-glow-orange transition-all hover:scale-105 flex items-center gap-2"
+            className="px-5 py-3 sm:px-6 sm:py-3.5 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-sm rounded-xl sm:rounded-2xl shadow-glow-orange transition-all hover:scale-105 flex items-center justify-center gap-2 w-full sm:w-auto"
           >
             <Car className="w-4 h-4" />
             <span>Book an Auto</span>
           </button>
           <button
             onClick={() => setShowTripForm(true)}
-            className="px-5 py-3.5 bg-[#10243D] hover:bg-[#1A3353] text-white font-bold text-sm rounded-2xl border border-[#28476E] shadow-sm transition-all hover:scale-105 flex items-center gap-2"
+            className="px-4 py-3 sm:px-5 sm:py-3.5 bg-[#10243D] hover:bg-[#1A3353] text-white font-bold text-sm rounded-xl sm:rounded-2xl border border-[#28476E] shadow-sm transition-all hover:scale-105 flex items-center justify-center gap-2 w-full sm:w-auto"
           >
             <span>🚗</span>
             <span>Book a Car / Trip</span>
           </button>
           <button
             onClick={() => navigate('/my-rides')}
-            className="px-4 py-3.5 bg-[#0B1B32] hover:bg-[#10243D] text-[#A9B7C9] hover:text-white font-semibold text-sm rounded-2xl border border-[#1A3353] transition-colors flex items-center gap-2"
+            className="px-4 py-3 sm:py-3.5 bg-[#0B1B32] hover:bg-[#10243D] text-[#A9B7C9] hover:text-white font-semibold text-sm rounded-xl sm:rounded-2xl border border-[#1A3353] transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
           >
             <Clock className="w-4 h-4" />
             <span>My Rides</span>
@@ -257,7 +257,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
 
       {/* Trip submit success toast */}
       {tripSubmitSuccess && (
-        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-semibold flex items-center justify-between">
+        <div className="p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm font-semibold flex items-center justify-between">
           <span>✅ {tripSubmitSuccess}</span>
           <button onClick={() => setTripSubmitSuccess(null)} className="text-emerald-600 hover:text-emerald-800"><X className="w-4 h-4" /></button>
         </div>
@@ -265,22 +265,22 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
 
       {/* Trip pay error toast */}
       {tripPayError && (
-        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-sm font-semibold flex items-center justify-between">
+        <div className="p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs sm:text-sm font-semibold flex items-center justify-between">
           <span>⚠️ {tripPayError}</span>
           <button onClick={() => setTripPayError(null)} className="text-rose-600 hover:text-rose-800"><X className="w-4 h-4" /></button>
         </div>
       )}
 
       {/* Quick Services Bar (Matches Reference Image Screen 4) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
         <button
           onClick={() => navigate('/book')}
-          className="p-4 bg-white rounded-2xl border border-slate-200/80 hover:border-[#FF8A00] hover:shadow-md transition-all flex flex-col items-center text-center gap-2 group"
+          className="p-3 sm:p-4 bg-white rounded-xl sm:rounded-2xl border border-slate-200/80 hover:border-[#FF8A00] hover:shadow-md transition-all flex flex-col items-center text-center gap-2 group"
         >
-          <div className="w-10 h-10 rounded-xl bg-orange-50 group-hover:bg-[#FF8A00] text-[#FF8A00] group-hover:text-white flex items-center justify-center transition-colors">
-            <Car className="w-5 h-5" />
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-orange-50 group-hover:bg-[#FF8A00] text-[#FF8A00] group-hover:text-white flex items-center justify-center transition-colors">
+            <Car className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <span className="text-xs font-bold text-slate-800">Book an Auto</span>
+          <span className="text-[11px] sm:text-xs font-bold text-slate-800">Book an Auto</span>
         </button>
 
         <button
@@ -366,16 +366,16 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
 
         {/* Left: Auto Booking Form */}
-        <div id="dashboard-booking-form" className="lg:col-span-7 bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80">
-          <div className="flex items-center justify-between mb-6">
+        <div id="dashboard-booking-form" className="lg:col-span-7 bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-sm border border-slate-200/80">
+          <div className="flex items-center justify-between mb-5 sm:mb-6">
             <div>
-              <h2 className="text-xl font-black text-[#071426]">Book an Auto</h2>
+              <h2 className="text-lg sm:text-xl font-black text-[#071426]">Book an Auto</h2>
               <p className="text-xs text-slate-500">Search any location or choose from popular points</p>
             </div>
             <button
               type="button"
               onClick={() => navigate('/book')}
-              className="px-3.5 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-[#FF8A00] font-bold text-xs flex items-center gap-1.5 transition-colors"
+              className="px-3 sm:px-3.5 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-[#FF8A00] font-bold text-xs flex items-center gap-1.5 transition-colors"
             >
               <Navigation className="w-3.5 h-3.5" />
               <span>Full Map</span>
@@ -467,22 +467,22 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
           )}
 
           {fareEstimate && fareEstimate.available && (
-            <div className="mt-5 p-5 rounded-2xl bg-orange-50/70 border border-orange-200">
-              <div className="flex items-center justify-between mb-4">
+            <div className="mt-5 p-4 sm:p-5 rounded-2xl bg-orange-50/70 border border-orange-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                 <div>
                   <p className="text-xs font-bold text-slate-500 uppercase">Estimated Fare</p>
-                  <p className="text-3xl font-black text-[#071426]">₹{fareEstimate.estimatedFare}</p>
+                  <p className="text-2xl sm:text-3xl font-black text-[#071426]">₹{fareEstimate.estimatedFare}</p>
                 </div>
                 <button
                   type="button"
                   onClick={handleBookAuto}
                   disabled={isBooking}
-                  className="px-6 py-3 bg-[#071426] hover:bg-[#10243D] text-white font-black text-sm rounded-xl shadow-md disabled:opacity-50 transition-all hover:scale-102"
+                  className="w-full sm:w-auto px-6 py-3 bg-[#071426] hover:bg-[#10243D] text-white font-black text-sm rounded-xl shadow-md disabled:opacity-50 transition-all hover:scale-102"
                 >
                   {isBooking ? 'Booking...' : 'Book Auto Now'}
                 </button>
               </div>
-              <p className="text-xs text-slate-600 font-medium">{pickup} → {destination}</p>
+              <p className="text-xs text-slate-600 font-medium break-all">{pickup} → {destination}</p>
             </div>
           )}
 
@@ -493,17 +493,17 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
           )}
 
           {/* Fare Guarantee Notice */}
-          <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-            <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+          <div className="mt-6 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-[11px] text-slate-500">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
               <span>JNTUA ↔ Cross (₹20) • JNTUA ↔ Bus Stand (₹25) • JNTUA ↔ Marava (₹30)</span>
             </div>
-            <span className="font-bold text-[#FF8A00]">Clik2Go Fixed Fare</span>
+            <span className="font-bold text-[#FF8A00] self-start sm:self-auto">Clik2Go Fixed Fare</span>
           </div>
         </div>
 
         {/* Right: Recent Rides */}
-        <div className="lg:col-span-5 bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80 space-y-4">
+        <div className="lg:col-span-5 bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm border border-slate-200/80 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Clock className="w-4 h-4 text-slate-500" />
@@ -559,10 +559,10 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
       </div>
 
       {/* ── My Trip Bookings Section ─────────────────────────────────────────── */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80">
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-sm border border-slate-200/80">
         <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
           <div>
-            <h2 className="text-lg font-black text-[#071426] flex items-center gap-2">
+            <h2 className="text-base sm:text-lg font-black text-[#071426] flex items-center gap-2">
               <span>🚗</span>
               <span>My Car / Trip Bookings</span>
             </h2>
@@ -570,7 +570,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
           </div>
           <button
             onClick={() => setShowTripForm(true)}
-            className="px-4 py-2 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-xs rounded-xl shadow-glow-orange transition-all hover:scale-105 flex items-center gap-1.5"
+            className="px-3.5 sm:px-4 py-2 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-xs rounded-xl shadow-glow-orange transition-all hover:scale-105 flex items-center gap-1.5"
           >
             <span>+ New Trip</span>
           </button>
@@ -597,7 +597,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
               const canPay = trip.status === 'CONFIRMED' && trip.payment_status === 'PENDING' && trip.quoted_price;
 
               return (
-                <div key={trip.id} className="p-5 rounded-2xl border border-slate-200 bg-slate-50/60 space-y-3">
+                <div key={trip.id} className="p-4 sm:p-5 rounded-2xl border border-slate-200 bg-slate-50/60 space-y-3">
                   {/* Header */}
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -675,24 +675,24 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
 
       {/* ── Trip Booking Modal ───────────────────────────────────────────────── */}
       {showTripForm && (
-        <div className="fixed inset-0 z-50 bg-[#071426]/75 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-100">
+        <div className="fixed inset-0 z-50 bg-[#071426]/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-2xl sm:rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-100 max-h-[90vh] flex flex-col">
             {/* Modal header */}
-            <div className="bg-gradient-to-r from-[#071426] to-[#10243D] px-6 py-5 flex items-center justify-between border-b border-[#1A3353]">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">🚗</span>
+            <div className="bg-gradient-to-r from-[#071426] to-[#10243D] px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between border-b border-[#1A3353] flex-shrink-0">
+              <div className="flex items-center gap-2.5 sm:gap-3">
+                <span className="text-xl sm:text-2xl">🚗</span>
                 <div>
-                  <h3 className="text-white font-black text-base">Book a Car / Plan a Trip</h3>
-                  <p className="text-[#A9B7C9] text-xs">Clik2Go owner will confirm and contact you</p>
+                  <h3 className="text-white font-black text-sm sm:text-base">Book a Car / Plan a Trip</h3>
+                  <p className="text-[#A9B7C9] text-[11px] sm:text-xs">Clik2Go owner will confirm and contact you</p>
                 </div>
               </div>
-              <button onClick={() => setShowTripForm(false)} className="text-[#A9B7C9] hover:text-white">
+              <button onClick={() => setShowTripForm(false)} className="text-[#A9B7C9] hover:text-white p-1">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Modal form */}
-            <form onSubmit={handleTripSubmit} className="p-6 space-y-4 overflow-y-auto max-h-[75vh]">
+            <form onSubmit={handleTripSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto max-h-[75vh]">
               {tripSubmitError && (
                 <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">{tripSubmitError}</div>
               )}

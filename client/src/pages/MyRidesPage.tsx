@@ -80,7 +80,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
   });
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-8 space-y-5 sm:space-y-8">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -88,7 +88,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
             <Clock className="w-3.5 h-3.5 text-[#FF8A00]" />
             <span>Clik2Go Ride History</span>
           </div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
             My Rides
           </h1>
           <p className="text-xs text-slate-500 mt-1">
@@ -98,7 +98,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
 
         <button
           onClick={() => navigate('/book')}
-          className="px-6 py-3 bg-gradient-to-r from-[#FF8A00] to-[#FF9D2E] hover:from-[#FF9D2E] hover:to-[#FF8A00] text-slate-950 font-bold text-xs rounded-xl shadow-md shadow-[#FF8A00]/20 transition-transform hover:scale-105 flex items-center gap-2 self-start sm:self-auto"
+          className="w-full sm:w-auto px-5 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-[#FF8A00] to-[#FF9D2E] hover:from-[#FF9D2E] hover:to-[#FF8A00] text-slate-950 font-bold text-xs rounded-xl shadow-md shadow-[#FF8A00]/20 transition-transform hover:scale-105 flex items-center justify-center gap-2 self-start sm:self-auto min-h-[44px]"
         >
           <Car className="w-4 h-4" />
           <span>Book a New Ride</span>
@@ -106,11 +106,11 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
       </div>
 
       {/* Filter Tabs & Search Bar */}
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex rounded-xl bg-slate-100 p-1 text-xs font-bold w-full md:w-auto">
+      <div className="bg-white rounded-2xl p-3.5 sm:p-4 shadow-sm border border-slate-200/80 flex flex-col md:flex-row items-center justify-between gap-3 sm:gap-4">
+        <div className="flex overflow-x-auto scrollbar-none rounded-xl bg-slate-100 p-1 text-xs font-bold w-full md:w-auto">
           <button
             onClick={() => setFilterTab('all')}
-            className={`px-4 py-2 rounded-lg transition-all ${
+            className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-lg transition-all whitespace-nowrap text-center ${
               filterTab === 'all' ? 'bg-[#071426] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -118,7 +118,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
           </button>
           <button
             onClick={() => setFilterTab('active')}
-            className={`px-4 py-2 rounded-lg transition-all ${
+            className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-lg transition-all whitespace-nowrap text-center ${
               filterTab === 'active' ? 'bg-[#071426] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -126,7 +126,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
           </button>
           <button
             onClick={() => setFilterTab('completed')}
-            className={`px-4 py-2 rounded-lg transition-all ${
+            className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-lg transition-all whitespace-nowrap text-center ${
               filterTab === 'completed' ? 'bg-[#071426] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -134,7 +134,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
           </button>
           <button
             onClick={() => setFilterTab('cancelled')}
-            className={`px-4 py-2 rounded-lg transition-all ${
+            className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-lg transition-all whitespace-nowrap text-center ${
               filterTab === 'cancelled' ? 'bg-[#071426] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -158,7 +158,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
       {isLoading ? (
         <div className="py-20 text-center text-xs text-slate-400">Loading your bookings...</div>
       ) : filteredBookings.length === 0 ? (
-        <div className="bg-white rounded-3xl p-12 text-center border border-slate-200/80 shadow-xs space-y-3">
+        <div className="bg-white rounded-2xl sm:rounded-3xl p-8 sm:p-12 text-center border border-slate-200/80 shadow-xs space-y-3">
           <div className="text-4xl">🛺</div>
           <h3 className="text-base font-bold text-slate-900">No rides found</h3>
           <p className="text-xs text-slate-500 max-w-sm mx-auto">
@@ -166,28 +166,28 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
           </p>
           <button
             onClick={() => navigate('/book')}
-            className="mt-2 px-5 py-2.5 bg-[#071426] hover:bg-[#10243D] text-[#FF8A00] font-bold text-xs rounded-xl transition-colors border border-[#1A3353]"
+            className="mt-2 px-5 py-2.5 bg-[#071426] hover:bg-[#10243D] text-[#FF8A00] font-bold text-xs rounded-xl transition-colors border border-[#1A3353] min-h-[40px]"
           >
             Book an Auto Now
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
           {filteredBookings.map((ride) => {
             const isEligibleForCancel = !['Ride Completed', 'Cancelled'].includes(ride.status);
 
             return (
               <div
                 key={ride.id}
-                className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80 hover:border-[#FF8A00]/40 hover:shadow-lg transition-all flex flex-col justify-between gap-4"
+                className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm border border-slate-200/80 hover:border-[#FF8A00]/40 hover:shadow-lg transition-all flex flex-col justify-between gap-4"
               >
                 <div>
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-black text-sm text-slate-900">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100 gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-mono font-black text-xs sm:text-sm text-slate-900 break-all">
                         {ride.booking_reference}
                       </span>
-                      <span className="text-[11px] text-slate-400">
+                      <span className="text-[10px] sm:text-[11px] text-slate-400 whitespace-nowrap">
                         • {new Date(ride.pickup_datetime).toLocaleDateString()}
                       </span>
                     </div>
@@ -198,25 +198,25 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
                   <div className="mt-4 space-y-2.5 text-xs text-slate-700">
                     <div className="flex items-start gap-2.5">
                       <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 mt-1 flex-shrink-0" />
-                      <div className="flex-1 truncate">
+                      <div className="flex-1 min-w-0">
                         <div className="text-[10px] text-slate-400 uppercase font-semibold">Pickup</div>
-                        <div className="font-semibold text-slate-800 truncate">{ride.pickup_address}</div>
+                        <div className="font-semibold text-slate-800 break-words">{ride.pickup_address}</div>
                       </div>
                     </div>
 
                     <div className="flex items-start gap-2.5">
                       <div className="w-2.5 h-2.5 rounded-full bg-rose-500 mt-1 flex-shrink-0" />
-                      <div className="flex-1 truncate">
+                      <div className="flex-1 min-w-0">
                         <div className="text-[10px] text-slate-400 uppercase font-semibold">Destination</div>
-                        <div className="font-semibold text-slate-800 truncate">{ride.destination_address}</div>
+                        <div className="font-semibold text-slate-800 break-words">{ride.destination_address}</div>
                       </div>
                     </div>
                   </div>
 
                   {/* Route Fare and passengers */}
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
                     <div>
-                      <span className="text-slate-400">Route Type:</span>{' '}
+                      <span className="text-slate-400">Route:</span>{' '}
                       <span className="font-semibold text-slate-800">Fixed Rate</span>
                     </div>
                     <div>
@@ -235,7 +235,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
                   {isEligibleForCancel ? (
                     <button
                       onClick={() => setSelectedBookingToCancel(ride)}
-                      className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 text-xs font-semibold rounded-lg transition-colors"
+                      className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 text-xs font-semibold rounded-lg transition-colors min-h-[40px] flex items-center"
                     >
                       Cancel Ride
                     </button>
@@ -245,7 +245,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
 
                   <button
                     onClick={() => navigate(`/booking/${ride.id}`)}
-                    className="px-4 py-2 bg-[#071426] hover:bg-[#10243D] text-white font-bold text-xs rounded-xl shadow-xs transition-transform hover:scale-102 flex items-center gap-1.5"
+                    className="px-3.5 sm:px-4 py-2 bg-[#071426] hover:bg-[#10243D] text-white font-bold text-xs rounded-xl shadow-xs transition-transform hover:scale-102 flex items-center gap-1.5 min-h-[40px]"
                   >
                     <span>View Details</span>
                     <ArrowRight className="w-3.5 h-3.5 text-[#FF8A00]" />

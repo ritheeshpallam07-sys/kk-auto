@@ -49,24 +49,24 @@ export const VerifyEmailPage: React.FC<VerifyEmailPageProps> = ({ navigate }) =>
   };
 
   return (
-    <div className="min-h-[85vh] flex items-center justify-center bg-[#F8FAFC] px-4 py-12">
-      <div className="w-full max-w-md rounded-3xl bg-white p-8 sm:p-10 shadow-xl border border-slate-200/80">
+    <div className="min-h-[85vh] flex items-center justify-center bg-[#F8FAFC] px-3 sm:px-4 py-8 sm:py-12">
+      <div className="w-full max-w-md rounded-2xl sm:rounded-3xl bg-white p-5 sm:p-10 shadow-xl border border-slate-200/80">
         <div className="text-center mb-6">
           <div className="flex justify-center mb-4">
             <Logo size="md" />
           </div>
 
-          <div className="w-14 h-14 mx-auto rounded-2xl bg-orange-50 text-[#FF8A00] flex items-center justify-center mb-3">
-            <Mail className="w-7 h-7" />
+          <div className="w-12 h-12 sm:w-14 sm:h-14 mx-auto rounded-2xl bg-orange-50 text-[#FF8A00] flex items-center justify-center mb-3">
+            <Mail className="w-6 h-6 sm:w-7 sm:h-7" />
           </div>
 
-          <h1 className="text-2xl font-black text-[#071426] tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-black text-[#071426] tracking-tight">
             Verify Your Email
           </h1>
 
           <p className="mt-2 text-xs text-slate-500 leading-relaxed">
             Enter the 6-digit verification code sent to <br />
-            <strong className="text-slate-800 font-bold">{email || 'your email'}</strong>
+            <strong className="text-slate-800 font-bold break-all">{email || 'your email'}</strong>
           </p>
         </div>
 
@@ -90,7 +90,7 @@ export const VerifyEmailPage: React.FC<VerifyEmailPageProps> = ({ navigate }) =>
               value={otp}
               onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
               placeholder="••••••"
-              className="w-full rounded-2xl border border-slate-200 px-4 py-3.5 text-center text-xl tracking-[0.4em] font-mono font-black outline-none focus:ring-2 focus:ring-[#FF8A00] bg-slate-50 focus:bg-white"
+              className="w-full rounded-2xl border border-slate-200 px-3 sm:px-4 py-3 sm:py-3.5 text-center text-lg sm:text-xl tracking-[0.25em] sm:tracking-[0.4em] font-mono font-black outline-none focus:ring-2 focus:ring-[#FF8A00] bg-slate-50 focus:bg-white"
               required
             />
           </div>

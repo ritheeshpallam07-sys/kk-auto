@@ -296,13 +296,13 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* =========================
               MOBILE HEADER
           ========================== */}
-          <div className="md:hidden flex items-center gap-2">
+          <div className="md:hidden flex items-center gap-1.5 sm:gap-2">
 
             {/* Book Auto - CUSTOMER ONLY */}
             {isCustomer && (
               <button
                 onClick={() => handleNav('/book')}
-                className="px-3 py-1.5 text-xs font-bold text-[#071426] bg-[#FF8A00] hover:bg-[#FF9D2E] rounded-lg shadow-sm"
+                className="px-2.5 sm:px-3 py-1.5 text-xs font-bold text-[#071426] bg-[#FF8A00] hover:bg-[#FF9D2E] rounded-lg shadow-sm whitespace-nowrap"
               >
                 Book Auto
               </button>
@@ -312,12 +312,13 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() =>
                 setIsMobileMenuOpen(!isMobileMenuOpen)
               }
-              className="p-2 rounded-lg text-[#A9B7C9] hover:text-white hover:bg-[#10243D] transition-colors"
+              className="p-1.5 sm:p-2 rounded-lg text-[#A9B7C9] hover:text-white hover:bg-[#10243D] transition-colors"
+              aria-label="Toggle navigation menu"
             >
               {isMobileMenuOpen ? (
-                <X className="w-6 h-6" />
+                <X className="w-5 h-5 sm:w-6 sm:h-6" />
               ) : (
-                <Menu className="w-6 h-6" />
+                <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
               )}
             </button>
           </div>

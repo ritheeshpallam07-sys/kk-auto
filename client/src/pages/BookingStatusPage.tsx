@@ -321,9 +321,9 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
          payment?.payment_status === 'COMPLETED' &&
          payment?.payment_method !== 'Cash';
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-8 space-y-5 sm:space-y-8">
       {/* Navigation Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <button
           onClick={() => navigate('/my-rides')}
           className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors"
@@ -332,12 +332,12 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
           <span>Back to All Rides</span>
         </button>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
           {/* Pay Online CTA */}
           {isCompleted && !isPaid && !isCancelled && (
             <button
               onClick={() => setIsPayModalOpen(true)}
-              className="px-4 py-2 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-xs rounded-xl shadow-glow-orange transition-transform hover:scale-105 flex items-center gap-1.5"
+              className="px-3.5 sm:px-4 py-2 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-xs rounded-xl shadow-glow-orange transition-transform hover:scale-105 flex items-center gap-1.5"
             >
               <CreditCard className="w-3.5 h-3.5" />
               <span>Pay Online (₹{booking.estimated_fare})</span>
@@ -380,26 +380,26 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
       </div>
 
       {/* Main Status & Tracking Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start">
         
         {/* Left Column: Live Progress Stepper & Details */}
-        <div className="lg:col-span-7 space-y-6">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
+        <div className="lg:col-span-7 space-y-5 sm:space-y-6">
+          <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-sm border border-slate-200/80 space-y-5 sm:space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 pb-4 border-b border-slate-100">
               <div>
                 <span className="text-[10px] font-bold uppercase text-slate-400">Booking Reference</span>
-                <h1 className="text-2xl font-black text-slate-900 font-mono tracking-wider">
+                <h1 className="text-xl sm:text-2xl font-black text-slate-900 font-mono tracking-wider">
                   {booking.booking_reference}
                 </h1>
               </div>
               <div className="flex items-center gap-2">
                 {isPaid ? (
-                  <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-xs flex items-center gap-1">
+                  <span className="px-2.5 sm:px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-xs flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Paid Online</span>
                   </span>
                 ) : (
-                  <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full font-bold text-xs">
+                  <span className="px-2.5 sm:px-3 py-1 bg-slate-100 text-slate-600 rounded-full font-bold text-xs">
                     Pay on Arrival
                   </span>
                 )}
@@ -409,40 +409,42 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
 
             {/* Visual Stepper */}
             {!isCancelled ? (
-              <div className="py-2">
-                <div className="relative">
-                  <div className="absolute top-5 left-5 right-5 h-0.5 bg-slate-200 -z-0" />
-                  <div 
-                    className="absolute top-5 left-5 h-0.5 bg-[#FF8A00] transition-all duration-500 -z-0"
-                    style={{ 
-                      width: `${Math.max(0, currentStepIndex) / (steps.length - 1) * 90}%` 
-                    }}
-                  />
+              <div className="overflow-x-auto -mx-2 px-2 pb-2 scrollbar-none">
+                <div className="min-w-[340px] py-2">
+                  <div className="relative">
+                    <div className="absolute top-4 sm:top-5 left-4 right-4 sm:left-5 sm:right-5 h-0.5 bg-slate-200 -z-0" />
+                    <div
+                      className="absolute top-4 sm:top-5 left-4 sm:left-5 h-0.5 bg-[#FF8A00] transition-all duration-500 -z-0"
+                      style={{
+                        width: `${Math.max(0, currentStepIndex) / (steps.length - 1) * 90}%`
+                      }}
+                    />
 
-                  <div className="flex justify-between items-start relative z-10">
-                    {steps.map((step, idx) => {
-                      const isPast = idx <= currentStepIndex;
-                      const isCurrent = idx === currentStepIndex;
+                    <div className="flex justify-between items-start relative z-10">
+                      {steps.map((step, idx) => {
+                        const isPast = idx <= currentStepIndex;
+                        const isCurrent = idx === currentStepIndex;
 
-                      return (
-                        <div key={step.label} className="flex flex-col items-center text-center max-w-[80px]">
-                          <div
-                            className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs transition-all shadow-sm ${
-                              isCurrent
-                                ? 'bg-[#FF8A00] text-[#071426] ring-4 ring-orange-100 scale-110 font-black shadow-glow-orange'
-                                : isPast
-                                ? 'bg-[#071426] text-[#FF8A00]'
-                                : 'bg-white border-2 border-slate-300 text-slate-400'
-                            }`}
-                          >
-                            {isPast ? (idx < currentStepIndex ? '✓' : idx + 1) : idx + 1}
+                        return (
+                          <div key={step.label} className="flex flex-col items-center text-center max-w-[64px] sm:max-w-[80px]">
+                            <div
+                              className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-[11px] sm:text-xs transition-all shadow-sm ${
+                                isCurrent
+                                  ? 'bg-[#FF8A00] text-[#071426] ring-4 ring-orange-100 scale-105 sm:scale-110 font-black shadow-glow-orange'
+                                  : isPast
+                                  ? 'bg-[#071426] text-[#FF8A00]'
+                                  : 'bg-white border-2 border-slate-300 text-slate-400'
+                              }`}
+                            >
+                              {isPast ? (idx < currentStepIndex ? '✓' : idx + 1) : idx + 1}
+                            </div>
+                            <div className={`mt-1.5 sm:mt-2 text-[9px] sm:text-[10px] font-bold leading-tight ${isCurrent ? 'text-orange-900 font-black' : isPast ? 'text-slate-900' : 'text-slate-400'}`}>
+                              {step.label}
+                            </div>
                           </div>
-                          <div className={`mt-2 text-[10px] font-bold leading-tight ${isCurrent ? 'text-orange-900 font-black' : isPast ? 'text-slate-900' : 'text-slate-400'}`}>
-                            {step.label}
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -474,7 +476,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3 pt-3 border-t border-slate-200/80">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-slate-200/80">
                 <div>
                   <div className="text-[10px] font-bold text-slate-400 uppercase">Date & Time</div>
                   <div className="font-semibold text-slate-800">
@@ -619,7 +621,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
         {/* Right Column: Live Tracking Map & Phone Screen 2 Cards */}
         <div className="lg:col-span-5 space-y-6">
           {/* Live Map Card matching Reference Image Screen 2 */}
-          <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-200/80 space-y-4 overflow-hidden">
+          <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-sm border border-slate-200/80 space-y-3 sm:space-y-4 overflow-hidden">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
                 <Navigation className="w-4 h-4 text-[#FF8A00]" />
@@ -631,13 +633,13 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
             </div>
 
             {/* Map Canvas with overlay badge */}
-            <div className="relative w-full h-56 rounded-2xl overflow-hidden border border-slate-200 bg-[#071426]">
+            <div className="relative w-full h-52 sm:h-56 rounded-2xl overflow-hidden border border-slate-200 bg-[#071426]">
               <div ref={mapContainerRef} className="w-full h-full" />
 
               {/* Floating "Driver is 2 min away" pill matching Reference Image Screen 2 */}
-              <div className="absolute left-1/2 -translate-x-1/2 bottom-3 z-10 px-3.5 py-1.5 rounded-full bg-[#071426]/90 backdrop-blur-md text-white border border-[#FF8A00]/40 text-xs font-bold shadow-lg flex items-center gap-2 whitespace-nowrap">
-                <span className="w-2 h-2 rounded-full bg-[#FF8A00] animate-ping" />
-                <span>Driver is 2 min away</span>
+              <div className="absolute left-1/2 -translate-x-1/2 bottom-3 z-10 px-3 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-[#071426]/90 backdrop-blur-md text-white border border-[#FF8A00]/40 text-[11px] sm:text-xs font-bold shadow-lg flex items-center gap-1.5 sm:gap-2 whitespace-nowrap max-w-[90%]">
+                <span className="w-2 h-2 rounded-full bg-[#FF8A00] animate-ping flex-shrink-0" />
+                <span className="truncate">Driver is 2 min away</span>
               </div>
             </div>
 

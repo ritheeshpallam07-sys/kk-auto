@@ -53,8 +53,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
   };
 
   return (
-    <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-[#F8FAFC]">
-      <div className="max-w-md w-full space-y-7 bg-white p-8 sm:p-10 rounded-3xl shadow-xl border border-slate-200/80">
+    <div className="min-h-[85vh] flex items-center justify-center py-6 sm:py-12 px-3 sm:px-6 lg:px-8 bg-[#F8FAFC]">
+      <div className="max-w-md w-full space-y-6 sm:space-y-7 bg-white p-5 sm:p-8 md:p-10 rounded-2xl sm:rounded-3xl shadow-xl border border-slate-200/80">
         <div className="text-center">
           <div className="flex justify-center mb-3">
             <Logo size="md" />
@@ -190,8 +190,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
 
       {/* Forgot password simulated modal */}
       {forgotModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#071426]/70 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-sm w-full shadow-2xl border border-slate-100 text-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#071426]/70 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-7 max-w-sm w-full shadow-2xl border border-slate-100 text-center">
             <div className="w-12 h-12 rounded-2xl bg-orange-100 text-[#FF8A00] mx-auto flex items-center justify-center mb-3">
               <Lock className="w-6 h-6" />
             </div>
