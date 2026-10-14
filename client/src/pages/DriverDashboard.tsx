@@ -17,7 +17,8 @@ import {
   CreditCard,
   Building2,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  Star
 } from 'lucide-react';
 
 interface DriverDashboardProps {
@@ -128,7 +129,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
     if (permission !== 'granted') {
       if (permission === 'denied') {
         setActionError(
-          'Notifications are blocked. Please allow notifications for Kk_Auto in your browser settings.'
+          'Notifications are blocked. Please allow notifications for Clik2Go in your browser settings.'
         );
       }
       return;
@@ -160,31 +161,21 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
     const subscriptionJson = subscription.toJSON();
 
     const saveRes = await api.driver.savePushSubscription({
-  endpoint: subscriptionJson.endpoint || '',
-  expirationTime: subscriptionJson.expirationTime ?? null,
-  keys: {
-    p256dh: subscriptionJson.keys?.p256dh || '',
-    auth: subscriptionJson.keys?.auth || ''
-  }
-});
-
-if (!saveRes.success) {
-  throw new Error(saveRes.error || 'Unable to save push subscription.');
-}
-
-setIsNotificationEnabled(true);
-
-new Notification('Kk_Auto Notifications Enabled', {
-  body: 'You will now receive new customer ride requests.',
-  icon: '/pwa-192x192.png'
-});
+      endpoint: subscriptionJson.endpoint || '',
+      expirationTime: subscriptionJson.expirationTime ?? null,
+      keys: {
+        p256dh: subscriptionJson.keys?.p256dh || '',
+        auth: subscriptionJson.keys?.auth || ''
+      }
+    });
 
     if (!saveRes.success) {
       throw new Error(saveRes.error || 'Unable to save push subscription.');
     }
+
     setIsNotificationEnabled(true);
 
-    new Notification('Kk_Auto Notifications Enabled', {
+    new Notification('Clik2Go Notifications Enabled', {
       body: 'You will now receive new customer ride requests.',
       icon: '/pwa-192x192.png'
     });
@@ -302,78 +293,171 @@ const handleOpenNavigation = () => {
   const isAvailable = profile?.availability_status === 'available';
   const approvalStatus = (profile?.approval_status || 'PENDING').toUpperCase();
   const isApproved = approvalStatus === 'APPROVED' || approvalStatus === 'ACTIVE';
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
+  const driverFirstName = profile?.name ? profile.name.split(' ')[0] : 'Driver';
+  const mostRecentRide = activeRide || (completedRides.length > 0 ? completedRides[0] : null);
+  const todayRidesCount = earnings?.completedRidesCount ?? completedRides.length;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      {/* Top Driver Console Header */}
-      <div className="bg-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black text-2xl">
-            🛺
-          </div>
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Driver Console</span>
-              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                isApproved 
-                  ? (isAvailable ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400')
-                  : 'bg-amber-500/20 text-amber-300'
-              }`}>
-                {isApproved ? profile?.availability_status : approvalStatus}
-              </span>
+      {/* Top Driver Console Header matching Reference Screen 3 */}
+      <div className="bg-gradient-to-r from-[#071426] via-[#0B1B32] to-[#10243D] text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-[#1A3353] relative overflow-hidden">
+        {/* Ambient orange glow */}
+        <div className="absolute right-0 top-0 w-80 h-80 bg-[#FF8A00]/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#FF8A00] to-[#E67600] text-[#071426] flex items-center justify-center font-black text-2xl shadow-glow-orange flex-shrink-0">
+              🛺
             </div>
-            <h1 className="text-2xl font-black">{profile?.name}</h1>
-            <p className="text-xs text-slate-400">
-              Auto: <span className="text-slate-200 font-mono font-bold uppercase">{profile?.auto_number}</span> ({profile?.auto_model})
-            </p>
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#FF8A00]">Clik2Go Driver</span>
+                <span className="text-xs text-slate-400">•</span>
+                <span className="text-xs text-[#A9B7C9] font-mono uppercase">{profile?.auto_number}</span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black text-white">
+                {getGreeting()}, {driverFirstName}
+              </h1>
+            </div>
+          </div>
+
+          {/* Online Toggle & Notifications */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {!isNotificationEnabled && (
+              <button
+                onClick={handleEnableNotifications}
+                className="px-4 py-2.5 rounded-2xl font-black text-xs bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] shadow-glow-orange transition-all flex items-center gap-2"
+              >
+                <span>🔔</span>
+                <span>Enable Alerts</span>
+              </button>
+            )}
+
+            {isApproved ? (
+              <button
+                onClick={handleToggleAvailability}
+                disabled={isUpdatingStatus || profile?.availability_status === 'on_ride'}
+                className={`px-5 py-2.5 rounded-2xl font-black text-xs shadow-md transition-all flex items-center gap-2.5 border ${
+                  isAvailable
+                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/30 shadow-emerald-500/20'
+                    : 'bg-[#10243D] hover:bg-[#1A3353] text-[#A9B7C9] border-[#28476E]'
+                } disabled:opacity-50`}
+              >
+                <span className={`w-2.5 h-2.5 rounded-full ${isAvailable ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                <Power className="w-3.5 h-3.5" />
+                <span>{isAvailable ? 'Online' : 'Offline'}</span>
+              </button>
+            ) : (
+              <div className="px-4 py-2.5 rounded-2xl bg-orange-500/10 border border-orange-400/30 text-orange-300 text-xs font-bold flex items-center gap-2">
+                <Clock className="w-4 h-4 text-[#FF8A00]" />
+                <span>Status: {approvalStatus}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Notifications + On-Duty Toggle */}
-        <div className="flex items-center gap-3 flex-wrap">
-          {!isNotificationEnabled && (
-  <button
-    onClick={handleEnableNotifications}
-    className="px-5 py-3.5 rounded-2xl font-bold text-xs bg-amber-400 hover:bg-amber-500 text-slate-950 shadow-lg transition-all flex items-center gap-2.5"
-  >
-    🔔
-    <span>ALLOW NOTIFICATIONS</span>
-  </button>
-)}
-          {isApproved ? (
-            <button
-              onClick={handleToggleAvailability}
-              disabled={isUpdatingStatus || profile?.availability_status === 'on_ride'}
-              className={`px-6 py-3.5 rounded-2xl font-bold text-xs shadow-lg transition-all flex items-center gap-2.5 ${
-                isAvailable
-                  ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
-              } disabled:opacity-50`}
-            >
-              <Power className="w-4 h-4" />
-              <span>{isAvailable ? 'ONLINE & ACCEPTING' : 'GO ONLINE'}</span>
-            </button>
-          ) : (
-            <div className="px-5 py-3 rounded-2xl bg-amber-500/10 border border-amber-400/30 text-amber-300 text-xs font-bold flex items-center gap-2">
-              <Clock className="w-4 h-4 text-amber-400" />
-              <span>Approval Status: {approvalStatus}</span>
+        {/* 3 Metric Cards matching Reference Screen 3 */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8 relative">
+          {/* Today's Rides */}
+          <div className="bg-[#10243D]/90 backdrop-blur-md rounded-2xl p-5 border border-[#1A3353] shadow-md flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Today's Rides</span>
+              <div className="text-3xl font-black text-white mt-1">{todayRidesCount}</div>
             </div>
-          )}
+            <div className="w-12 h-12 rounded-xl bg-orange-500/15 text-[#FF8A00] flex items-center justify-center">
+              <Car className="w-6 h-6" />
+            </div>
+          </div>
+
+          {/* Earnings */}
+          <div className="bg-[#10243D]/90 backdrop-blur-md rounded-2xl p-5 border border-[#1A3353] shadow-md flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Earnings</span>
+              <div className="text-3xl font-black text-white mt-1">₹{earnings?.todayEarnings ?? 0}</div>
+            </div>
+            <div className="w-12 h-12 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
+              <IndianRupee className="w-6 h-6" />
+            </div>
+          </div>
+
+          {/* Rating */}
+          <div className="bg-[#10243D]/90 backdrop-blur-md rounded-2xl p-5 border border-[#1A3353] shadow-md flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Rating</span>
+              <div className="text-3xl font-black text-white mt-1 flex items-baseline gap-1">
+                <span>4.9</span>
+                <span className="text-amber-400 text-base">★</span>
+              </div>
+            </div>
+            <div className="w-12 h-12 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center">
+              <Star className="w-6 h-6 fill-amber-400" />
+            </div>
+          </div>
+        </div>
+
+        {/* View Bookings Button & Recent Ride Quick Preview matching Screen 3 */}
+        <div className="mt-6 pt-6 border-t border-[#1A3353] grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+          <div className="md:col-span-5">
+            <button
+              onClick={() => {
+                document.getElementById('incoming-requests-section')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="w-full py-4 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-sm rounded-2xl shadow-glow-orange transition-all hover:scale-102 flex items-center justify-center gap-2"
+            >
+              <span>View Bookings</span>
+              {requests.length > 0 && (
+                <span className="px-2.5 py-0.5 rounded-full bg-[#071426] text-[#FF8A00] text-xs font-black">
+                  {requests.length} New
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Recent Ride Card */}
+          <div className="md:col-span-7 bg-[#071426] rounded-2xl p-4 border border-[#1A3353] flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#FF8A00] block mb-1">
+                Recent Ride
+              </span>
+              {mostRecentRide ? (
+                <div className="text-xs text-white truncate font-medium">
+                  <span>{mostRecentRide.pickup_address}</span>
+                  <span className="text-slate-400 mx-1.5">→</span>
+                  <span>{mostRecentRide.destination_address}</span>
+                </div>
+              ) : (
+                <div className="text-xs text-slate-400">No rides yet today. Go online to accept rides.</div>
+              )}
+            </div>
+
+            {mostRecentRide && (
+              <div className="text-right flex-shrink-0">
+                <div className="text-sm font-black text-emerald-400">₹{mostRecentRide.estimated_fare}</div>
+                <div className="text-[10px] text-slate-400">{mostRecentRide.status}</div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* APPROVAL STATUS BANNER */}
       {!isApproved && (
-        <div className="p-5 rounded-3xl bg-amber-50 border-2 border-amber-300 text-amber-900 shadow-sm flex items-start gap-4">
-          <AlertTriangle className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
+        <div className="p-5 rounded-3xl bg-orange-50 border-2 border-orange-300 text-orange-950 shadow-sm flex items-start gap-4">
+          <AlertTriangle className="w-6 h-6 text-[#FF8A00] flex-shrink-0 mt-0.5" />
           <div className="space-y-1">
             <h3 className="text-sm font-black uppercase tracking-wide">
-              {approvalStatus === 'PENDING' ? 'Account Pending Owner Verification' : `Account Status: ${approvalStatus}`}
+              {approvalStatus === 'PENDING' ? 'Account Pending Verification' : `Account Status: ${approvalStatus}`}
             </h3>
-            <p className="text-xs text-amber-800 leading-relaxed">
+            <p className="text-xs text-orange-900 leading-relaxed">
               {approvalStatus === 'PENDING'
-                ? 'Your driver partner application has been submitted to the Kk_Auto Owner/Admin. Vehicle registration and license documents are currently under review. You will be enabled to accept passenger rides once verified.'
-                : 'Your driver account cannot accept passenger rides in its current state. Please contact the Kk_Auto operations team.'}
+                ? 'Your driver partner application has been submitted to the Clik2Go Admin. Vehicle registration and license documents are currently under review. You will be enabled to accept passenger rides once verified.'
+                : 'Your driver account cannot accept passenger rides in its current state. Please contact the Clik2Go support team.'}
             </p>
           </div>
         </div>
@@ -418,9 +502,9 @@ const handleOpenNavigation = () => {
             <div className="text-2xl font-black text-slate-900 mt-1">₹{earnings?.totalEarnings ?? 0}</div>
           </div>
 
-          <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-2xl">
-            <span className="text-[10px] font-bold uppercase text-amber-800">Pending Settlement</span>
-            <div className="text-2xl font-black text-amber-600 mt-1">₹{earnings?.pendingSettlement ?? 0}</div>
+          <div className="p-4 bg-orange-50/70 border border-orange-200 rounded-2xl">
+            <span className="text-[10px] font-bold uppercase text-orange-900">Pending Settlement</span>
+            <div className="text-2xl font-black text-[#FF8A00] mt-1">₹{earnings?.pendingSettlement ?? 0}</div>
           </div>
 
           <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-2xl">
@@ -432,10 +516,10 @@ const handleOpenNavigation = () => {
 
             {/* ACTIVE ONGOING RIDE CONTROLLER */}
       {activeRide && (
-        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-md border-2 border-amber-400 space-y-6">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-md border-2 border-[#FF8A00] space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
             <div>
-              <span className="text-[10px] font-bold uppercase text-amber-600">
+              <span className="text-[10px] font-bold uppercase text-[#FF8A00]">
                 Active Ride Assignment
               </span>
               <h2 className="text-xl font-black text-slate-900 font-mono">
@@ -487,7 +571,7 @@ const handleOpenNavigation = () => {
                 </div>
                 <div>
                   Customer Fare:{' '}
-                  <span className="font-black text-amber-600 text-sm">
+                  <span className="font-black text-[#FF8A00] text-sm">
                     ₹{activeRide.estimated_fare}
                   </span>
                 </div>
@@ -543,23 +627,23 @@ const handleOpenNavigation = () => {
       )}
 
       {/* INCOMING RIDE REQUESTS QUEUE */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 space-y-6">
+      <div id="incoming-requests-section" className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 space-y-6">
         <div className="flex items-center justify-between pb-4 border-b border-slate-100">
           <div>
             <h2 className="text-xl font-bold text-slate-900">Incoming Ride Requests</h2>
             <p className="text-xs text-slate-500">Available customer ride requests across authorized routes</p>
           </div>
-          <span className="px-3 py-1 bg-amber-100 text-amber-900 font-bold text-xs rounded-full">
+          <span className="px-3 py-1 bg-[#FF8A00]/15 text-[#FF8A00] border border-[#FF8A00]/25 font-bold text-xs rounded-full">
             {requests.length} Available
           </span>
         </div>
 
         {!isApproved ? (
-          <div className="py-8 text-center bg-amber-50/50 rounded-2xl border border-amber-200 p-6 space-y-2">
+          <div className="py-8 text-center bg-orange-50/50 rounded-2xl border border-orange-200 p-6 space-y-2">
             <div className="text-3xl">🔒</div>
             <h3 className="text-sm font-bold text-slate-800">Trip Acceptance Locked</h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              You must be approved by the Kk_Auto Admin before accepting customer ride requests. Once approved, active requests will be actionable here.
+              You must be approved by the Clik2Go Admin before accepting customer ride requests. Once approved, active requests will be actionable here.
             </p>
           </div>
         ) : requests.length === 0 ? (
@@ -573,11 +657,11 @@ const handleOpenNavigation = () => {
             {requests.map((req) => (
               <div
                 key={req.id}
-                className="p-5 rounded-2xl border-2 border-slate-200 hover:border-amber-400 transition-all space-y-3 bg-slate-50/50"
+                className="p-5 rounded-2xl border-2 border-slate-200 hover:border-[#FF8A00] transition-all space-y-3 bg-slate-50/50"
               >
                 <div className="flex items-center justify-between">
                   <span className="font-mono font-bold text-xs text-slate-800">{req.booking_reference}</span>
-                  <span className="font-black text-amber-600 text-sm">₹{req.estimated_fare}</span>
+                  <span className="font-black text-[#FF8A00] text-sm">₹{req.estimated_fare}</span>
                 </div>
 
                 <div className="space-y-2 text-xs text-slate-700">

@@ -8,7 +8,6 @@ import {
   LogOut,
   Compass,
   Clock,
-  Shield,
   Car,
   ChevronDown,
 } from 'lucide-react';
@@ -34,27 +33,15 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   /*
    * ROLE DEFINITIONS
-   *
-   * Customer:
-   * - Customer Dashboard
-   * - My Rides
-   * - Profile
-   * - Book an Auto
-   *
-   * Driver:
-   * - Driver Dashboard
-   * - Driver Profile
-   *
-   * Admin / Owner:
-   * - Admin Console
-   *
+   * Customer: Dashboard, My Rides, Profile, Book an Auto
+   * Driver: Driver Dashboard, Driver Profile
+   * Admin / Owner: Admin Console
    * Driver and Admin users must NOT see customer navigation.
    */
-
   const isCustomer = !!user && !isDriver && !isAdmin;
 
   return (
-    <nav className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
+    <nav className="sticky top-0 z-40 bg-[#071426]/95 backdrop-blur-md border-b border-[#10243D] shadow-md transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 md:h-20">
 
@@ -63,21 +50,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => handleNav('/')}
             className="cursor-pointer"
           >
-            <Logo size="md" showTagline={true} />
+            <Logo size="md" showTagline={true} theme="light" />
           </div>
 
           {/* =========================
               DESKTOP NAVIGATION
           ========================== */}
-          <div className="hidden md:flex items-center gap-1 lg:gap-2">
+          <div className="hidden md:flex items-center gap-1.5 lg:gap-2">
 
             {/* Home */}
             <button
               onClick={() => handleNav('/')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all ${
                 currentPath === '/'
-                  ? 'text-amber-600 bg-amber-50'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  ? 'text-[#FF8A00] bg-[#10243D]/90 shadow-2xs'
+                  : 'text-[#A9B7C9] hover:text-white hover:bg-[#10243D]/50'
               }`}
             >
               Home
@@ -94,7 +81,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     ?.scrollIntoView({ behavior: 'smooth' });
                 }
               }}
-              className="px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+              className="px-3.5 py-2 rounded-xl text-sm font-semibold text-[#A9B7C9] hover:text-white hover:bg-[#10243D]/50 transition-all"
             >
               How It Works
             </button>
@@ -110,7 +97,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     ?.scrollIntoView({ behavior: 'smooth' });
                 }
               }}
-              className="px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+              className="px-3.5 py-2 rounded-xl text-sm font-semibold text-[#A9B7C9] hover:text-white hover:bg-[#10243D]/50 transition-all"
             >
               About
             </button>
@@ -122,10 +109,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               <>
                 <button
                   onClick={() => handleNav('/dashboard')}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all ${
                     currentPath === '/dashboard'
-                      ? 'text-amber-600 bg-amber-50'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                      ? 'text-[#FF8A00] bg-[#10243D]/90 shadow-2xs'
+                      : 'text-[#A9B7C9] hover:text-white hover:bg-[#10243D]/50'
                   }`}
                 >
                   Dashboard
@@ -133,10 +120,10 @@ export const Navbar: React.FC<NavbarProps> = ({
 
                 <button
                   onClick={() => handleNav('/my-rides')}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all ${
                     currentPath === '/my-rides'
-                      ? 'text-amber-600 bg-amber-50'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                      ? 'text-[#FF8A00] bg-[#10243D]/90 shadow-2xs'
+                      : 'text-[#A9B7C9] hover:text-white hover:bg-[#10243D]/50'
                   }`}
                 >
                   My Rides
@@ -150,18 +137,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             {isDriver && (
               <button
                 onClick={() => handleNav('/driver')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all ${
                   currentPath === '/driver'
-                    ? 'text-emerald-700 bg-emerald-50'
-                    : 'text-emerald-600 hover:bg-emerald-50'
+                    ? 'text-[#FF8A00] bg-[#10243D]'
+                    : 'text-emerald-400 hover:text-emerald-300 hover:bg-[#10243D]/50'
                 }`}
               >
                 <Car className="w-4 h-4" />
                 <span>Driver Dashboard</span>
               </button>
             )}
-
-            
           </div>
 
           {/* =========================
@@ -177,107 +162,101 @@ export const Navbar: React.FC<NavbarProps> = ({
                   onClick={() =>
                     setIsProfileDropdownOpen(!isProfileDropdownOpen)
                   }
-                  className="flex items-center gap-2.5 px-3 py-1.5 rounded-full border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-slate-100 transition-colors"
+                  className="flex items-center gap-2.5 px-3.5 py-2 rounded-full border border-[#10243D] hover:border-[#1A3353] bg-[#0B1B32] hover:bg-[#10243D] transition-colors"
                 >
-                  <div className="w-8 h-8 rounded-full bg-amber-500 text-slate-950 font-bold flex items-center justify-center text-xs">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#FF8A00] to-[#E67600] text-[#071426] font-extrabold flex items-center justify-center text-xs shadow-sm">
                     {user.name.charAt(0).toUpperCase()}
                   </div>
 
                   <div className="text-left">
-                    <div className="text-xs font-bold text-slate-800 leading-tight">
+                    <div className="text-xs font-bold text-white leading-tight">
                       {user.name.split(' ')[0]}
                     </div>
 
-                    <div className="text-[10px] text-slate-500 capitalize">
+                    <div className="text-[10px] text-[#A9B7C9] capitalize">
                       {user.role}
                     </div>
                   </div>
 
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                  <ChevronDown className="w-3.5 h-3.5 text-[#A9B7C9]" />
                 </button>
 
                 {/* Profile Dropdown */}
                 {isProfileDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="absolute right-0 mt-2 w-56 bg-[#0B1B32] rounded-2xl shadow-2xl border border-[#1A3353] py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
 
                     {/* User Information */}
-                    <div className="px-4 py-2 border-b border-slate-100">
-                      <div className="text-xs font-bold text-slate-900">
+                    <div className="px-4 py-2.5 border-b border-[#10243D]">
+                      <div className="text-xs font-bold text-white">
                         {user.name}
                       </div>
 
-                      <div className="text-xs text-slate-500 truncate">
+                      <div className="text-xs text-[#A9B7C9] truncate">
                         {user.email}
                       </div>
                     </div>
 
-                    {/* =========================
-                        CUSTOMER DROPDOWN
-                    ========================== */}
+                    {/* Customer dropdown */}
                     {isCustomer && (
                       <>
                         <button
                           onClick={() => handleNav('/dashboard')}
-                          className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-amber-50 hover:text-amber-700 flex items-center gap-2.5"
+                          className="w-full text-left px-4 py-2 text-xs font-semibold text-[#A9B7C9] hover:bg-[#10243D] hover:text-[#FF8A00] flex items-center gap-2.5 transition-colors"
                         >
-                          <Compass className="w-4 h-4 text-slate-400" />
+                          <Compass className="w-4 h-4 text-[#FF8A00]" />
                           <span>Customer Dashboard</span>
                         </button>
 
                         <button
                           onClick={() => handleNav('/my-rides')}
-                          className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-amber-50 hover:text-amber-700 flex items-center gap-2.5"
+                          className="w-full text-left px-4 py-2 text-xs font-semibold text-[#A9B7C9] hover:bg-[#10243D] hover:text-[#FF8A00] flex items-center gap-2.5 transition-colors"
                         >
-                          <Clock className="w-4 h-4 text-slate-400" />
+                          <Clock className="w-4 h-4 text-[#A9B7C9]" />
                           <span>My Rides</span>
                         </button>
 
                         <button
                           onClick={() => handleNav('/profile')}
-                          className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-amber-50 hover:text-amber-700 flex items-center gap-2.5"
+                          className="w-full text-left px-4 py-2 text-xs font-semibold text-[#A9B7C9] hover:bg-[#10243D] hover:text-[#FF8A00] flex items-center gap-2.5 transition-colors"
                         >
-                          <User className="w-4 h-4 text-slate-400" />
+                          <User className="w-4 h-4 text-[#A9B7C9]" />
                           <span>My Profile</span>
                         </button>
                       </>
                     )}
 
-                    {/* =========================
-                        DRIVER DROPDOWN
-                    ========================== */}
+                    {/* Driver dropdown */}
                     {isDriver && (
                       <>
                         <button
                           onClick={() => handleNav('/driver')}
-                          className="w-full text-left px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 flex items-center gap-2.5"
+                          className="w-full text-left px-4 py-2 text-xs font-semibold text-emerald-400 hover:bg-[#10243D] flex items-center gap-2.5 transition-colors"
                         >
-                          <Car className="w-4 h-4 text-emerald-500" />
+                          <Car className="w-4 h-4 text-emerald-400" />
                           <span>Driver Dashboard</span>
                         </button>
 
                         <button
                           onClick={() => handleNav('/profile')}
-                          className="w-full text-left px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 flex items-center gap-2.5"
+                          className="w-full text-left px-4 py-2 text-xs font-semibold text-[#A9B7C9] hover:bg-[#10243D] hover:text-white flex items-center gap-2.5 transition-colors"
                         >
-                          <User className="w-4 h-4 text-emerald-500" />
+                          <User className="w-4 h-4 text-[#A9B7C9]" />
                           <span>Driver Profile</span>
                         </button>
                       </>
                     )}
 
-                    
-
                     {/* Logout */}
-                    <div className="border-t border-slate-100 my-1" />
+                    <div className="border-t border-[#10243D] my-1" />
 
                     <button
                       onClick={() => {
                         logout();
                         handleNav('/login');
                       }}
-                      className="w-full text-left px-4 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center gap-2.5"
+                      className="w-full text-left px-4 py-2 text-xs font-semibold text-rose-400 hover:bg-rose-950/30 flex items-center gap-2.5 transition-colors"
                     >
-                      <LogOut className="w-4 h-4 text-rose-500" />
+                      <LogOut className="w-4 h-4 text-rose-400" />
                       <span>Log Out</span>
                     </button>
                   </div>
@@ -288,7 +267,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {/* Login */}
                 <button
                   onClick={() => handleNav('/login')}
-                  className="px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors"
+                  className="px-4 py-2 text-sm font-semibold text-[#A9B7C9] hover:text-white rounded-xl hover:bg-[#10243D] transition-colors"
                 >
                   Login
                 </button>
@@ -296,7 +275,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {/* Register */}
                 <button
                   onClick={() => handleNav('/register')}
-                  className="px-4 py-2 text-sm font-semibold text-slate-950 bg-amber-400 hover:bg-amber-500 rounded-xl shadow-xs transition-all hover:scale-102"
+                  className="px-4 py-2 text-sm font-bold text-[#071426] bg-[#FF8A00] hover:bg-[#FF9D2E] rounded-xl shadow-glow-orange transition-all hover:scale-102"
                 >
                   Register
                 </button>
@@ -306,8 +285,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Book Auto - CUSTOMER ONLY */}
             {isCustomer && (
               <button
-                onClick={() => handleNav('/dashboard')}
-                className="px-4 py-2.5 text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl shadow-md transition-all hover:scale-102 flex items-center gap-2"
+                onClick={() => handleNav('/book')}
+                className="px-4 py-2 text-sm font-bold text-[#071426] bg-[#FF8A00] hover:bg-[#FF9D2E] rounded-xl shadow-glow-orange transition-all hover:scale-102 flex items-center gap-2"
               >
                 <span>Book an Auto</span>
               </button>
@@ -323,7 +302,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {isCustomer && (
               <button
                 onClick={() => handleNav('/book')}
-                className="px-3 py-1.5 text-xs font-bold text-slate-950 bg-amber-400 rounded-lg shadow-xs"
+                className="px-3 py-1.5 text-xs font-bold text-[#071426] bg-[#FF8A00] hover:bg-[#FF9D2E] rounded-lg shadow-sm"
               >
                 Book Auto
               </button>
@@ -333,7 +312,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() =>
                 setIsMobileMenuOpen(!isMobileMenuOpen)
               }
-              className="p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+              className="p-2 rounded-lg text-[#A9B7C9] hover:text-white hover:bg-[#10243D] transition-colors"
             >
               {isMobileMenuOpen ? (
                 <X className="w-6 h-6" />
@@ -349,12 +328,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           MOBILE DRAWER
       ========================== */}
       {isMobileMenuOpen && (
-        <div className="md:hidden bg-white border-b border-slate-200 px-4 pt-2 pb-6 space-y-2 animate-in slide-in-from-top-4 duration-200">
+        <div className="md:hidden bg-[#071426] border-b border-[#10243D] px-4 pt-2 pb-6 space-y-2 animate-in slide-in-from-top-4 duration-200">
 
           {/* Home */}
           <button
             onClick={() => handleNav('/')}
-            className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-semibold text-slate-700 hover:bg-amber-50"
+            className="w-full text-left px-3.5 py-2.5 rounded-lg text-sm font-semibold text-white hover:bg-[#10243D] transition-colors"
           >
             Home
           </button>
@@ -363,12 +342,11 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             onClick={() => {
               handleNav('/#how-it-works');
-
               document
                 .getElementById('how-it-works')
                 ?.scrollIntoView({ behavior: 'smooth' });
             }}
-            className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-semibold text-slate-700 hover:bg-amber-50"
+            className="w-full text-left px-3.5 py-2.5 rounded-lg text-sm font-semibold text-[#A9B7C9] hover:text-white hover:bg-[#10243D] transition-colors"
           >
             How It Works
           </button>
@@ -377,80 +355,72 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             onClick={() => {
               handleNav('/#benefits');
-
               document
                 .getElementById('benefits')
                 ?.scrollIntoView({ behavior: 'smooth' });
             }}
-            className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-semibold text-slate-700 hover:bg-amber-50"
+            className="w-full text-left px-3.5 py-2.5 rounded-lg text-sm font-semibold text-[#A9B7C9] hover:text-white hover:bg-[#10243D] transition-colors"
           >
             About
           </button>
 
-          {/* =========================
-              MOBILE LOGGED-IN MENU
-          ========================== */}
+          {/* Mobile Logged-in */}
           {user ? (
-            <div className="pt-2 border-t border-slate-100 space-y-1">
+            <div className="pt-2 border-t border-[#10243D] space-y-1">
 
-              {/* Account */}
-              <div className="px-3 py-2 text-xs font-bold text-amber-600 uppercase">
+              <div className="px-3 py-2 text-xs font-bold text-[#FF8A00] uppercase">
                 Account: {user.name} ({user.role})
               </div>
 
-              {/* CUSTOMER */}
               {isCustomer && (
                 <>
                   <button
                     onClick={() => handleNav('/dashboard')}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-100"
+                    className="w-full text-left px-3.5 py-2 rounded-lg text-sm font-medium text-white hover:bg-[#10243D]"
                   >
                     Customer Dashboard
                   </button>
 
                   <button
                     onClick={() => handleNav('/my-rides')}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-100"
+                    className="w-full text-left px-3.5 py-2 rounded-lg text-sm font-medium text-white hover:bg-[#10243D]"
                   >
                     My Rides
                   </button>
 
                   <button
                     onClick={() => handleNav('/profile')}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-100"
+                    className="w-full text-left px-3.5 py-2 rounded-lg text-sm font-medium text-white hover:bg-[#10243D]"
                   >
                     My Profile
                   </button>
 
                   <button
                     onClick={() => handleNav('/book')}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm font-bold text-white bg-slate-900 hover:bg-slate-800"
+                    className="w-full text-left px-3.5 py-2.5 rounded-lg text-sm font-bold text-[#071426] bg-[#FF8A00] hover:bg-[#FF9D2E] shadow-sm"
                   >
                     Book an Auto
                   </button>
                 </>
               )}
 
-              {/* DRIVER */}
               {isDriver && (
                 <>
                   <button
                     onClick={() => handleNav('/driver')}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-emerald-700 bg-emerald-50"
+                    className="w-full text-left px-3.5 py-2 rounded-lg text-sm font-medium text-emerald-400 bg-emerald-950/40"
                   >
                     Driver Dashboard
                   </button>
 
                   <button
                     onClick={() => handleNav('/profile')}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-emerald-700 hover:bg-emerald-50"
+                    className="w-full text-left px-3.5 py-2 rounded-lg text-sm font-medium text-[#A9B7C9] hover:bg-[#10243D]"
                   >
                     Driver Profile
                   </button>
                 </>
               )}
-
-              
 
               {/* Logout */}
               <button
@@ -458,27 +428,23 @@ export const Navbar: React.FC<NavbarProps> = ({
                   logout();
                   handleNav('/login');
                 }}
-                className="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-rose-600 hover:bg-rose-50"
+                className="w-full text-left px-3.5 py-2 rounded-lg text-sm font-semibold text-rose-400 hover:bg-rose-950/30"
               >
                 Log Out
               </button>
             </div>
           ) : (
-            /* =========================
-               MOBILE LOGGED-OUT MENU
-            ========================== */
-            <div className="pt-3 border-t border-slate-100 flex flex-col gap-2">
-
+            <div className="pt-3 border-t border-[#10243D] flex flex-col gap-2">
               <button
                 onClick={() => handleNav('/login')}
-                className="w-full py-2.5 text-center text-sm font-semibold text-slate-700 bg-slate-100 rounded-xl"
+                className="w-full py-2.5 text-center text-sm font-semibold text-white bg-[#10243D] rounded-xl hover:bg-[#1A3353]"
               >
                 Login
               </button>
 
               <button
                 onClick={() => handleNav('/register')}
-                className="w-full py-2.5 text-center text-sm font-bold text-slate-950 bg-amber-400 rounded-xl shadow-xs"
+                className="w-full py-2.5 text-center text-sm font-bold text-[#071426] bg-[#FF8A00] hover:bg-[#FF9D2E] rounded-xl shadow-glow-orange"
               >
                 Register
               </button>

@@ -1,8 +1,18 @@
 import { query } from '../config/db';
 import crypto from 'crypto';
 import { Cashfree, CFEnvironment } from 'cashfree-pg';
+const isProduction =
+  process.env.CASHFREE_ENVIRONMENT === 'production' ||
+  process.env.CASHFREE_ENV === 'production' ||
+  (process.env.NODE_ENV === 'production' && !process.env.CASHFREE_APP_ID?.startsWith('TEST'));
+
+const cashfreeEnv = isProduction ? CFEnvironment.PRODUCTION : CFEnvironment.SANDBOX;
+const cashfreeEndpoint = isProduction
+  ? 'https://api.cashfree.com/pg/orders'
+  : 'https://sandbox.cashfree.com/pg/orders';
+
 const cashfree = new Cashfree(
-  CFEnvironment.PRODUCTION,
+  cashfreeEnv,
   process.env.CASHFREE_APP_ID || '',
   process.env.CASHFREE_SECRET_KEY || ''
 );
@@ -23,6 +33,7 @@ export interface PaymentRecord {
   gateway_order_id?: string;
   gateway_payment_id?: string;
   settled_at?: string;
+  environment?: 'sandbox' | 'production';
   created_at: string;
   updated_at: string;
 }
@@ -266,72 +277,72 @@ const driverAmount = Number((totalFare - ownerAmount).toFixed(2));
 
   try {
     console.log('Cashfree SDK diagnostics:', {
-  apiVersion: cashfree.XApiVersion,
-  environment: CFEnvironment.PRODUCTION,
-  hasClientId: !!process.env.CASHFREE_APP_ID,
-  clientIdLength: process.env.CASHFREE_APP_ID?.length,
-  hasClientSecret: !!process.env.CASHFREE_SECRET_KEY,
-  clientSecretLength: process.env.CASHFREE_SECRET_KEY?.length
-});
-const response = await new Promise<any>((resolve, reject) => {
-  const https = require('https');
+      apiVersion: cashfree.XApiVersion,
+      environment: isProduction ? 'PRODUCTION' : 'SANDBOX',
+      hasClientId: !!process.env.CASHFREE_APP_ID,
+      clientIdLength: process.env.CASHFREE_APP_ID?.length,
+      hasClientSecret: !!process.env.CASHFREE_SECRET_KEY,
+      clientSecretLength: process.env.CASHFREE_SECRET_KEY?.length
+    });
+    const response = await new Promise<any>((resolve, reject) => {
+      const https = require('https');
 
-  const requestBody = JSON.stringify(cashfreeRequest);
+      const requestBody = JSON.stringify(cashfreeRequest);
 
-  const req = https.request(
-      'https://api.cashfree.com/pg/orders',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-version': '2025-01-01',
-        'x-client-id': process.env.CASHFREE_APP_ID || '',
-        'x-client-secret': process.env.CASHFREE_SECRET_KEY || '',
-        'Content-Length': Buffer.byteLength(requestBody)
-      }
-    },
-    (res: any) => {
-      let data = '';
+      const req = https.request(
+        cashfreeEndpoint,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-version': '2025-01-01',
+            'x-client-id': process.env.CASHFREE_APP_ID || '',
+            'x-client-secret': process.env.CASHFREE_SECRET_KEY || '',
+            'Content-Length': Buffer.byteLength(requestBody)
+          }
+        },
+        (res: any) => {
+          let data = '';
 
-      res.on('data', (chunk: any) => {
-        data += chunk;
-      });
+          res.on('data', (chunk: any) => {
+            data += chunk;
+          });
 
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data);
+          res.on('end', () => {
+            try {
+              const parsed = JSON.parse(data);
 
-          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-            resolve({ data: parsed });
-          } else {
-  console.log('Cashfree REST error:', {
-    status: res.statusCode,
-    body: parsed
-  });
+              if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+                resolve({ data: parsed });
+              } else {
+                console.log('Cashfree REST error:', {
+                  status: res.statusCode,
+                  body: parsed
+                });
 
-  reject({
-    response: {
-      data: parsed,
-      status: res.statusCode
-    }
-  });
-}
-        } catch {
-          reject({
-            response: {
-              data: data,
-              status: res.statusCode
+                reject({
+                  response: {
+                    data: parsed,
+                    status: res.statusCode
+                  }
+                });
+              }
+            } catch {
+              reject({
+                response: {
+                  data: data,
+                  status: res.statusCode
+                }
+              });
             }
           });
         }
-      });
-    }
-  );
+      );
 
-  req.on('error', reject);
-  req.write(requestBody);
-  req.end();
-});
+      req.on('error', reject);
+      req.write(requestBody);
+      req.end();
+    });
     const cashfreeOrder = response.data;
 
     if (!cashfreeOrder?.payment_session_id) {
@@ -340,7 +351,8 @@ const response = await new Promise<any>((resolve, reject) => {
 
     return {
       ...paymentRecord,
-      payment_session_id: cashfreeOrder.payment_session_id
+      payment_session_id: cashfreeOrder.payment_session_id,
+      environment: isProduction ? 'production' : 'sandbox'
     };
   } catch (err: any) {
     console.error(

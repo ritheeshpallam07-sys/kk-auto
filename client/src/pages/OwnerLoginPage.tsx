@@ -25,7 +25,6 @@ export const OwnerLoginPage: React.FC<OwnerLoginPageProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     setError(null);
 
     if (!identifier.trim() || !password) {
@@ -34,9 +33,7 @@ export const OwnerLoginPage: React.FC<OwnerLoginPageProps> = ({
     }
 
     setIsSubmitting(true);
-
     const res = await login(identifier, password);
-
     setIsSubmitting(false);
 
     if (!res.success) {
@@ -54,32 +51,35 @@ export const OwnerLoginPage: React.FC<OwnerLoginPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center py-12 px-4 bg-slate-950">
-      <div className="max-w-md w-full bg-white p-8 sm:p-10 rounded-3xl shadow-2xl border border-slate-200">
+    <div className="min-h-screen flex items-center justify-center py-12 px-4 bg-[#071426] relative overflow-hidden">
+      {/* Subtle ambient orange glow */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-[#FF8A00]/5 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Logo */}
+      <div className="relative max-w-md w-full bg-[#10243D] p-8 sm:p-10 rounded-3xl shadow-2xl border border-[#1A3353]">
+
+        {/* Logo & Portal Header */}
         <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">
-            <Logo size="md" />
+          <div className="flex justify-center mb-5">
+            <Logo size="md" theme="light" />
           </div>
 
-          <div className="w-14 h-14 mx-auto rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-4">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-[#071426] text-[#FF8A00] flex items-center justify-center mb-4 border border-[#1A3353] shadow-glow-orange">
             <ShieldCheck className="w-7 h-7" />
           </div>
 
-          <h1 className="text-2xl font-extrabold text-slate-900">
-            Owner Portal
+          <h1 className="text-2xl font-black text-white tracking-tight">
+            Clik2Go Owner Portal
           </h1>
 
-          <p className="text-sm text-slate-500 mt-2">
-            Private access for Kk Auto owner
+          <p className="text-xs text-[#A9B7C9] mt-1.5">
+            Private management console for Clik2Go platform administration
           </p>
         </div>
 
         {/* Error */}
         {error && (
-          <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2.5 mb-5">
-            <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-500" />
+          <div className="p-3.5 rounded-xl bg-rose-950/50 border border-rose-800 text-rose-300 text-xs flex items-center gap-2.5 mb-5 animate-in fade-in duration-150">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-400" />
             <span>{error}</span>
           </div>
         )}
@@ -89,7 +89,7 @@ export const OwnerLoginPage: React.FC<OwnerLoginPageProps> = ({
 
           {/* Email */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+            <label className="block text-xs font-bold text-[#A9B7C9] uppercase mb-1">
               Owner Email or Mobile *
             </label>
 
@@ -101,7 +101,7 @@ export const OwnerLoginPage: React.FC<OwnerLoginPageProps> = ({
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 placeholder="Owner email or mobile"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-[#1A3353] bg-[#071426] text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
                 required
               />
             </div>
@@ -109,7 +109,7 @@ export const OwnerLoginPage: React.FC<OwnerLoginPageProps> = ({
 
           {/* Password */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+            <label className="block text-xs font-bold text-[#A9B7C9] uppercase mb-1">
               Password *
             </label>
 
@@ -121,7 +121,7 @@ export const OwnerLoginPage: React.FC<OwnerLoginPageProps> = ({
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Owner password"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-[#1A3353] bg-[#071426] text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
                 required
               />
             </div>
@@ -131,7 +131,7 @@ export const OwnerLoginPage: React.FC<OwnerLoginPageProps> = ({
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full py-3.5 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-sm rounded-xl shadow-glow-orange transition-all hover:scale-102 flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {isSubmitting ? (
               <span>Signing in...</span>
@@ -148,9 +148,9 @@ export const OwnerLoginPage: React.FC<OwnerLoginPageProps> = ({
           <button
             type="button"
             onClick={() => navigate('/')}
-            className="text-xs font-semibold text-slate-500 hover:text-slate-800"
+            className="text-xs font-semibold text-[#A9B7C9] hover:text-white transition-colors"
           >
-            ← Back to Kk Auto
+            ← Back to Clik2Go Home
           </button>
         </div>
       </div>

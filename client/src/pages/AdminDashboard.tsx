@@ -291,15 +291,15 @@ const handleSaveTripQuote = async (tripId: number) => {
       {/* Title Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-950 text-xs font-bold uppercase mb-2">
-            <Shield className="w-3.5 h-3.5 text-amber-600" />
-            <span>Kk_Auto Owner & Platform Control</span>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-100 text-[#071426] text-xs font-bold uppercase mb-2">
+            <Shield className="w-3.5 h-3.5 text-[#FF8A00]" />
+            <span>Clik2Go Owner & Platform Control</span>
           </div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
+          <h1 className="text-3xl font-black text-[#071426] tracking-tight">
             Owner Management Console
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Manage driver verifications, fixed routes, platform commission, marketplace payouts, and live bookings.
+            Manage driver verifications, fixed routes, platform commission, marketplace payouts, live rides, and outstation trips.
           </p>
         </div>
 
@@ -307,41 +307,41 @@ const handleSaveTripQuote = async (tripId: number) => {
           onClick={loadAllData}
           className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors self-start sm:self-auto"
         >
-          <RefreshCw className="w-3.5 h-3.5" />
+          <RefreshCw className="w-3.5 h-3.5 text-[#FF8A00]" />
           <span>Refresh Data</span>
         </button>
       </div>
 
       {/* Global Toast Message */}
       {toastMessage && (
-        <div className="p-3.5 rounded-2xl bg-slate-900 text-white text-xs font-bold shadow-lg flex items-center justify-between animate-in fade-in duration-150">
+        <div className="p-3.5 rounded-2xl bg-[#071426] text-white text-xs font-bold shadow-lg flex items-center justify-between animate-in fade-in duration-150 border border-[#1A3353]">
           <span>{toastMessage}</span>
           <button onClick={() => setToastMessage(null)} className="text-slate-400 hover:text-white">✕</button>
         </div>
       )}
 
-      {/* 5-TAB CONTROLLER NAVIGATION */}
-      <div className="flex flex-wrap gap-2 p-1.5 bg-slate-100 rounded-2xl text-xs font-bold">
+      {/* TABS CONTROLLER NAVIGATION */}
+      <div className="flex flex-wrap gap-2 p-1.5 bg-slate-100 rounded-2xl text-xs font-bold border border-slate-200/60">
         <button
           onClick={() => setActiveTab('overview')}
           className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 ${
-            activeTab === 'overview' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+            activeTab === 'overview' ? 'bg-[#071426] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <Layers className="w-3.5 h-3.5" />
+          <Layers className="w-3.5 h-3.5 text-[#FF8A00]" />
           <span>Overview & Financials</span>
         </button>
 
         <button
           onClick={() => setActiveTab('drivers')}
           className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 ${
-            activeTab === 'drivers' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+            activeTab === 'drivers' ? 'bg-[#071426] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <Car className="w-3.5 h-3.5" />
+          <Car className="w-3.5 h-3.5 text-[#FF8A00]" />
           <span>Driver Management</span>
           {m?.pendingDrivers && m.pendingDrivers > 0 ? (
-            <span className="px-1.5 py-0.5 bg-amber-400 text-slate-950 rounded-full text-[10px] font-black">
+            <span className="px-1.5 py-0.5 bg-[#FF8A00] text-[#071426] rounded-full text-[10px] font-black">
               {m.pendingDrivers}
             </span>
           ) : null}
@@ -350,64 +350,67 @@ const handleSaveTripQuote = async (tripId: number) => {
         <button
           onClick={() => setActiveTab('settlements')}
           className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 ${
-            activeTab === 'settlements' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+            activeTab === 'settlements' ? 'bg-[#071426] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <CreditCard className="w-3.5 h-3.5" />
+          <CreditCard className="w-3.5 h-3.5 text-[#FF8A00]" />
           <span>Payout Settlements</span>
         </button>
 
         <button
           onClick={() => setActiveTab('routes')}
           className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 ${
-            activeTab === 'routes' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+            activeTab === 'routes' ? 'bg-[#071426] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
+          <Sliders className="w-3.5 h-3.5 text-[#FF8A00]" />
+          <span>Fixed Routes & Fares</span>
         </button>
 
         <button
           onClick={() => setActiveTab('commission')}
           className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 ${
-            activeTab === 'commission' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+            activeTab === 'commission' ? 'bg-[#071426] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <Percent className="w-3.5 h-3.5" />
+          <Percent className="w-3.5 h-3.5 text-[#FF8A00]" />
           <span>Commission Settings</span>
         </button>
 
         <button
-  onClick={() => setActiveTab('tripBookings')}
-  className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 ${
-    activeTab === 'tripBookings'
-      ? 'bg-white text-slate-900 shadow-sm'
-      : 'text-slate-600 hover:text-slate-900'
-  }`}
->
-  <Car className="w-3.5 h-3.5" />
-  <span>Car / Trip Bookings ({tripBookings.length})</span>
-</button>
+          onClick={() => setActiveTab('tripBookings')}
+          className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 ${
+            activeTab === 'tripBookings'
+              ? 'bg-[#071426] text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <span>🚗</span>
+          <span>Car / Trip Bookings ({tripBookings.length})</span>
+        </button>
 
-<button
-  onClick={() => setActiveTab('bookings')}
-  className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 ${
-    activeTab === 'bookings'
-      ? 'bg-white text-slate-900 shadow-sm'
-      : 'text-slate-600 hover:text-slate-900'
-  }`}
->
-  <Calendar className="w-3.5 h-3.5" />
-  <span>All Bookings ({bookings.length})</span>
-</button>
-<button
-  onClick={() => setActiveTab('ratings')}
-  className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 ${
-    activeTab === 'ratings'
-      ? 'bg-white text-slate-900 shadow-sm'
-      : 'text-slate-600 hover:text-slate-900'
-  }`}
->
-  <span>⭐ Driver Ratings ({driverRatings.length})</span>
-</button>
+        <button
+          onClick={() => setActiveTab('bookings')}
+          className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 ${
+            activeTab === 'bookings'
+              ? 'bg-[#071426] text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Calendar className="w-3.5 h-3.5 text-[#FF8A00]" />
+          <span>All Bookings ({bookings.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('ratings')}
+          className={`px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 ${
+            activeTab === 'ratings'
+              ? 'bg-[#071426] text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <span>⭐ Driver Ratings ({driverRatings.length})</span>
+        </button>
       </div>
 
       {/* TAB 1: OVERVIEW & FINANCIALS */}
@@ -415,10 +418,10 @@ const handleSaveTripQuote = async (tripId: number) => {
         <div className="space-y-6">
           {/* Key Financial Split Highlights */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-slate-900 text-white rounded-3xl p-6 shadow-xl space-y-1">
-              <span className="text-[10px] font-bold uppercase text-amber-400">Total Gross Volume</span>
-              <div className="text-3xl font-black text-amber-400">₹{fin?.totalGrossVolume ?? 0}</div>
-              <p className="text-[11px] text-slate-400">All customer bookings completed</p>
+            <div className="bg-[#071426] text-white rounded-3xl p-6 shadow-xl border border-[#1A3353] space-y-1">
+              <span className="text-[10px] font-bold uppercase text-[#FF8A00]">Total Gross Volume</span>
+              <div className="text-3xl font-black text-[#FF8A00]">₹{fin?.totalGrossVolume ?? 0}</div>
+              <p className="text-[11px] text-[#A9B7C9]">All customer bookings completed</p>
             </div>
 
             <div className="bg-emerald-50 rounded-3xl p-6 border-2 border-emerald-200 shadow-xs space-y-1">
@@ -427,10 +430,10 @@ const handleSaveTripQuote = async (tripId: number) => {
               <p className="text-[11px] text-emerald-600">Platform fee retained (₹{fin?.commissionPerTrip ?? 5}/ride)</p>
             </div>
 
-            <div className="bg-amber-50 rounded-3xl p-6 border-2 border-amber-200 shadow-xs space-y-1">
-              <span className="text-[10px] font-bold uppercase text-amber-800">Driver Payouts (Total)</span>
-              <div className="text-3xl font-black text-amber-600">₹{fin?.driverPayoutsTotal ?? 0}</div>
-              <p className="text-[11px] text-amber-700">Net earned by auto drivers</p>
+            <div className="bg-orange-50 rounded-3xl p-6 border-2 border-orange-200 shadow-xs space-y-1">
+              <span className="text-[10px] font-bold uppercase text-orange-900">Driver Payouts (Total)</span>
+              <div className="text-3xl font-black text-[#FF8A00]">₹{fin?.driverPayoutsTotal ?? 0}</div>
+              <p className="text-[11px] text-orange-800">Net earned by auto drivers</p>
             </div>
 
             <div className="bg-rose-50 rounded-3xl p-6 border-2 border-rose-200 shadow-xs space-y-1">
@@ -454,7 +457,7 @@ const handleSaveTripQuote = async (tripId: number) => {
 
             <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
               <span className="text-[10px] font-bold text-slate-400 uppercase">Pending Approvals</span>
-              <div className="text-xl font-black text-amber-600 mt-1">{m?.pendingDrivers ?? 0}</div>
+              <div className="text-xl font-black text-[#FF8A00] mt-1">{m?.pendingDrivers ?? 0}</div>
             </div>
 
             <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
@@ -464,7 +467,7 @@ const handleSaveTripQuote = async (tripId: number) => {
 
             <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
               <span className="text-[10px] font-bold text-slate-400 uppercase">Active Rides</span>
-              <div className="text-xl font-black text-amber-600 mt-1">{m?.activeBookings ?? 0}</div>
+              <div className="text-xl font-black text-[#FF8A00] mt-1">{m?.activeBookings ?? 0}</div>
             </div>
 
             <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
@@ -481,7 +484,7 @@ const handleSaveTripQuote = async (tripId: number) => {
           <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
             <div>
               <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Car className="w-5 h-5 text-amber-600" />
+                <Car className="w-5 h-5 text-[#FF8A00]" />
                 <span>Driver Partner Registrations & Approvals</span>
               </h2>
               <p className="text-xs text-slate-500">
@@ -517,7 +520,7 @@ const handleSaveTripQuote = async (tripId: number) => {
                       </td>
 
                       <td className="px-4 py-3.5">
-                        <div className="font-mono font-bold uppercase text-amber-800">{d.auto_number}</div>
+                        <div className="font-mono font-bold uppercase text-slate-800 bg-[#FF8A00]/10 px-2 py-0.5 rounded-lg inline-block border border-[#FF8A00]/20">{d.auto_number}</div>
                         <div className="text-[10px] text-slate-500">{d.auto_model}</div>
                       </td>
 
@@ -544,7 +547,7 @@ const handleSaveTripQuote = async (tripId: number) => {
                           status === 'APPROVED' || status === 'ACTIVE'
                             ? 'bg-emerald-100 text-emerald-800'
                             : status === 'PENDING'
-                            ? 'bg-amber-100 text-amber-900'
+                            ? 'bg-[#FF8A00]/15 text-[#FF8A00]'
                             : 'bg-rose-100 text-rose-800'
                         }`}>
                           {status}
@@ -638,8 +641,8 @@ const handleSaveTripQuote = async (tripId: number) => {
                           <div>{p.driver_name}</div>
                           <div className="text-[10px] text-slate-400">{p.mobile}</div>
                         </td>
-                        <td className="px-4 py-3.5 font-mono font-bold uppercase text-amber-700">
-                          {p.auto_number}
+                        <td className="px-4 py-3.5 font-mono font-bold uppercase text-slate-800">
+                          <span className="bg-[#FF8A00]/10 px-2 py-0.5 rounded-lg border border-[#FF8A00]/20">{p.auto_number}</span>
                         </td>
                         <td className="px-4 py-3.5">
                           <div className="font-semibold text-slate-800">UPI: {p.payout_upi || '—'}</div>
@@ -700,13 +703,165 @@ const handleSaveTripQuote = async (tripId: number) => {
         </div>
       )}
 
-          
+      {/* TAB 4: FIXED ROUTES & FARES */}
+      {activeTab === 'routes' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <Sliders className="w-5 h-5 text-[#FF8A00]" />
+                  <span>Fixed Place-to-Place Routes & Fares</span>
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Manage fixed rate routes stored in the database. Fares are fixed place-to-place with zero distance calculations.
+                </p>
+              </div>
+              <span className="px-3 py-1 bg-slate-100 text-slate-800 text-xs font-bold rounded-xl self-start sm:self-auto">
+                {routes.length} Configured Routes
+              </span>
+            </div>
+
+            <div className="overflow-x-auto rounded-2xl border border-slate-100">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-100">
+                  <tr>
+                    <th className="px-4 py-3">Route ID</th>
+                    <th className="px-4 py-3">From Location</th>
+                    <th className="px-4 py-3">To Location</th>
+                    <th className="px-4 py-3">Fixed Fare (₹)</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {routes.map((r) => (
+                    <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-4 py-3.5 font-mono font-bold text-slate-400">
+                        #{r.id}
+                      </td>
+                      <td className="px-4 py-3.5 font-bold text-slate-900">
+                        {r.from_location}
+                      </td>
+                      <td className="px-4 py-3.5 font-bold text-slate-900">
+                        {r.to_location}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-400 font-bold">₹</span>
+                          <input
+                            type="number"
+                            min="1"
+                            value={editingFares[r.id] ?? r.fare}
+                            onChange={(e) =>
+                              setEditingFares({
+                                ...editingFares,
+                                [r.id]: Number(e.target.value)
+                              })
+                            }
+                            className="w-20 px-2 py-1 border border-slate-200 rounded-lg text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
+                          />
+                          <button
+                            onClick={() => handleSaveRouteFare(r.id)}
+                            disabled={isSavingFare === r.id}
+                            className="px-2.5 py-1 bg-[#071426] hover:bg-[#10243D] text-[#FF8A00] font-bold text-[11px] rounded-lg transition-colors flex items-center gap-1"
+                          >
+                            <Save className="w-3 h-3" />
+                            <span>{isSavingFare === r.id ? 'Saving...' : 'Save'}</span>
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
+                            r.is_active
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-slate-100 text-slate-500'
+                          }`}
+                        >
+                          {r.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <button
+                          onClick={() => handleToggleRoute(r.id)}
+                          className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                            r.is_active
+                              ? 'bg-rose-50 text-rose-600 hover:bg-rose-100'
+                              : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
+                          }`}
+                        >
+                          {r.is_active ? 'Disable' : 'Enable'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Add New Route Card */}
+            <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200/80">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-3 flex items-center gap-1.5">
+                <Plus className="w-4 h-4 text-[#FF8A00]" />
+                <span>Add New Fixed Fare Route</span>
+              </h3>
+              <form onSubmit={handleAddRoute} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">From Location</label>
+                  <input
+                    type="text"
+                    value={newFrom}
+                    onChange={(e) => setNewFrom(e.target.value)}
+                    placeholder="e.g. JNTUA"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">To Location</label>
+                  <input
+                    type="text"
+                    value={newTo}
+                    onChange={(e) => setNewTo(e.target.value)}
+                    placeholder="e.g. Railway Station"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Fixed Fare (₹)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newFare}
+                    onChange={(e) => setNewFare(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
+                    required
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    type="submit"
+                    disabled={isAddingRoute}
+                    className="w-full py-2.5 bg-gradient-to-r from-[#FF8A00] to-[#FF9D2E] hover:from-[#FF9D2E] hover:to-[#FF8A00] text-slate-950 font-bold text-xs rounded-xl shadow-md transition-transform hover:scale-102 flex items-center justify-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{isAddingRoute ? 'Adding...' : 'Add Route'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* TAB 5: COMMISSION SETTINGS */}
       {activeTab === 'commission' && (
         <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 max-w-xl space-y-6">
           <div className="pb-4 border-b border-slate-100">
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Percent className="w-5 h-5 text-amber-600" />
+              <Percent className="w-5 h-5 text-[#FF8A00]" />
               <span>Platform Commission Settings</span>
             </h2>
             <p className="text-xs text-slate-500 mt-1">
@@ -727,7 +882,7 @@ const handleSaveTripQuote = async (tripId: number) => {
                   min={0}
                   value={commissionInput}
                   onChange={(e) => setCommissionInput(Number(e.target.value))}
-                  className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
                   required
                 />
               </div>
@@ -738,9 +893,9 @@ const handleSaveTripQuote = async (tripId: number) => {
 
             <button
               type="submit"
-              className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition-transform hover:scale-102 flex items-center gap-1.5"
+              className="px-6 py-2.5 bg-[#071426] hover:bg-[#10243D] text-[#FF8A00] font-bold text-xs rounded-xl shadow-md transition-transform hover:scale-102 flex items-center gap-1.5 border border-[#1A3353]"
             >
-              <Save className="w-3.5 h-3.5 text-amber-400" />
+              <Save className="w-3.5 h-3.5 text-[#FF8A00]" />
               <span>Update Commission Rate</span>
             </button>
           </form>
@@ -752,7 +907,7 @@ const handleSaveTripQuote = async (tripId: number) => {
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
         <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-          <Car className="w-5 h-5 text-amber-600" />
+          <Car className="w-5 h-5 text-[#FF8A00]" />
           <span>Car / Trip Bookings</span>
         </h2>
         <p className="text-xs text-slate-500">
@@ -880,7 +1035,7 @@ const handleSaveTripQuote = async (tripId: number) => {
 
                   <button
                     onClick={() => handleSaveTripQuote(trip.id)}
-                    className="mt-2 px-3 py-1.5 bg-slate-900 text-white rounded-lg text-[10px] font-bold"
+                    className="mt-2 px-3 py-1.5 bg-[#071426] hover:bg-[#10243D] text-[#FF8A00] rounded-lg text-[10px] font-bold transition-colors border border-[#1A3353]"
                   >
                     Save Quote
                   </button>
@@ -997,7 +1152,7 @@ const handleSaveTripQuote = async (tripId: number) => {
                       {b.auto_number ? (
                         <div>
                           <div className="font-bold text-slate-800">{b.driver_name}</div>
-                          <div className="text-[10px] text-amber-700 font-mono font-bold uppercase">{b.auto_number}</div>
+                          <div className="text-[10px] text-[#FF8A00] font-mono font-bold uppercase">{b.auto_number}</div>
                         </div>
                       ) : (
                         <span className="text-slate-400 italic text-[11px]">Unassigned</span>
@@ -1093,7 +1248,7 @@ const handleSaveTripQuote = async (tripId: number) => {
                         </div>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <span className="text-amber-500">
+                        <span className="text-[#FF8A00]">
                           {'★'.repeat(Math.max(0, Math.min(5, Number(r.rating) || 0)))}
                         </span>
                         {' '}{r.rating}/5

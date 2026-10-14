@@ -80,6 +80,7 @@ export interface TripBooking {
   updated_at: string;
   customer_account_email?: string;
   payment_session_id?: string;
+  environment?: 'sandbox' | 'production';
 }
 
 export interface PaymentRecord {
@@ -98,10 +99,26 @@ export interface PaymentRecord {
   gateway_order_id?: string;
   gateway_payment_id?: string;
   payment_session_id?: string;
+  environment?: 'sandbox' | 'production';
   settled_at?: string;
   created_at: string;
   updated_at: string;
 }
+
+/**
+ * Resolves Cashfree SDK mode ('sandbox' | 'production') based on:
+ * 1. Environment returned by server for the specific order (if present)
+ * 2. VITE_CASHFREE_MODE environment variable
+ * 3. Default fallback: 'sandbox'
+ */
+export const getCashfreeMode = (orderEnvironment?: string): 'sandbox' | 'production' => {
+  if (orderEnvironment === 'production' || orderEnvironment === 'sandbox') {
+    return orderEnvironment;
+  }
+  const configured = (import.meta.env.VITE_CASHFREE_MODE || '').toLowerCase();
+  if (configured === 'production') return 'production';
+  return 'sandbox';
+};
 
 export interface DriverEarningsSummary {
   todayEarnings: number;

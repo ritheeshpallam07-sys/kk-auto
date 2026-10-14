@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { api, Booking, PaymentRecord, RatingRecord } from '../api/client';
+import React, { useState, useEffect, useRef } from 'react';
+import { api, Booking, PaymentRecord, RatingRecord, getCashfreeMode } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
 import { Modal } from '../components/Modal';
 import { load } from '@cashfreepayments/cashfree-js';
@@ -21,8 +21,10 @@ import {
   Receipt,
   Star,
   Send,
-  Sparkles
+  Sparkles,
+  MessageCircle
 } from 'lucide-react';
+import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
 
 interface BookingStatusPageProps {
   bookingId: string;
@@ -52,6 +54,101 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
 
   // Status simulation for testing
   const [isSimulating, setIsSimulating] = useState(false);
+
+  // Google Maps tracking state
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const [mapsLoaded, setMapsLoaded] = useState(false);
+
+  useEffect(() => {
+    const key = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+    if (!key || !mapContainerRef.current) return;
+
+    let isCancelled = false;
+    async function initStatusMap() {
+      try {
+        if (!window.google) {
+          setOptions({ key, v: 'weekly' });
+        }
+        const { Map } = (await importLibrary('maps')) as any;
+        if (isCancelled || !mapContainerRef.current) return;
+
+        const defaultCenter = { lat: 13.6480, lng: 78.7950 };
+        const map = new Map(mapContainerRef.current, {
+          center: defaultCenter,
+          zoom: 14,
+          disableDefaultUI: true,
+          zoomControl: false,
+        });
+        mapInstanceRef.current = map;
+        setMapsLoaded(true);
+      } catch (e) {
+        console.warn('Status map load error:', e);
+      }
+    }
+    initStatusMap();
+    return () => { isCancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!mapsLoaded || !mapInstanceRef.current || !booking || !window.google) return;
+    const map = mapInstanceRef.current;
+    const google = window.google;
+
+    const KNOWN_COORDS: Record<string, { lat: number; lng: number }> = {
+      'jntua': { lat: 13.6508, lng: 78.7860 },
+      'cross': { lat: 13.6525, lng: 78.8035 },
+      'bus stand': { lat: 13.6455, lng: 78.8035 },
+      'marava': { lat: 13.6408, lng: 78.8010 }
+    };
+
+    const pLat = booking.pickup_latitude || KNOWN_COORDS[booking.pickup_address.toLowerCase().trim()]?.lat || 13.6508;
+    const pLng = booking.pickup_longitude || KNOWN_COORDS[booking.pickup_address.toLowerCase().trim()]?.lng || 78.7860;
+    const dLat = booking.destination_latitude || KNOWN_COORDS[booking.destination_address.toLowerCase().trim()]?.lat || 13.6455;
+    const dLng = booking.destination_longitude || KNOWN_COORDS[booking.destination_address.toLowerCase().trim()]?.lng || 78.8035;
+
+    const pPos = { lat: pLat, lng: pLng };
+    const dPos = { lat: dLat, lng: dLng };
+
+    new google.maps.Marker({
+      position: pPos,
+      map,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 8,
+        fillColor: '#FF8A00',
+        fillOpacity: 1,
+        strokeColor: '#FFFFFF',
+        strokeWeight: 2,
+      }
+    });
+
+    new google.maps.Marker({
+      position: dPos,
+      map,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 8,
+        fillColor: '#10B981',
+        fillOpacity: 1,
+        strokeColor: '#FFFFFF',
+        strokeWeight: 2,
+      }
+    });
+
+    const bounds = new google.maps.LatLngBounds();
+    bounds.extend(pPos);
+    bounds.extend(dPos);
+    map.fitBounds(bounds, 50);
+
+    new google.maps.Polyline({
+      path: [pPos, dPos],
+      strokeColor: '#FF8A00',
+      strokeOpacity: 0.85,
+      strokeWeight: 4,
+      map
+    });
+  }, [mapsLoaded, booking]);
 
   useEffect(() => {
     loadBookingAndPayment();
@@ -113,7 +210,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
 
     if (res.success && res.data?.payment_session_id) {
       const cashfree = await load({
-        mode: 'production'
+        mode: getCashfreeMode(res.data?.environment)
       });
 
       if (!cashfree) {
@@ -185,7 +282,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   if (isLoading) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3">
-        <div className="w-10 h-10 border-4 border-amber-400 border-t-transparent rounded-full animate-spin" />
+        <div className="w-10 h-10 border-4 border-[#FF8A00] border-t-transparent rounded-full animate-spin" />
         <p className="text-xs font-semibold text-slate-500">Loading ride tracking...</p>
       </div>
     );
@@ -201,7 +298,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
         <p className="text-xs text-slate-600 mb-6">{error || 'Unable to locate this booking.'}</p>
         <button
           onClick={() => navigate('/my-rides')}
-          className="px-6 py-2.5 bg-slate-900 text-white font-bold text-xs rounded-xl"
+          className="px-6 py-2.5 bg-[#071426] hover:bg-[#10243D] text-white font-bold text-xs rounded-xl"
         >
           Back to My Rides
         </button>
@@ -240,7 +337,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
           {isCompleted && !isPaid && !isCancelled && (
             <button
               onClick={() => setIsPayModalOpen(true)}
-              className="px-4 py-2 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-transform hover:scale-105 flex items-center gap-1.5"
+              className="px-4 py-2 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-xs rounded-xl shadow-glow-orange transition-transform hover:scale-105 flex items-center gap-1.5"
             >
               <CreditCard className="w-3.5 h-3.5" />
               <span>Pay Online (₹{booking.estimated_fare})</span>
@@ -261,10 +358,10 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
             <button
               onClick={handleSimulateNextStatus}
               disabled={isSimulating}
-              className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
+              className="px-3 py-2 bg-[#071426] hover:bg-[#10243D] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
               title="Advances ride progression for quick testing"
             >
-              <PlayCircle className="w-3.5 h-3.5 text-amber-400" />
+              <PlayCircle className="w-3.5 h-3.5 text-[#FF8A00]" />
               <span>Simulate Next Step</span>
             </button>
           )}
@@ -316,7 +413,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                 <div className="relative">
                   <div className="absolute top-5 left-5 right-5 h-0.5 bg-slate-200 -z-0" />
                   <div 
-                    className="absolute top-5 left-5 h-0.5 bg-amber-400 transition-all duration-500 -z-0"
+                    className="absolute top-5 left-5 h-0.5 bg-[#FF8A00] transition-all duration-500 -z-0"
                     style={{ 
                       width: `${Math.max(0, currentStepIndex) / (steps.length - 1) * 90}%` 
                     }}
@@ -332,15 +429,15 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                           <div
                             className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs transition-all shadow-sm ${
                               isCurrent
-                                ? 'bg-amber-400 text-slate-950 ring-4 ring-amber-100 scale-110'
+                                ? 'bg-[#FF8A00] text-[#071426] ring-4 ring-orange-100 scale-110 font-black shadow-glow-orange'
                                 : isPast
-                                ? 'bg-emerald-500 text-white'
+                                ? 'bg-[#071426] text-[#FF8A00]'
                                 : 'bg-white border-2 border-slate-300 text-slate-400'
                             }`}
                           >
                             {isPast ? (idx < currentStepIndex ? '✓' : idx + 1) : idx + 1}
                           </div>
-                          <div className={`mt-2 text-[10px] font-bold leading-tight ${isCurrent ? 'text-amber-700' : isPast ? 'text-slate-900' : 'text-slate-400'}`}>
+                          <div className={`mt-2 text-[10px] font-bold leading-tight ${isCurrent ? 'text-orange-900 font-black' : isPast ? 'text-slate-900' : 'text-slate-400'}`}>
                             {step.label}
                           </div>
                         </div>
@@ -392,17 +489,17 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
 
                 <div>
                   <div className="text-[10px] font-bold text-slate-400 uppercase">Fixed Route Fare</div>
-                  <div className="font-extrabold text-amber-600 text-base">₹{booking.estimated_fare}</div>
+                  <div className="font-black text-[#FF8A00] text-base">₹{booking.estimated_fare}</div>
                 </div>
               </div>
             </div>
 
             {/* Assigned Driver Card */}
             {booking.auto_number && (
-              <div className="p-5 bg-gradient-to-r from-amber-50 to-amber-100/50 rounded-2xl border border-amber-200 space-y-3">
+              <div className="p-5 bg-gradient-to-r from-orange-50 to-orange-100/60 rounded-2xl border border-orange-200 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-amber-900 uppercase flex items-center gap-1.5">
-                    <Car className="w-4 h-4 text-amber-700" />
+                  <span className="text-xs font-black text-orange-950 uppercase flex items-center gap-1.5">
+                    <Car className="w-4 h-4 text-[#FF8A00]" />
                     <span>Assigned Auto Driver</span>
                   </span>
                   <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
@@ -412,25 +509,25 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-base font-black text-slate-900">{booking.driver_name || 'Ramesh Kumar'}</div>
-                    <div className="text-xs text-slate-600">{booking.auto_model || 'Bajaj Compact 4S'}</div>
+                    <div className="text-base font-black text-[#071426]">{booking.driver_name || 'Ramesh Kumar'}</div>
+                    <div className="text-xs text-slate-600 font-medium">{booking.auto_model || 'Bajaj Compact 4S'}</div>
                   </div>
 
                   <div className="text-right">
-                    <div className="px-3 py-1 bg-amber-400 text-slate-950 font-black rounded-lg text-xs font-mono uppercase tracking-wider">
+                    <div className="px-3 py-1 bg-[#FF8A00] text-[#071426] font-black rounded-lg text-xs font-mono uppercase tracking-wider shadow-sm">
                       {booking.auto_number}
                     </div>
                   </div>
                 </div>
 
                 {booking.driver_mobile && (
-                  <div className="pt-2 flex items-center justify-between text-xs border-t border-amber-200/80">
-                    <span className="text-slate-600">Contact: {booking.driver_mobile}</span>
+                  <div className="pt-2 flex items-center justify-between text-xs border-t border-orange-200">
+                    <span className="text-slate-600 font-semibold">Contact: {booking.driver_mobile}</span>
                     <a
                       href={`tel:${booking.driver_mobile}`}
-                      className="px-3 py-1.5 bg-slate-900 text-white rounded-lg font-bold text-[11px] flex items-center gap-1.5"
+                      className="px-3 py-1.5 bg-[#071426] hover:bg-[#10243D] text-white rounded-lg font-bold text-[11px] flex items-center gap-1.5 transition-colors"
                     >
-                      <Phone className="w-3 h-3" />
+                      <Phone className="w-3 h-3 text-[#FF8A00]" />
                       <span>Call Driver</span>
                     </a>
                   </div>
@@ -443,7 +540,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
               <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                    <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                    <Star className="w-4 h-4 text-[#FF8A00] fill-[#FF8A00]" />
                     <span>Rate Your Driver</span>
                   </h3>
                   {rating && (
@@ -459,7 +556,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                           key={star}
                           className={`w-5 h-5 ${
                             star <= rating.rating
-                              ? 'text-amber-400 fill-amber-400'
+                              ? 'text-[#FF8A00] fill-[#FF8A00]'
                               : 'text-slate-300'
                           }`}
                         />
@@ -485,7 +582,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                           <Star
                             className={`w-6 h-6 ${
                               star <= selectedStars
-                                ? 'text-amber-400 fill-amber-400'
+                                ? 'text-[#FF8A00] fill-[#FF8A00]'
                                 : 'text-slate-300'
                             }`}
                           />
@@ -500,16 +597,16 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                       value={reviewText}
                       onChange={(e) => setReviewText(e.target.value)}
                       placeholder="Write optional review comments for this trip..."
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
                       rows={2}
                     />
 
                     <button
                       type="submit"
                       disabled={isSubmittingRating}
-                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-transform hover:scale-102 disabled:opacity-50"
+                      className="px-4 py-2 bg-[#071426] hover:bg-[#10243D] text-[#FF8A00] font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-transform hover:scale-102 disabled:opacity-50 border border-[#1A3353]"
                     >
-                      <Send className="w-3.5 h-3.5 text-amber-400" />
+                      <Send className="w-3.5 h-3.5 text-[#FF8A00]" />
                       <span>{isSubmittingRating ? 'Submitting...' : 'Submit Rating'}</span>
                     </button>
                   </form>
@@ -519,8 +616,80 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
           </div>
         </div>
 
-        {/* Right Column: Fare Guarantee & Receipt Summary */}
+        {/* Right Column: Live Tracking Map & Phone Screen 2 Cards */}
         <div className="lg:col-span-5 space-y-6">
+          {/* Live Map Card matching Reference Image Screen 2 */}
+          <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-200/80 space-y-4 overflow-hidden">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
+                <Navigation className="w-4 h-4 text-[#FF8A00]" />
+                <span>Live Route Tracking</span>
+              </h3>
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                GPS Active
+              </span>
+            </div>
+
+            {/* Map Canvas with overlay badge */}
+            <div className="relative w-full h-56 rounded-2xl overflow-hidden border border-slate-200 bg-[#071426]">
+              <div ref={mapContainerRef} className="w-full h-full" />
+
+              {/* Floating "Driver is 2 min away" pill matching Reference Image Screen 2 */}
+              <div className="absolute left-1/2 -translate-x-1/2 bottom-3 z-10 px-3.5 py-1.5 rounded-full bg-[#071426]/90 backdrop-blur-md text-white border border-[#FF8A00]/40 text-xs font-bold shadow-lg flex items-center gap-2 whitespace-nowrap">
+                <span className="w-2 h-2 rounded-full bg-[#FF8A00] animate-ping" />
+                <span>Driver is 2 min away</span>
+              </div>
+            </div>
+
+            {/* Driver Profile Card matching Reference Image Screen 2 */}
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#FF8A00] to-[#E67600] text-slate-950 font-black text-lg flex items-center justify-center shadow-md">
+                  {(booking.driver_name || 'Ramesh').charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <div className="font-black text-slate-900 text-sm">{booking.driver_name || 'Ramesh'}</div>
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                    <span className="text-[#FF8A00] font-bold">4.8 ★</span>
+                    <span>•</span>
+                    <span className="font-mono text-[11px] font-bold text-slate-700">Auto • {booking.auto_number || 'AP 39 XX 1234'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                {booking.driver_mobile ? (
+                  <a
+                    href={`tel:${booking.driver_mobile}`}
+                    className="w-9 h-9 rounded-full bg-[#071426] hover:bg-[#10243D] text-[#FF8A00] flex items-center justify-center transition-transform hover:scale-105 shadow-sm"
+                    title="Call Driver"
+                  >
+                    <Phone className="w-4 h-4" />
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => alert('Driver will contact you upon arriving.')}
+                    className="w-9 h-9 rounded-full bg-[#071426] text-[#FF8A00] flex items-center justify-center shadow-sm"
+                    title="Call Driver"
+                  >
+                    <Phone className="w-4 h-4" />
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => alert('In-app messaging active with driver.')}
+                  className="w-9 h-9 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-800 flex items-center justify-center transition-transform hover:scale-105"
+                  title="Message Driver"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Fare Guarantee & Receipt Summary Card */}
           <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80 space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="text-sm font-extrabold uppercase text-slate-900 tracking-wider flex items-center gap-2">
@@ -532,16 +701,16 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
               </span>
             </div>
 
-            <div className="p-4 bg-amber-50/70 rounded-2xl border border-amber-200/80 space-y-3">
-              <div className="text-xs font-bold text-amber-900">
+            <div className="p-4 bg-orange-50/70 rounded-2xl border border-orange-200/80 space-y-3">
+              <div className="text-xs font-bold text-orange-950">
                 Route: {booking.pickup_address} → {booking.destination_address}
               </div>
               <div className="flex items-baseline justify-between">
                 <span className="text-xs text-slate-600">Total Fare:</span>
-                <span className="text-2xl font-black text-slate-900">₹{booking.estimated_fare}</span>
+                <span className="text-2xl font-black text-[#071426]">₹{booking.estimated_fare}</span>
               </div>
               <div className="text-[11px] text-slate-500 italic">
-                Direct fixed point-to-point auto-rickshaw fare from Kk_Auto verified fare schedule.
+                Direct fixed point-to-point auto-rickshaw fare from Clik2Go verified fare schedule.
               </div>
             </div>
 
@@ -549,22 +718,22 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
             <div className="p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between text-xs">
               <span className="font-semibold text-slate-600">Payment Status:</span>
               {isPaid ? (
-  <span className="font-black text-emerald-600 flex items-center gap-1">
-    <CheckCircle2 className="w-4 h-4" />
-    <span>Paid ({payment?.payment_method || 'UPI'})</span>
-  </span>
-) : isCompleted && !isCancelled ? (
-  <button
-    onClick={() => setIsPayModalOpen(true)}
-    className="px-3 py-1 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold rounded-lg text-xs"
-  >
-    Pay Online
-  </button>
-) : (
-  <span className="font-semibold text-slate-500">
-    Payment after ride
-  </span>
-)}
+                <span className="font-black text-emerald-600 flex items-center gap-1">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Paid ({payment?.payment_method || 'UPI'})</span>
+                </span>
+              ) : isCompleted && !isCancelled ? (
+                <button
+                  onClick={() => setIsPayModalOpen(true)}
+                  className="px-3.5 py-1.5 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black rounded-lg text-xs shadow-glow-orange"
+                >
+                  Pay Online
+                </button>
+              ) : (
+                <span className="font-semibold text-slate-500">
+                  Payment after ride
+                </span>
+              )}
             </div>
 
             <div className="space-y-2 text-xs text-slate-600">
@@ -587,23 +756,23 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
 
       {/* PAY ONLINE MODAL */}
       {isPayModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#071426]/75 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-100 space-y-6">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-amber-600" />
-                <h3 className="text-base font-black text-slate-900">Pay Online</h3>
+                <CreditCard className="w-5 h-5 text-[#FF8A00]" />
+                <h3 className="text-base font-black text-[#071426]">Pay Online</h3>
               </div>
               <button onClick={() => setIsPayModalOpen(false)} className="text-slate-400 hover:text-slate-800">✕</button>
             </div>
 
-            <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 space-y-2 text-xs">
+            <div className="p-4 bg-orange-50/70 rounded-2xl border border-orange-200 space-y-2 text-xs">
               <div className="flex justify-between font-bold text-slate-700">
                 <span>Trip: {booking.pickup_address} → {booking.destination_address}</span>
               </div>
-              <div className="flex justify-between text-base font-black text-slate-900">
+              <div className="flex justify-between text-base font-black text-[#071426]">
                 <span>Total Amount:</span>
-                <span className="text-amber-600">₹{booking.estimated_fare}</span>
+                <span className="text-[#FF8A00]">₹{booking.estimated_fare}</span>
               </div>
             </div>
 
@@ -617,7 +786,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                     onClick={() => setSelectedPaymentMethod(method)}
                     className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
                       selectedPaymentMethod === method
-                        ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                        ? 'bg-[#071426] text-white border-[#071426] shadow-sm'
                         : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
@@ -634,7 +803,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
             <button
               onClick={handleProcessPayment}
               disabled={isPaying}
-              className="w-full py-3.5 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-sm rounded-xl shadow-md transition-transform hover:scale-102 flex items-center justify-center gap-2 disabled:opacity-50"
+              className="w-full py-3.5 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-sm rounded-xl shadow-glow-orange transition-transform hover:scale-102 flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {isPaying ? (
                 <span>Processing Payment...</span>
@@ -651,12 +820,12 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
 
       {/* VIEW RECEIPT MODAL */}
       {isReceiptModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#071426]/75 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-100 space-y-6">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-slate-900" />
-                <h3 className="text-base font-black text-slate-900">Kk_Auto Tax Invoice</h3>
+                <Receipt className="w-5 h-5 text-[#FF8A00]" />
+                <h3 className="text-base font-black text-[#071426]">Clik2Go Tax Invoice</h3>
               </div>
               <button onClick={() => setIsReceiptModalOpen(false)} className="text-slate-400 hover:text-slate-800">✕</button>
             </div>
@@ -664,7 +833,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
             <div className="space-y-3 text-xs">
               <div className="flex justify-between text-slate-500">
                 <span>Receipt No:</span>
-                <span className="font-mono font-bold text-slate-900">{payment?.transaction_reference || 'RECEIPT-KK-' + booking.id}</span>
+                <span className="font-mono font-bold text-slate-900">{payment?.transaction_reference || 'RECEIPT-C2G-' + booking.id}</span>
               </div>
               <div className="flex justify-between text-slate-500">
                 <span>Booking ID:</span>
@@ -692,16 +861,16 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                   <span>Platform Commission & Tech Fee:</span>
                   <span>₹{payment?.owner_amount ?? 5}</span>
                 </div>
-                <div className="flex justify-between text-sm font-black text-slate-900 pt-2 border-t border-slate-200">
+                <div className="flex justify-between text-sm font-black text-[#071426] pt-2 border-t border-slate-200">
                   <span>Total Paid:</span>
-                  <span className="text-amber-600">₹{booking.estimated_fare}</span>
+                  <span className="text-[#FF8A00]">₹{booking.estimated_fare}</span>
                 </div>
               </div>
             </div>
 
             <button
               onClick={() => setIsReceiptModalOpen(false)}
-              className="w-full py-2.5 bg-slate-900 text-white font-bold text-xs rounded-xl"
+              className="w-full py-2.5 bg-[#071426] hover:bg-[#10243D] text-white font-bold text-xs rounded-xl"
             >
               Close Receipt
             </button>

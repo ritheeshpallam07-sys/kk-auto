@@ -56,7 +56,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
 
   const strengthScore = calculatePasswordStrength(password);
   const strengthLabels = ['Too weak', 'Weak', 'Good', 'Strong', 'Very Strong'];
-  const strengthColors = ['bg-slate-200', 'bg-rose-500', 'bg-amber-500', 'bg-emerald-500', 'bg-emerald-600'];
+  const strengthColors = ['bg-slate-200', 'bg-rose-500', 'bg-[#FF8A00]', 'bg-emerald-500', 'bg-emerald-600'];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,28 +132,28 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
   };
 
   return (
-    <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-slate-50">
-      <div className="max-w-xl w-full space-y-8 bg-white p-8 sm:p-10 rounded-3xl shadow-xl border border-slate-100">
+    <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-[#F8FAFC]">
+      <div className="max-w-xl w-full space-y-7 bg-white p-8 sm:p-10 rounded-3xl shadow-xl border border-slate-200/80">
         <div className="text-center">
           <div className="flex justify-center mb-3">
             <Logo size="md" />
           </div>
-          <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+          <h2 className="text-2xl font-black text-[#071426] tracking-tight">
             Create your account
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Sign up to start booking or driving auto-rickshaws with Kk_Auto
+            Sign up to start booking or driving auto-rickshaws with Clik2Go
           </p>
         </div>
 
         {/* Role switcher tab */}
-        <div className="flex rounded-xl bg-slate-100 p-1 text-xs font-bold">
+        <div className="flex rounded-2xl bg-slate-100 p-1.5 text-xs font-bold border border-slate-200/60">
           <button
             type="button"
             onClick={() => setRole('customer')}
-            className={`flex-1 py-2.5 rounded-lg transition-all ${
+            className={`flex-1 py-2.5 rounded-xl transition-all ${
               role === 'customer'
-                ? 'bg-white text-slate-900 shadow-xs'
+                ? 'bg-white text-[#071426] shadow-xs'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -162,9 +162,9 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
           <button
             type="button"
             onClick={() => setRole('driver')}
-            className={`flex-1 py-2.5 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
               role === 'driver'
-                ? 'bg-amber-400 text-slate-950 shadow-xs'
+                ? 'bg-[#FF8A00] text-[#071426] font-black shadow-glow-orange'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -192,7 +192,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Ramesh Babu"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8A00] bg-slate-50/50 focus:bg-white"
                 required
               />
             </div>
@@ -210,7 +210,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
                   value={mobile}
                   onChange={(e) => setMobile(e.target.value)}
                   placeholder="9876543210"
-                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8A00] bg-slate-50/50 focus:bg-white"
                   required
                 />
               </div>
@@ -227,7 +227,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@mail.com"
-                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8A00] bg-slate-50/50 focus:bg-white"
                   required
                 />
               </div>
@@ -236,14 +236,14 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
 
           {/* DRIVER SPECIFIC FIELDS */}
           {role === 'driver' && (
-            <div className="p-4 bg-amber-50/70 rounded-2xl border border-amber-200 space-y-4">
+            <div className="p-4 sm:p-5 bg-orange-50/60 rounded-3xl border border-orange-200/80 space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-amber-950 uppercase flex items-center gap-1.5">
-                  <Car className="w-4 h-4 text-amber-600" />
+                <span className="text-xs font-black text-[#071426] uppercase flex items-center gap-1.5">
+                  <Car className="w-4 h-4 text-[#FF8A00]" />
                   <span>Auto Vehicle & Payout Details</span>
                 </span>
-                <span className="text-[10px] font-bold text-amber-700 bg-amber-200/60 px-2 py-0.5 rounded-md flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
+                <span className="text-[10px] font-bold text-orange-800 bg-orange-200/60 px-2 py-0.5 rounded-md flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-[#FF8A00]" />
                   <span>Pending Admin Review</span>
                 </span>
               </div>
@@ -258,7 +258,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
                     value={autoNumber}
                     onChange={(e) => setAutoNumber(e.target.value)}
                     placeholder="KA-01-AK-1234"
-                    className="w-full px-3 py-2 rounded-lg border border-amber-300 text-xs font-mono font-bold uppercase bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    className="w-full px-3 py-2 rounded-xl border border-orange-200 text-xs font-mono font-bold uppercase bg-white focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
                     required
                   />
                 </div>
@@ -272,7 +272,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
                     value={autoModel}
                     onChange={(e) => setAutoModel(e.target.value)}
                     placeholder="Bajaj Compact 4S"
-                    className="w-full px-3 py-2 rounded-lg border border-amber-300 text-xs font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    className="w-full px-3 py-2 rounded-xl border border-orange-200 text-xs font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
                     required
                   />
                 </div>
@@ -289,20 +289,20 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
                     value={licenseNumber}
                     onChange={(e) => setLicenseNumber(e.target.value)}
                     placeholder="DL-AUTO-2024-8899"
-                    className="w-full pl-8 pr-3 py-2 rounded-lg border border-amber-300 text-xs font-semibold uppercase bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    className="w-full pl-8 pr-3 py-2 rounded-xl border border-orange-200 text-xs font-semibold uppercase bg-white focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
                   />
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-amber-200/80 space-y-2">
-                <span className="text-[11px] font-bold text-amber-900 block">
+              <div className="pt-2 border-t border-orange-200/80 space-y-2">
+                <span className="text-[11px] font-bold text-[#071426] block">
                   Driver Payout Bank / UPI Details (For Earnings Settlement)
                 </span>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1 flex items-center gap-1">
-                      <CreditCard className="w-3 h-3 text-amber-700" />
+                      <CreditCard className="w-3 h-3 text-[#FF8A00]" />
                       <span>UPI ID *</span>
                     </label>
                     <input
@@ -310,14 +310,14 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
                       value={payoutUpi}
                       onChange={(e) => setPayoutUpi(e.target.value)}
                       placeholder="driver@oksbi"
-                      className="w-full px-3 py-2 rounded-lg border border-amber-300 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      className="w-full px-3 py-2 rounded-xl border border-orange-200 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
                       required
                     />
                   </div>
 
                   <div>
                     <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1 flex items-center gap-1">
-                      <Building2 className="w-3 h-3 text-amber-700" />
+                      <Building2 className="w-3 h-3 text-[#FF8A00]" />
                       <span>Bank Account No.</span>
                     </label>
                     <input
@@ -325,7 +325,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
                       value={payoutBankAccount}
                       onChange={(e) => setPayoutBankAccount(e.target.value)}
                       placeholder="12-16 digit account number"
-                      className="w-full px-3 py-2 rounded-lg border border-amber-300 text-xs font-mono bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      className="w-full px-3 py-2 rounded-xl border border-orange-200 text-xs font-mono bg-white focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
                     />
                   </div>
                 </div>
@@ -339,15 +339,15 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
                     value={payoutIfsc}
                     onChange={(e) => setPayoutIfsc(e.target.value)}
                     placeholder="SBIN0001234"
-                    className="w-full px-3 py-2 rounded-lg border border-amber-300 text-xs font-mono uppercase bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    className="w-full px-3 py-2 rounded-xl border border-orange-200 text-xs font-mono uppercase bg-white focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
                   />
                 </div>
               </div>
 
-              <div className="text-[11px] text-amber-800 bg-amber-100/70 p-2.5 rounded-xl flex items-start gap-2">
-                <ShieldCheck className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
+              <div className="text-[11px] text-orange-950 bg-orange-100/70 p-3 rounded-2xl flex items-start gap-2">
+                <ShieldCheck className="w-4 h-4 text-[#FF8A00] flex-shrink-0 mt-0.5" />
                 <span>
-                  <strong>Approval Notice:</strong> When you register as a driver, your account will be set to <strong>PENDING</strong>. You will be able to accept passenger rides once verified and approved by the Owner/Admin.
+                  <strong>Approval Notice:</strong> When you register as a driver, your account will be set to <strong>PENDING</strong>. You will be able to accept passenger rides once verified and approved by the Clik2Go Admin.
                 </span>
               </div>
             </div>
@@ -364,7 +364,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="At least 6 characters"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8A00] bg-slate-50/50 focus:bg-white"
                 required
               />
             </div>
@@ -401,7 +401,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Re-type password"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8A00] bg-slate-50/50 focus:bg-white"
                 required
               />
             </div>
@@ -420,7 +420,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
               id="terms"
               checked={agreeTerms}
               onChange={(e) => setAgreeTerms(e.target.checked)}
-              className="w-4 h-4 mt-0.5 rounded text-amber-500 focus:ring-amber-400 border-slate-300"
+              className="w-4 h-4 mt-0.5 rounded text-[#FF8A00] focus:ring-[#FF8A00] border-slate-300"
               required
             />
             <label htmlFor="terms" className="text-xs text-slate-600 leading-tight">
@@ -431,13 +431,13 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-3.5 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-sm rounded-xl shadow-md transition-all hover:scale-102 flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full py-3.5 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-sm rounded-xl shadow-glow-orange transition-all hover:scale-102 flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {isSubmitting ? (
               <span>Creating Account...</span>
             ) : (
               <>
-                <span>{role === 'driver' ? 'Register Driver Account' : 'Create Account'}</span>
+                <span>{role === 'driver' ? 'Register Driver Partner' : 'Create Customer Account'}</span>
                 <ArrowRight className="w-4 h-4" />
               </>
             )}
@@ -449,7 +449,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
           <button
             type="button"
             onClick={() => navigate('/login')}
-            className="font-bold text-amber-600 hover:text-amber-700 underline"
+            className="font-bold text-[#FF8A00] hover:text-[#E67600] underline"
           >
             Login here
           </button>

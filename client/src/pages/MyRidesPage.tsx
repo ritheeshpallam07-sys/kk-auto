@@ -84,9 +84,9 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-bold uppercase mb-2">
-            <Clock className="w-3.5 h-3.5 text-amber-600" />
-            <span>Booking History</span>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FF8A00]/10 border border-[#FF8A00]/20 text-[#FF8A00] text-xs font-bold uppercase mb-2">
+            <Clock className="w-3.5 h-3.5 text-[#FF8A00]" />
+            <span>Clik2Go Ride History</span>
           </div>
           <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
             My Rides
@@ -98,7 +98,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
 
         <button
           onClick={() => navigate('/book')}
-          className="px-6 py-3 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-transform hover:scale-105 flex items-center gap-2 self-start sm:self-auto"
+          className="px-6 py-3 bg-gradient-to-r from-[#FF8A00] to-[#FF9D2E] hover:from-[#FF9D2E] hover:to-[#FF8A00] text-slate-950 font-bold text-xs rounded-xl shadow-md shadow-[#FF8A00]/20 transition-transform hover:scale-105 flex items-center gap-2 self-start sm:self-auto"
         >
           <Car className="w-4 h-4" />
           <span>Book a New Ride</span>
@@ -111,7 +111,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
           <button
             onClick={() => setFilterTab('all')}
             className={`px-4 py-2 rounded-lg transition-all ${
-              filterTab === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+              filterTab === 'all' ? 'bg-[#071426] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
             All ({bookings.length})
@@ -119,7 +119,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
           <button
             onClick={() => setFilterTab('active')}
             className={`px-4 py-2 rounded-lg transition-all ${
-              filterTab === 'active' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+              filterTab === 'active' ? 'bg-[#071426] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
             Active
@@ -127,7 +127,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
           <button
             onClick={() => setFilterTab('completed')}
             className={`px-4 py-2 rounded-lg transition-all ${
-              filterTab === 'completed' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+              filterTab === 'completed' ? 'bg-[#071426] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
             Completed
@@ -135,7 +135,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
           <button
             onClick={() => setFilterTab('cancelled')}
             className={`px-4 py-2 rounded-lg transition-all ${
-              filterTab === 'cancelled' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+              filterTab === 'cancelled' ? 'bg-[#071426] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
             Cancelled
@@ -149,7 +149,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by ID or location..."
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-400 font-medium"
+            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#FF8A00] font-medium"
           />
         </div>
       </div>
@@ -166,7 +166,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
           </p>
           <button
             onClick={() => navigate('/book')}
-            className="mt-2 px-5 py-2.5 bg-slate-900 text-white font-bold text-xs rounded-xl"
+            className="mt-2 px-5 py-2.5 bg-[#071426] hover:bg-[#10243D] text-[#FF8A00] font-bold text-xs rounded-xl transition-colors border border-[#1A3353]"
           >
             Book an Auto Now
           </button>
@@ -179,7 +179,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
             return (
               <div
                 key={ride.id}
-                className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80 hover:border-amber-300 hover:shadow-md transition-all flex flex-col justify-between gap-4"
+                className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80 hover:border-[#FF8A00]/40 hover:shadow-lg transition-all flex flex-col justify-between gap-4"
               >
                 <div>
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -225,7 +225,7 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
                     </div>
                     <div>
                       <span className="text-slate-400">Fare:</span>{' '}
-                      <span className="font-black text-amber-600 text-sm">₹{ride.estimated_fare}</span>
+                      <span className="font-black text-[#FF8A00] text-sm">₹{ride.estimated_fare}</span>
                     </div>
                   </div>
                 </div>
@@ -245,10 +245,10 @@ export const MyRidesPage: React.FC<MyRidesPageProps> = ({ navigate }) => {
 
                   <button
                     onClick={() => navigate(`/booking/${ride.id}`)}
-                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition-transform hover:scale-102 flex items-center gap-1.5"
+                    className="px-4 py-2 bg-[#071426] hover:bg-[#10243D] text-white font-bold text-xs rounded-xl shadow-xs transition-transform hover:scale-102 flex items-center gap-1.5"
                   >
                     <span>View Details</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    <ArrowRight className="w-3.5 h-3.5 text-[#FF8A00]" />
                   </button>
                 </div>
               </div>

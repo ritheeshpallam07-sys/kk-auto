@@ -18,7 +18,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   if (isLoading) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3">
-        <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-[#FF8A00]" />
         <p className="text-sm font-medium text-slate-500">
           Checking authentication...
         </p>
@@ -29,7 +29,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   if (!user) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mb-4">
+        <div className="w-16 h-16 bg-[#FF8A00]/10 text-[#FF8A00] border border-[#FF8A00]/20 rounded-2xl flex items-center justify-center mb-4">
           <ShieldAlert className="w-8 h-8" />
         </div>
 
@@ -43,7 +43,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
         <button
           onClick={() => navigate('/login')}
-          className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl shadow-md transition-transform hover:scale-105"
+          className="px-6 py-2.5 bg-gradient-to-r from-[#FF8A00] to-[#FF9D2E] hover:from-[#FF9D2E] hover:to-[#FF8A00] text-slate-950 font-bold rounded-xl shadow-md shadow-[#FF8A00]/20 transition-transform hover:scale-105"
         >
           Go to Login
         </button>

@@ -9,7 +9,6 @@ import {
   ArrowRight, 
   AlertCircle, 
   Sparkles, 
-  Car, 
   ShieldCheck 
 } from 'lucide-react';
 
@@ -41,54 +40,57 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
     setIsSubmitting(false);
 
     if (res.success) {
-  if (res.data?.user?.role === 'driver') {
-  navigate('/driver');
-} else if (res.data?.user?.role === 'admin') {
-  navigate('/owner/dashboard');
-} else {
-  navigate('/dashboard');
-}
-} else {
+      if (res.data?.user?.role === 'driver') {
+        navigate('/driver');
+      } else if (res.data?.user?.role === 'admin') {
+        navigate('/owner/dashboard');
+      } else {
+        navigate('/dashboard');
+      }
+    } else {
       setError(res.error || 'Invalid credentials.');
     }
   };
 
-  
-
   return (
-    <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-slate-50">
-      <div className="max-w-md w-full space-y-8 bg-white p-8 sm:p-10 rounded-3xl shadow-xl border border-slate-100">
+    <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-[#F8FAFC]">
+      <div className="max-w-md w-full space-y-7 bg-white p-8 sm:p-10 rounded-3xl shadow-xl border border-slate-200/80">
         <div className="text-center">
           <div className="flex justify-center mb-3">
             <Logo size="md" />
           </div>
-          <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+          <h2 className="text-2xl font-black text-[#071426] tracking-tight">
             Welcome back
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Log in with your email or mobile number to manage rides
+            Log in with your email or mobile number to manage your rides
           </p>
         </div>
 
         {/* Demo Fast-Login Pills for easy testing */}
-        <div className="p-3.5 bg-amber-50/80 rounded-2xl border border-amber-200 text-xs">
-          <div className="flex items-center gap-1.5 font-bold text-amber-900 mb-2">
-            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-
+        <div className="p-3.5 bg-orange-50/80 rounded-2xl border border-orange-200/80 text-xs">
+          <div className="flex items-center gap-1.5 font-bold text-[#071426] mb-2">
+            <Sparkles className="w-3.5 h-3.5 text-[#FF8A00]" />
+            <span className="text-[11px] uppercase tracking-wide">Quick Role Access</span>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              className="px-2 py-1.5 bg-white hover:bg-amber-100 rounded-lg border border-amber-300 font-semibold text-[11px] text-slate-800 text-center shadow-2xs transition-colors"
+              onClick={() => {
+                setIdentifier('customer@example.com');
+                setPassword('password123');
+              }}
+              className="px-2.5 py-1.5 bg-white hover:bg-orange-100/70 rounded-xl border border-orange-200 font-bold text-[11px] text-slate-800 text-center shadow-2xs transition-colors"
             >
               👤 Customer
             </button>
-            
-            
-            
             <button
               type="button"
-              className="px-2 py-1.5 bg-white hover:bg-amber-100 rounded-lg border border-amber-300 font-semibold text-[11px] text-slate-800 text-center shadow-2xs transition-colors"
+              onClick={() => {
+                setIdentifier('driver@example.com');
+                setPassword('password123');
+              }}
+              className="px-2.5 py-1.5 bg-white hover:bg-orange-100/70 rounded-xl border border-orange-200 font-bold text-[11px] text-slate-800 text-center shadow-2xs transition-colors"
             >
               🛺 Driver
             </button>
@@ -114,10 +116,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 placeholder="name@email.com or 9876543210"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8A00] bg-slate-50/50 focus:bg-white"
                 required
               />
-
             </div>
           </div>
 
@@ -129,7 +130,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
               <button
                 type="button"
                 onClick={() => setForgotModalOpen(true)}
-                className="text-xs font-medium text-amber-600 hover:text-amber-700 hover:underline"
+                className="text-xs font-semibold text-[#FF8A00] hover:text-[#E67600] hover:underline"
               >
                 Forgot Password?
               </button>
@@ -137,34 +138,32 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
             <div className="relative">
               <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
               <input
-                type={showPassword ? 'text' : 'password'}              
-                autoComplete="new-password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter password"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8A00] bg-slate-50/50 focus:bg-white"
                 required
               />
-
               <button
-  type="button"
-  onClick={() => setShowPassword(!showPassword)}
-  className="absolute right-3.5 top-2.5 text-slate-400 hover:text-slate-600"
->
-  {showPassword ? (
-    <EyeOff className="w-4 h-4" />
-  ) : (
-    <Eye className="w-4 h-4" />
-  )}
-</button>
-              
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3.5 top-2.5 text-slate-400 hover:text-slate-600"
+              >
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </button>
             </div>
           </div>
 
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-3 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-sm rounded-xl shadow-md transition-all hover:scale-102 flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full py-3.5 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-sm rounded-xl shadow-glow-orange transition-all hover:scale-102 flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {isSubmitting ? (
               <span>Logging in...</span>
@@ -182,7 +181,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
           <button
             type="button"
             onClick={() => navigate('/register')}
-            className="font-bold text-amber-600 hover:text-amber-700 underline"
+            className="font-bold text-[#FF8A00] hover:text-[#E67600] underline"
           >
             Create Account
           </button>
@@ -191,18 +190,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
 
       {/* Forgot password simulated modal */}
       {forgotModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 text-center">
-            <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 mx-auto flex items-center justify-center mb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#071426]/70 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-sm w-full shadow-2xl border border-slate-100 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-orange-100 text-[#FF8A00] mx-auto flex items-center justify-center mb-3">
               <Lock className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-bold text-slate-900 mb-1">Reset Password</h3>
-            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
-              In this development environment, use the 1-click test credentials or create a new account with your phone number.
+            <h3 className="text-base font-black text-[#071426] mb-1">Reset Password</h3>
+            <p className="text-xs text-slate-600 mb-5 leading-relaxed">
+              Use your registered mobile number or email address with the verification code to reset your account credentials.
             </p>
             <button
               onClick={() => setForgotModalOpen(false)}
-              className="w-full py-2 bg-slate-900 text-white font-bold text-xs rounded-xl"
+              className="w-full py-2.5 bg-[#071426] hover:bg-[#10243D] text-white font-bold text-xs rounded-xl"
             >
               Got it
             </button>

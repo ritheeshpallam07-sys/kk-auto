@@ -48,29 +48,89 @@ export class RouteService {
       };
     }
 
+    // 1. Direct match in fare_routes table
     const res = await query<{ fare: number; from_location: string; to_location: string; is_active: boolean }>(
       `SELECT fare, from_location, to_location, is_active
-       FROM fare_routes 
-       WHERE LOWER(TRIM(from_location)) = LOWER(TRIM($1)) 
+       FROM fare_routes
+       WHERE LOWER(TRIM(from_location)) = LOWER(TRIM($1))
          AND LOWER(TRIM(to_location)) = LOWER(TRIM($2))
          AND is_active = TRUE
        LIMIT 1`,
       [fromClean, toClean]
     );
 
-    if (res.rows.length === 0) {
+    if (res.rows.length > 0) {
+      const row = res.rows[0];
       return {
-        available: false,
-        error: 'Sorry, this route is currently unavailable.'
+        available: true,
+        fare: Number(row.fare),
+        fromLocation: row.from_location,
+        toLocation: row.to_location
       };
     }
 
-    const row = res.rows[0];
+    // 2. Reverse route match in fare_routes (preserves existing reverse-route pricing rules)
+    const revRes = await query<{ fare: number; from_location: string; to_location: string; is_active: boolean }>(
+      `SELECT fare, from_location, to_location, is_active
+       FROM fare_routes
+       WHERE LOWER(TRIM(from_location)) = LOWER(TRIM($2))
+         AND LOWER(TRIM(to_location)) = LOWER(TRIM($1))
+         AND is_active = TRUE
+       LIMIT 1`,
+      [fromClean, toClean]
+    );
+
+    if (revRes.rows.length > 0) {
+      const row = revRes.rows[0];
+      return {
+        available: true,
+        fare: Number(row.fare),
+        fromLocation: row.from_location,
+        toLocation: row.to_location
+      };
+    }
+
+    // 3. Address substring match (for Google Maps full formatted addresses)
+    const allRoutes = await query<{ fare: number; from_location: string; to_location: string; is_active: boolean }>(
+      `SELECT fare, from_location, to_location, is_active FROM fare_routes WHERE is_active = TRUE`
+    );
+
+    for (const r of allRoutes.rows) {
+      const fromFmt = r.from_location.toLowerCase().trim();
+      const toFmt = r.to_location.toLowerCase().trim();
+      const fromUser = fromClean.toLowerCase();
+      const toUser = toClean.toLowerCase();
+
+      // Forward substring match
+      if (
+        (fromUser.includes(fromFmt) || fromFmt.includes(fromUser)) &&
+        (toUser.includes(toFmt) || toFmt.includes(toUser))
+      ) {
+        return {
+          available: true,
+          fare: Number(r.fare),
+          fromLocation: r.from_location,
+          toLocation: r.to_location
+        };
+      }
+
+      // Reverse substring match
+      if (
+        (fromUser.includes(toFmt) || toFmt.includes(fromUser)) &&
+        (toUser.includes(fromFmt) || fromFmt.includes(toUser))
+      ) {
+        return {
+          available: true,
+          fare: Number(r.fare),
+          fromLocation: r.from_location,
+          toLocation: r.to_location
+        };
+      }
+    }
+
     return {
-      available: true,
-      fare: Number(row.fare),
-      fromLocation: row.from_location,
-      toLocation: row.to_location
+      available: false,
+      error: 'Fare not configured for this route. Please contact the admin.'
     };
   }
 
@@ -91,8 +151,8 @@ export class RouteService {
    */
   public static async updateRouteFare(id: number, fare: number): Promise<FareRouteRecord> {
     const res = await query<FareRouteRecord>(
-      `UPDATE fare_routes 
-       SET fare = $1, updated_at = CURRENT_TIMESTAMP 
+      `UPDATE fare_routes
+       SET fare = $1, updated_at = CURRENT_TIMESTAMP
        WHERE id = $2 RETURNING *`,
       [fare, id]
     );
@@ -147,7 +207,7 @@ export class RouteService {
     const res = await query<FareRouteRecord>(
       `INSERT INTO fare_routes (from_location, to_location, fare, is_active, updated_at)
        VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP)
-       ON CONFLICT (from_location, to_location) 
+       ON CONFLICT (from_location, to_location)
        DO UPDATE SET fare = EXCLUDED.fare, is_active = TRUE, updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
       [fromClean, toClean, fare]

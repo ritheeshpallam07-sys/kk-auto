@@ -23,6 +23,7 @@ export interface TripBooking {
   updated_at: string;
   customer_account_email?: string;
   payment_session_id?: string;
+  environment?: 'sandbox' | 'production';
 }
 
 export interface CreateTripBookingInput {
@@ -37,6 +38,18 @@ export interface CreateTripBookingInput {
 
 export class TripBookingService {
   /**
+   * Helper to determine Cashfree environment
+   */
+  public static isProductionEnvironment(): boolean {
+    const appId = process.env.CASHFREE_APP_ID || '';
+    return (
+      process.env.CASHFREE_ENVIRONMENT === 'production' ||
+      process.env.CASHFREE_ENV === 'production' ||
+      (process.env.NODE_ENV === 'production' && !appId.startsWith('TEST'))
+    );
+  }
+
+  /**
    * Helper to lazily instantiate Cashfree SDK client
    */
   private static getCashfreeClient(): Cashfree | null {
@@ -45,7 +58,12 @@ export class TripBookingService {
     if (!appId || !secretKey) {
       return null;
     }
-    const client = new Cashfree(CFEnvironment.PRODUCTION, appId, secretKey);
+    const isProd = this.isProductionEnvironment();
+    const client = new Cashfree(
+      isProd ? CFEnvironment.PRODUCTION : CFEnvironment.SANDBOX,
+      appId,
+      secretKey
+    );
     client.XApiVersion = '2025-01-01';
     return client;
   }
@@ -334,7 +352,8 @@ export class TripBookingService {
       return {
         ...trip,
         payment_reference: orderId,
-        payment_session_id: cashfreeOrder.payment_session_id
+        payment_session_id: cashfreeOrder.payment_session_id,
+        environment: this.isProductionEnvironment() ? 'production' : 'sandbox'
       };
     } catch (err: any) {
       console.error(

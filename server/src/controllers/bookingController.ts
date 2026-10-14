@@ -33,45 +33,68 @@ export class BookingController {
         });
       }
 
+      if (fromLoc.toLowerCase().trim() === toLoc.toLowerCase().trim()) {
+        return res.status(400).json({
+          success: false,
+          available: false,
+          error: 'Pickup and destination cannot be the same location.'
+        });
+      }
+
+      // 1. Check fixed route in database fare_routes table first
+      const fixedResult = await RouteService.getRouteFare(fromLoc, toLoc);
+      if (fixedResult.available && fixedResult.fare !== undefined) {
+        return res.json({
+          success: true,
+          data: {
+            available: true,
+            pickupAddress: fixedResult.fromLocation || fromLoc,
+            destinationAddress: fixedResult.toLocation || toLoc,
+            passengers,
+            estimatedFare: Number(fixedResult.fare) * passengers
+          }
+        });
+      }
+
+      // 2. Fallback: GPS coordinate area calculation if coordinates provided
       const pickupLatitude = Number(req.body.pickupLatitude);
       const pickupLongitude = Number(req.body.pickupLongitude);
       const destinationLatitude = Number(req.body.destinationLatitude);
       const destinationLongitude = Number(req.body.destinationLongitude);
 
-      console.log('FARE REQUEST:', {
-  fromLoc,
-  toLoc,
-  pickupLatitude: req.body.pickupLatitude,
-  pickupLongitude: req.body.pickupLongitude,
-  destinationLatitude: req.body.destinationLatitude,
-  destinationLongitude: req.body.destinationLongitude,
-});
+      if (
+        Number.isFinite(pickupLatitude) &&
+        Number.isFinite(pickupLongitude) &&
+        Number.isFinite(destinationLatitude) &&
+        Number.isFinite(destinationLongitude)
+      ) {
+        const result = await FareService.calculateFare(
+          fromLoc,
+          toLoc,
+          pickupLatitude,
+          pickupLongitude,
+          destinationLatitude,
+          destinationLongitude
+        );
 
-const result = await FareService.calculateFare(
-  fromLoc,
-  toLoc,
-  Number.isFinite(pickupLatitude) ? pickupLatitude : undefined,
-  Number.isFinite(pickupLongitude) ? pickupLongitude : undefined,
-  Number.isFinite(destinationLatitude) ? destinationLatitude : undefined,
-  Number.isFinite(destinationLongitude) ? destinationLongitude : undefined
-);
-
-      if (!result.available) {
-        return res.status(404).json({
-          success: false,
-          available: false,
-          error: result.error || 'Sorry, this route is currently unavailable.'
-        });
+        if (result.available && result.fare !== undefined) {
+          return res.json({
+            success: true,
+            data: {
+              available: true,
+              pickupAddress: result.fromLocation || fromLoc,
+              destinationAddress: result.toLocation || toLoc,
+              passengers,
+              estimatedFare: (result.fare ?? 0) * passengers
+            }
+          });
+        }
       }
 
-      return res.json({
-        success: true,
-        data: {
-          available: true,
-          pickupAddress: result.fromLocation,
-          destinationAddress: result.toLocation,
-          passengers,
-          estimatedFare: (result.fare ?? 0) * passengers        }
+      return res.status(404).json({
+        success: false,
+        available: false,
+        error: 'Fare not configured for this route. Please contact the admin.'
       });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message });
@@ -96,7 +119,11 @@ const result = await FareService.calculateFare(
         return res.status(400).json({ success: false, error: 'Pickup and destination locations are required.' });
       }
 
-      
+      if (pickupAddress.toLowerCase().trim() === destinationAddress.toLowerCase().trim()) {
+        return res.status(400).json({ success: false, error: 'Pickup and destination cannot be the same location.' });
+      }
+
+
 
       const numPassengers = Math.min(4, Math.max(1, Number(passengers) || 1));
 
@@ -114,44 +141,79 @@ const result = await FareService.calculateFare(
       // Generate unique Booking Reference (KK-XXXXXX)
       const randomCode = Math.floor(100000 + Math.random() * 900000);
       const bookingReference = `KK-${randomCode}`;
-      const pickupLatitude = Number(req.body.pickupLatitude);
-const pickupLongitude = Number(req.body.pickupLongitude);
-const destinationLatitude = Number(req.body.destinationLatitude);
-const destinationLongitude = Number(req.body.destinationLongitude);
+      let pickupLatitude = Number(req.body.pickupLatitude);
+      let pickupLongitude = Number(req.body.pickupLongitude);
+      let destinationLatitude = Number(req.body.destinationLatitude);
+      let destinationLongitude = Number(req.body.destinationLongitude);
 
-if (
-  !Number.isFinite(pickupLatitude) ||
-  !Number.isFinite(pickupLongitude) ||
-  !Number.isFinite(destinationLatitude) ||
-  !Number.isFinite(destinationLongitude)
-) {
-  return res.status(400).json({
-    success: false,
-    error: 'Valid pickup and destination GPS locations are required.'
-  });
-}
+      const FALLBACK_COORDS: Record<string, { lat: number; lng: number }> = {
+        'jntua': { lat: 13.6508, lng: 78.7860 },
+        'cross': { lat: 13.6525, lng: 78.8035 },
+        'bus stand': { lat: 13.6455, lng: 78.8035 },
+        'marava': { lat: 13.6408, lng: 78.8010 }
+      };
 
-const fareResult = await FareService.calculateFare(
-  pickupAddress,
-  destinationAddress,
-  pickupLatitude,
-  pickupLongitude,
-  destinationLatitude,
-  destinationLongitude
-);
+      if (!Number.isFinite(pickupLatitude)) {
+        const key = pickupAddress.toLowerCase().trim();
+        if (FALLBACK_COORDS[key]) {
+          pickupLatitude = FALLBACK_COORDS[key].lat;
+          pickupLongitude = FALLBACK_COORDS[key].lng;
+        }
+      }
 
-if (!fareResult.available || fareResult.fare === undefined) {
-  return res.status(400).json({
-    success: false,
-    error: fareResult.error || 'Unable to calculate fare for this route.'
-  });
-}
+      if (!Number.isFinite(destinationLatitude)) {
+        const key = destinationAddress.toLowerCase().trim();
+        if (FALLBACK_COORDS[key]) {
+          destinationLatitude = FALLBACK_COORDS[key].lat;
+          destinationLongitude = FALLBACK_COORDS[key].lng;
+        }
+      }
 
-const estimatedFare = Number(fareResult.fare) * numPassengers;
-const pickupAreaName = fareResult.fromLocation;
-const destinationAreaName = fareResult.toLocation;
+      let estimatedFare: number;
+      let pickupAreaName: string | undefined;
+      let destinationAreaName: string | undefined;
 
-      
+      // 1. Check fixed route in database first
+      const fixedRoute = await RouteService.getRouteFare(pickupAddress, destinationAddress);
+      if (fixedRoute.available && fixedRoute.fare !== undefined) {
+        estimatedFare = Number(fixedRoute.fare) * numPassengers;
+        pickupAreaName = fixedRoute.fromLocation || pickupAddress;
+        destinationAreaName = fixedRoute.toLocation || destinationAddress;
+      } else {
+        // 2. Fallback GPS check
+        if (
+          !Number.isFinite(pickupLatitude) ||
+          !Number.isFinite(pickupLongitude) ||
+          !Number.isFinite(destinationLatitude) ||
+          !Number.isFinite(destinationLongitude)
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: fixedRoute.error || 'Valid pickup and destination locations are required.'
+          });
+        }
+
+        const fareResult = await FareService.calculateFare(
+          pickupAddress,
+          destinationAddress,
+          pickupLatitude,
+          pickupLongitude,
+          destinationLatitude,
+          destinationLongitude
+        );
+
+        if (!fareResult.available || fareResult.fare === undefined) {
+          return res.status(400).json({
+            success: false,
+            error: 'Fare not configured for this route. Please contact the admin.'
+          });
+        }
+
+        estimatedFare = Number(fareResult.fare) * numPassengers;
+        pickupAreaName = fareResult.fromLocation;
+        destinationAreaName = fareResult.toLocation;
+      }
+
 const insertResult = await query(
   `INSERT INTO bookings (
     booking_reference,
@@ -218,7 +280,7 @@ const insertResult = await query(
     try {
       const user = req.user!;
       let sql = `
-        SELECT b.*, 
+        SELECT b.*,
                u.name as customer_name, u.mobile as customer_mobile,
                d.auto_number, d.auto_model,
                du.name as driver_name, du.mobile as driver_mobile
@@ -263,7 +325,7 @@ const insertResult = await query(
       const lookupField = isNumeric ? 'b.id' : 'b.booking_reference';
 
       const resBooking = await query(
-        `SELECT b.*, 
+        `SELECT b.*,
                 u.name as customer_name, u.mobile as customer_mobile, u.email as customer_email,
                 d.auto_number, d.auto_model, d.license_number,
                 du.name as driver_name, du.mobile as driver_mobile

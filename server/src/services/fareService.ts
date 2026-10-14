@@ -138,26 +138,17 @@ export class FareService {
       pickupLongitude
     );
 
-    if (!pickupArea) {
-      return {
-        available: false,
-        fromLocation,
-        toLocation,
-        error: 'Pickup location is outside our service areas.'
-      };
-    }
-
     const destinationArea = await this.findAreaByCoordinates(
       destinationLatitude,
       destinationLongitude
     );
 
-    if (!destinationArea) {
+    if (!pickupArea || !destinationArea) {
       return {
         available: false,
         fromLocation,
         toLocation,
-        error: 'Destination location is outside our service areas.'
+        error: 'Fare not configured for this route. Please contact the admin.'
       };
     }
 
@@ -166,11 +157,11 @@ export class FareService {
         available: false,
         fromLocation: pickupArea.name,
         toLocation: destinationArea.name,
-        error: 'Pickup and destination are inside the same fare area.'
+        error: 'Fare not configured for this route. Please contact the admin.'
       };
     }
 
-    const fareResult = await query<{ fare: number }>(
+    let fareResult = await query<{ fare: number }>(
       `SELECT fare
        FROM area_fares
        WHERE pickup_area_id = $1
@@ -180,12 +171,25 @@ export class FareService {
       [pickupArea.id, destinationArea.id]
     );
 
+    // Also check reverse route in area_fares if forward not found
+    if (fareResult.rows.length === 0) {
+      fareResult = await query<{ fare: number }>(
+        `SELECT fare
+         FROM area_fares
+         WHERE pickup_area_id = $2
+           AND destination_area_id = $1
+           AND is_active = TRUE
+         LIMIT 1`,
+        [pickupArea.id, destinationArea.id]
+      );
+    }
+
     if (fareResult.rows.length === 0) {
       return {
         available: false,
         fromLocation: pickupArea.name,
         toLocation: destinationArea.name,
-        error: 'Fare is not configured for this route yet.'
+        error: 'Fare not configured for this route. Please contact the admin.'
       };
     }
 
