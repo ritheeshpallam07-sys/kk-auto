@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { SplashScreen } from './components/SplashScreen';
 
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
@@ -16,11 +17,16 @@ import { DriverDashboard } from './pages/DriverDashboard';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { ProfilePage } from './pages/ProfilePage';
 import { VerifyEmailPage } from './pages/VerifyEmailPage';
+import { TermsAcceptancePage } from './pages/TermsAcceptancePage';
 
 export const App: React.FC = () => {
   const [currentPath, setCurrentPath] = useState<string>(
     () => window.location.pathname || '/'
   );
+
+  const [showSplash, setShowSplash] = useState<boolean>(() => {
+    return !sessionStorage.getItem('kk_splash_seen');
+  });
 
   useEffect(() => {
     const onPopState = () => {
@@ -63,6 +69,18 @@ export const App: React.FC = () => {
     }
     if (currentPath === '/verify-email') {
       return <VerifyEmailPage navigate={navigate} />;
+    }
+
+    if (currentPath === '/accept-terms') {
+      return (
+        <ProtectedRoute
+          allowedRoles={['customer', 'driver', 'admin']}
+          navigate={navigate}
+          skipTermsCheck={true}
+        >
+          <TermsAcceptancePage navigate={navigate} />
+        </ProtectedRoute>
+      );
     }
 
     // =========================
@@ -188,30 +206,26 @@ export const App: React.FC = () => {
     }
 
     // =========================
-    // OLD ADMIN ROUTE
-    // =========================
-
-    
-
-    // =========================
     // 404
     // =========================
 
     return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center">
-        <div className="text-4xl mb-3">🛺</div>
+      <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center bg-[#0B0B0D] text-white">
+        <div className="w-14 h-14 rounded-2xl bg-[#171719] border border-[#303034] text-[#C6FF3D] flex items-center justify-center text-3xl mb-4 shadow-subtle">
+          🛺
+        </div>
 
-        <h2 className="text-2xl font-black text-slate-900 mb-2">
+        <h2 className="text-2xl font-bold text-white mb-2">
           Page Not Found
         </h2>
 
-        <p className="text-xs text-slate-500 mb-6">
-          The page you requested does not exist.
+        <p className="text-sm text-[#A1A1AA] mb-6 max-w-sm">
+          The page you requested does not exist or has been moved.
         </p>
 
         <button
           onClick={() => navigate('/')}
-          className="px-6 py-2.5 bg-slate-900 text-white font-bold text-xs rounded-xl"
+          className="px-6 py-2.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs rounded-xl shadow-glow-lime transition-all"
         >
           Go to Home
         </button>
@@ -221,9 +235,19 @@ export const App: React.FC = () => {
 
   return (
     <AuthProvider>
-      <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans">
+      <div className="min-h-screen flex flex-col bg-[#0B0B0D] text-white font-sans antialiased">
 
-        {/* Hide normal navigation inside private Owner portal */}
+        {/* Splash screen on fresh browser open */}
+        {showSplash && (
+          <SplashScreen
+            onComplete={() => {
+              sessionStorage.setItem('kk_splash_seen', 'true');
+              setShowSplash(false);
+            }}
+          />
+        )}
+
+        {/* Top Navbar */}
         {!isOwnerRoute && (
           <Navbar
             currentPath={currentPath}
@@ -235,7 +259,7 @@ export const App: React.FC = () => {
           {renderContent()}
         </main>
 
-        {/* Hide normal footer inside private Owner portal */}
+        {/* Footer */}
         {!isOwnerRoute && (
           <Footer navigate={navigate} />
         )}

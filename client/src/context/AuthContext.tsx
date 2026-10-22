@@ -5,19 +5,22 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
-login: (identifier: string, pass: string) => Promise<{
-  success: boolean;
-  error?: string;
-  data?: {
-    user: User;
-    token: string;
-  };
-}>;  register: (data: any) => Promise<{
-  success: boolean;
-  error?: string;
-  requiresVerification?: boolean;
-  email?: string;
-}>;
+  hasAcceptedTerms: boolean;
+  acceptTerms: (version?: string) => Promise<boolean>;
+  login: (identifier: string, pass: string) => Promise<{
+    success: boolean;
+    error?: string;
+    data?: {
+      user: User;
+      token: string;
+    };
+  }>;
+  register: (data: any) => Promise<{
+    success: boolean;
+    error?: string;
+    requiresVerification?: boolean;
+    email?: string;
+  }>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   isCustomer: boolean;
@@ -129,6 +132,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const TERMS_CURRENT_VERSION = '1.0';
+
+  const hasAcceptedTerms = Boolean(
+    (user?.terms_version === TERMS_CURRENT_VERSION) ||
+    (user?.id && localStorage.getItem(`kk_terms_accepted_${user.id}`) === TERMS_CURRENT_VERSION)
+  );
+
+  const acceptTerms = async (version: string = TERMS_CURRENT_VERSION): Promise<boolean> => {
+    try {
+      const res = await api.auth.acceptTerms(version);
+      if (res.success && res.data) {
+        setUser(res.data);
+      } else if (user) {
+        setUser({
+          ...user,
+          terms_version: version,
+          terms_accepted_at: new Date().toISOString()
+        });
+      }
+      if (user?.id) {
+        localStorage.setItem(`kk_terms_accepted_${user.id}`, version);
+      }
+      return true;
+    } catch {
+      if (user) {
+        setUser({
+          ...user,
+          terms_version: version,
+          terms_accepted_at: new Date().toISOString()
+        });
+        localStorage.setItem(`kk_terms_accepted_${user.id}`, version);
+        return true;
+      }
+      return false;
+    }
+  };
+
   const isCustomer = user?.role === 'customer';
   const isDriver = user?.role === 'driver';
   const isAdmin = user?.role === 'admin';
@@ -139,6 +179,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         token,
         isLoading,
+        hasAcceptedTerms,
+        acceptTerms,
         login,
         register,
         logout,

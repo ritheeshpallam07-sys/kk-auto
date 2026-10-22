@@ -36,7 +36,7 @@ interface AdminDashboardProps {
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'drivers' | 'settlements' | 'routes' | 'commission' | 'bookings' | 'tripBookings' |'ratings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'drivers' | 'settlements' | 'routes' | 'commission' | 'bookings' | 'tripBookings' | 'ratings'>('overview');
   
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [financials, setFinancials] = useState<PlatformFinancials | null>(null);
@@ -53,10 +53,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+
   // Route editing state
   const [editingFares, setEditingFares] = useState<Record<number, number>>({});
   const [isSavingFare, setIsSavingFare] = useState<number | null>(null);
-  const [fareMessage, setFareMessage] = useState<string | null>(null);
 
   // New route form state
   const [newFrom, setNewFrom] = useState('');
@@ -80,15 +80,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
     setIsLoading(true);
     try {
       const [dashRes, bookRes, drivRes, setlRes, commRes, finRes, tripRes, ratRes] = await Promise.all([
-  api.admin.getDashboard(),
-  api.admin.getAllBookings(),
-  api.admin.getDrivers(),
-  api.admin.getSettlements(),
-  api.admin.getCommission(),
-  api.admin.getFinancials(),
-  api.tripBookings.getAllOwner(),
-  api.admin.getDriverRatings()
-]);
+        api.admin.getDashboard(),
+        api.admin.getAllBookings(),
+        api.admin.getDrivers(),
+        api.admin.getSettlements(),
+        api.admin.getCommission(),
+        api.admin.getFinancials(),
+        api.tripBookings.getAllOwner(),
+        api.admin.getDriverRatings()
+      ]);
 
       if (dashRes.success && dashRes.data) {
         setStats(dashRes.data);
@@ -117,30 +117,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
       if (setlRes.success && setlRes.data) {
         setSettlements(setlRes.data);
       }
+
       if (ratRes.success && ratRes.data) {
-  setDriverRatings(
-    Array.isArray(ratRes.data)
-      ? ratRes.data
-      : (ratRes.data as any).data || []
-  );
-}
+        setDriverRatings(
+          Array.isArray(ratRes.data)
+            ? ratRes.data
+            : (ratRes.data as any).data || []
+        );
+      }
 
       if (commRes.success && commRes.data) {
         setCommissionInput(commRes.data.commissionPerTrip);
       }
+
       if (tripRes.success && tripRes.data) {
-  setTripBookings(tripRes.data);
-
-  const quoteInputs: Record<number, number> = {};
-
-  tripRes.data.forEach((trip) => {
-    if (trip.quoted_price !== null && trip.quoted_price !== undefined) {
-      quoteInputs[trip.id] = trip.quoted_price;
-    }
-  });
-
-  setTripQuoteInputs(quoteInputs);
-}
+        setTripBookings(tripRes.data);
+        const quoteInputs: Record<number, number> = {};
+        tripRes.data.forEach((trip) => {
+          if (trip.quoted_price !== null && trip.quoted_price !== undefined) {
+            quoteInputs[trip.id] = trip.quoted_price;
+          }
+        });
+        setTripQuoteInputs(quoteInputs);
+      }
     } catch (err: any) {
       console.error(err);
     } finally {
@@ -239,31 +238,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
   };
 
   const handleUpdateTrip = async (
-  tripId: number,
-  data: { quotedPrice?: number; status?: string }
-) => {
-  const res = await api.tripBookings.updateByOwner(tripId, data);
+    tripId: number,
+    data: { quotedPrice?: number; status?: string }
+  ) => {
+    const res = await api.tripBookings.updateByOwner(tripId, data);
+    if (res.success) {
+      showToast('Trip booking updated successfully');
+      loadAllData();
+    } else {
+      showToast(`Error: ${res.error}`);
+    }
+  };
 
-  if (res.success) {
-    showToast('Trip booking updated successfully');
-    loadAllData();
-  } else {
-    showToast(`Error: ${res.error}`);
-  }
-};
-
-const handleSaveTripQuote = async (tripId: number) => {
-  const quote = tripQuoteInputs[tripId];
-
-  if (quote === undefined || isNaN(quote) || quote < 0) {
-    showToast('Enter a valid quoted price');
-    return;
-  }
-
-  await handleUpdateTrip(tripId, {
-    quotedPrice: Number(quote)
-  });
-};
+  const handleSaveTripQuote = async (tripId: number) => {
+    const quote = tripQuoteInputs[tripId];
+    if (quote === undefined || isNaN(quote) || quote < 0) {
+      showToast('Enter a valid quoted price');
+      return;
+    }
+    await handleUpdateTrip(tripId, { quotedPrice: Number(quote) });
+  };
 
   const filteredBookings = bookings.filter((b) => {
     if (statusFilter !== 'all' && b.status !== statusFilter) return false;
@@ -280,68 +274,69 @@ const handleSaveTripQuote = async (tripId: number) => {
   });
 
   if (isLoading) {
-    return <div className="py-20 text-center text-xs text-slate-400">Loading Owner/Admin Console...</div>;
+    return <div className="py-20 text-center text-xs text-[#A1A1AA]">Loading Owner/Admin Console...</div>;
   }
 
   const m = stats?.metrics;
   const fin = financials || stats?.financials;
 
   return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-8 space-y-5 sm:space-y-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8 bg-[#0B0B0D] text-white safe-bottom">
       {/* Title Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-[#303034]">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-100 text-[#071426] text-xs font-bold uppercase mb-2">
-            <Shield className="w-3.5 h-3.5 text-[#FF8A00]" />
-            <span>Clik2Go Owner & Platform Control</span>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#171719] border border-[#303034] text-white text-xs font-bold uppercase mb-2">
+            <span className="w-2 h-2 rounded-full bg-[#C6FF3D]" />
+            <Shield className="w-3.5 h-3.5 text-[#C6FF3D]" />
+            <span>Clik2Go Admin Console</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-[#071426] tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
             Owner Management Console
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-[#A1A1AA] mt-1">
             Manage driver verifications, fixed routes, platform commission, marketplace payouts, live rides, and outstation trips.
           </p>
         </div>
 
         <button
           onClick={loadAllData}
-          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors self-start sm:self-auto min-h-[40px]"
+          className="px-4 py-2 bg-[#171719] hover:bg-[#26262A] text-white text-xs font-bold rounded-xl border border-[#303034] flex items-center gap-1.5 transition-colors self-start sm:self-auto min-h-[40px] shadow-xs"
         >
-          <RefreshCw className="w-3.5 h-3.5 text-[#FF8A00]" />
+          <RefreshCw className="w-3.5 h-3.5 text-[#C6FF3D]" />
           <span>Refresh Data</span>
         </button>
       </div>
 
       {/* Global Toast Message */}
       {toastMessage && (
-        <div className="p-3.5 rounded-2xl bg-[#071426] text-white text-xs font-bold shadow-lg flex items-center justify-between animate-in fade-in duration-150 border border-[#1A3353]">
+        <div className="p-4 rounded-2xl bg-[#171717] text-white text-xs font-bold shadow-elevated flex items-center justify-between animate-in fade-in duration-150">
           <span>{toastMessage}</span>
-          <button onClick={() => setToastMessage(null)} className="text-slate-400 hover:text-white p-1">✕</button>
+          <button onClick={() => setToastMessage(null)} className="text-[#A1A1AA] hover:text-white p-1">✕</button>
         </div>
       )}
 
       {/* TABS CONTROLLER NAVIGATION */}
-      <div className="flex flex-wrap gap-1.5 sm:gap-2 p-1.5 bg-slate-100 rounded-2xl text-xs font-bold border border-slate-200/60">
+      <div className="flex flex-wrap gap-2 p-1.5 bg-[#171719] rounded-2xl text-xs font-bold border border-[#303034]">
         <button
           onClick={() => setActiveTab('overview')}
-          className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'overview' ? 'bg-[#071426] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+          className={`px-3.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'overview' ? 'bg-[#C6FF3D] text-[#0B0B0D] font-black shadow-glow-lime' : 'text-[#A1A1AA] hover:text-white'
           }`}
         >
-          <Layers className="w-3.5 h-3.5 text-[#FF8A00]" />
+          <Layers className="w-3.5 h-3.5 text-[#C6FF3D]" />
           <span>Overview & Financials</span>
         </button>
 
         <button
           onClick={() => setActiveTab('drivers')}
-          className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'drivers' ? 'bg-[#071426] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+          className={`px-3.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'drivers' ? 'bg-[#C6FF3D] text-[#0B0B0D] font-black shadow-glow-lime' : 'text-[#A1A1AA] hover:text-white'
           }`}
         >
-          <Car className="w-3.5 h-3.5 text-[#FF8A00]" />
+          <Car className="w-3.5 h-3.5 text-[#C6FF3D]" />
           <span>Driver Management</span>
           {m?.pendingDrivers && m.pendingDrivers > 0 ? (
-            <span className="px-1.5 py-0.5 bg-[#FF8A00] text-[#071426] rounded-full text-[10px] font-black">
+            <span className="px-1.5 py-0.5 bg-[#C6FF3D] text-[#0B0B0D] font-black rounded-full text-[10px] font-black">
               {m.pendingDrivers}
             </span>
           ) : null}
@@ -349,40 +344,38 @@ const handleSaveTripQuote = async (tripId: number) => {
 
         <button
           onClick={() => setActiveTab('settlements')}
-          className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'settlements' ? 'bg-[#071426] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+          className={`px-3.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'settlements' ? 'bg-[#C6FF3D] text-[#0B0B0D] font-black shadow-glow-lime' : 'text-[#A1A1AA] hover:text-white'
           }`}
         >
-          <CreditCard className="w-3.5 h-3.5 text-[#FF8A00]" />
+          <CreditCard className="w-3.5 h-3.5 text-[#C6FF3D]" />
           <span>Payout Settlements</span>
         </button>
 
         <button
           onClick={() => setActiveTab('routes')}
-          className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'routes' ? 'bg-[#071426] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+          className={`px-3.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'routes' ? 'bg-[#C6FF3D] text-[#0B0B0D] font-black shadow-glow-lime' : 'text-[#A1A1AA] hover:text-white'
           }`}
         >
-          <Sliders className="w-3.5 h-3.5 text-[#FF8A00]" />
+          <Sliders className="w-3.5 h-3.5 text-[#C6FF3D]" />
           <span>Fixed Routes & Fares</span>
         </button>
 
         <button
           onClick={() => setActiveTab('commission')}
-          className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'commission' ? 'bg-[#071426] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+          className={`px-3.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'commission' ? 'bg-[#C6FF3D] text-[#0B0B0D] font-black shadow-glow-lime' : 'text-[#A1A1AA] hover:text-white'
           }`}
         >
-          <Percent className="w-3.5 h-3.5 text-[#FF8A00]" />
+          <Percent className="w-3.5 h-3.5 text-[#C6FF3D]" />
           <span>Commission Settings</span>
         </button>
 
         <button
           onClick={() => setActiveTab('tripBookings')}
-          className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'tripBookings'
-              ? 'bg-[#071426] text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
+          className={`px-3.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'tripBookings' ? 'bg-[#C6FF3D] text-[#0B0B0D] font-black shadow-glow-lime' : 'text-[#A1A1AA] hover:text-white'
           }`}
         >
           <span>🚗</span>
@@ -391,22 +384,18 @@ const handleSaveTripQuote = async (tripId: number) => {
 
         <button
           onClick={() => setActiveTab('bookings')}
-          className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'bookings'
-              ? 'bg-[#071426] text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
+          className={`px-3.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'bookings' ? 'bg-[#C6FF3D] text-[#0B0B0D] font-black shadow-glow-lime' : 'text-[#A1A1AA] hover:text-white'
           }`}
         >
-          <Calendar className="w-3.5 h-3.5 text-[#FF8A00]" />
+          <Calendar className="w-3.5 h-3.5 text-[#C6FF3D]" />
           <span>All Bookings ({bookings.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('ratings')}
-          className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'ratings'
-              ? 'bg-[#071426] text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
+          className={`px-3.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'ratings' ? 'bg-[#C6FF3D] text-[#0B0B0D] font-black shadow-glow-lime' : 'text-[#A1A1AA] hover:text-white'
           }`}
         >
           <span>⭐ Driver Ratings ({driverRatings.length})</span>
@@ -415,64 +404,64 @@ const handleSaveTripQuote = async (tripId: number) => {
 
       {/* TAB 1: OVERVIEW & FINANCIALS */}
       {activeTab === 'overview' && (
-        <div className="space-y-4 sm:space-y-6">
+        <div className="space-y-6">
           {/* Key Financial Split Highlights */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <div className="bg-[#071426] text-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl border border-[#1A3353] space-y-1">
-              <span className="text-[10px] font-bold uppercase text-[#FF8A00]">Total Gross Volume</span>
-              <div className="text-2xl sm:text-3xl font-black text-[#FF8A00]">₹{fin?.totalGrossVolume ?? 0}</div>
-              <p className="text-[11px] text-[#A9B7C9]">All customer bookings completed</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-[#171719] rounded-3xl p-6 border border-[#303034] shadow-card space-y-1">
+              <span className="text-[10px] font-bold uppercase text-[#A1A1AA]">Total Gross Volume</span>
+              <div className="text-2xl sm:text-3xl font-black text-white">₹{fin?.totalGrossVolume ?? 0}</div>
+              <p className="text-xs text-[#A1A1AA]">All customer bookings completed</p>
             </div>
 
-            <div className="bg-emerald-50 rounded-2xl sm:rounded-3xl p-4 sm:p-6 border-2 border-emerald-200 shadow-xs space-y-1">
-              <span className="text-[10px] font-bold uppercase text-emerald-800">Owner Commission Earned</span>
-              <div className="text-2xl sm:text-3xl font-black text-emerald-700">₹{fin?.ownerCommissionEarned ?? 0}</div>
-              <p className="text-[11px] text-emerald-600">Platform fee retained (₹{fin?.commissionPerTrip ?? 5}/ride)</p>
+            <div className="bg-[#C6FF3D]/10 rounded-3xl p-6 border border-[#36C98F]/40 shadow-card space-y-1">
+              <span className="text-[10px] font-bold uppercase text-[#C6FF3D]">Owner Commission Earned</span>
+              <div className="text-2xl sm:text-3xl font-black text-[#C6FF3D]">₹{fin?.ownerCommissionEarned ?? 0}</div>
+              <p className="text-xs text-[#C6FF3D]">Platform fee retained (₹{fin?.commissionPerTrip ?? 5}/ride)</p>
             </div>
 
-            <div className="bg-orange-50 rounded-2xl sm:rounded-3xl p-4 sm:p-6 border-2 border-orange-200 shadow-xs space-y-1">
-              <span className="text-[10px] font-bold uppercase text-orange-900">Driver Payouts (Total)</span>
-              <div className="text-2xl sm:text-3xl font-black text-[#FF8A00]">₹{fin?.driverPayoutsTotal ?? 0}</div>
-              <p className="text-[11px] text-orange-800">Net earned by auto drivers</p>
+            <div className="bg-[#171719] rounded-3xl p-6 border border-[#303034] shadow-card space-y-1">
+              <span className="text-[10px] font-bold uppercase text-[#A1A1AA]">Driver Payouts (Total)</span>
+              <div className="text-2xl sm:text-3xl font-black text-white">₹{fin?.driverPayoutsTotal ?? 0}</div>
+              <p className="text-xs text-[#A1A1AA]">Net earned by auto drivers</p>
             </div>
 
-            <div className="bg-rose-50 rounded-2xl sm:rounded-3xl p-4 sm:p-6 border-2 border-rose-200 shadow-xs space-y-1">
-              <span className="text-[10px] font-bold uppercase text-rose-800">Pending Driver Settlements</span>
+            <div className="bg-rose-50 rounded-3xl p-6 border border-rose-200 shadow-card space-y-1">
+              <span className="text-[10px] font-bold uppercase text-rose-700">Pending Driver Settlements</span>
               <div className="text-2xl sm:text-3xl font-black text-rose-600">₹{fin?.pendingSettlementsAmount ?? 0}</div>
-              <p className="text-[11px] text-rose-700">Unsettled driver earnings balance</p>
+              <p className="text-xs text-rose-600">Unsettled driver earnings balance</p>
             </div>
           </div>
 
           {/* Operational Metrics Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-4">
-            <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-slate-200 shadow-xs">
-              <span className="text-[10px] font-bold text-slate-400 uppercase">Customers</span>
-              <div className="text-lg sm:text-xl font-black text-slate-900 mt-1">{m?.totalCustomers ?? 0}</div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+            <div className="bg-[#202023] rounded-2xl p-4 border border-[#303034] shadow-xs">
+              <span className="text-[10px] font-bold text-[#A1A1AA] uppercase">Customers</span>
+              <div className="text-xl font-black text-white mt-1">{m?.totalCustomers ?? 0}</div>
             </div>
 
-            <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-slate-200 shadow-xs">
-              <span className="text-[10px] font-bold text-slate-400 uppercase">Fleet Drivers</span>
-              <div className="text-lg sm:text-xl font-black text-slate-900 mt-1">{m?.totalDrivers ?? 0}</div>
+            <div className="bg-[#202023] rounded-2xl p-4 border border-[#303034] shadow-xs">
+              <span className="text-[10px] font-bold text-[#A1A1AA] uppercase">Fleet Drivers</span>
+              <div className="text-xl font-black text-white mt-1">{m?.totalDrivers ?? 0}</div>
             </div>
 
-            <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-slate-200 shadow-xs">
-              <span className="text-[10px] font-bold text-slate-400 uppercase">Pending Approvals</span>
-              <div className="text-lg sm:text-xl font-black text-[#FF8A00] mt-1">{m?.pendingDrivers ?? 0}</div>
+            <div className="bg-[#202023] rounded-2xl p-4 border border-[#303034] shadow-xs">
+              <span className="text-[10px] font-bold text-[#A1A1AA] uppercase">Pending Approvals</span>
+              <div className="text-xl font-black text-amber-600 mt-1">{m?.pendingDrivers ?? 0}</div>
             </div>
 
-            <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-slate-200 shadow-xs">
-              <span className="text-[10px] font-bold text-slate-400 uppercase">Total Rides</span>
-              <div className="text-lg sm:text-xl font-black text-slate-900 mt-1">{m?.totalBookings ?? 0}</div>
+            <div className="bg-[#202023] rounded-2xl p-4 border border-[#303034] shadow-xs">
+              <span className="text-[10px] font-bold text-[#A1A1AA] uppercase">Total Rides</span>
+              <div className="text-xl font-black text-white mt-1">{m?.totalBookings ?? 0}</div>
             </div>
 
-            <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-slate-200 shadow-xs">
-              <span className="text-[10px] font-bold text-slate-400 uppercase">Active Rides</span>
-              <div className="text-lg sm:text-xl font-black text-[#FF8A00] mt-1">{m?.activeBookings ?? 0}</div>
+            <div className="bg-[#202023] rounded-2xl p-4 border border-[#303034] shadow-xs">
+              <span className="text-[10px] font-bold text-[#A1A1AA] uppercase">Active Rides</span>
+              <div className="text-xl font-black text-[#C6FF3D] mt-1">{m?.activeBookings ?? 0}</div>
             </div>
 
-            <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-slate-200 shadow-xs">
-              <span className="text-[10px] font-bold text-slate-400 uppercase">Completed</span>
-              <div className="text-lg sm:text-xl font-black text-emerald-600 mt-1">{m?.completedRides ?? 0}</div>
+            <div className="bg-[#202023] rounded-2xl p-4 border border-[#303034] shadow-xs">
+              <span className="text-[10px] font-bold text-[#A1A1AA] uppercase">Completed</span>
+              <div className="text-xl font-black text-[#C6FF3D] mt-1">{m?.completedRides ?? 0}</div>
             </div>
           </div>
         </div>
@@ -480,25 +469,25 @@ const handleSaveTripQuote = async (tripId: number) => {
 
       {/* TAB 2: DRIVER MANAGEMENT & APPROVALS */}
       {activeTab === 'drivers' && (
-        <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-sm border border-slate-200/80 space-y-4 sm:space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 pb-4 border-b border-slate-100">
+        <div className="bg-[#171719] rounded-3xl p-6 sm:p-8 border border-[#303034] shadow-card space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[#303034]">
             <div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Car className="w-5 h-5 text-[#FF8A00]" />
+              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                <Car className="w-5 h-5 text-[#C6FF3D]" />
                 <span>Driver Partner Registrations & Approvals</span>
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-[#A1A1AA]">
                 Review applicant documents and authorize drivers to accept customer rides
               </p>
             </div>
-            <span className="px-3 py-1 bg-slate-100 text-slate-800 text-xs font-bold rounded-xl">
+            <span className="px-3 py-1 bg-[#202023] border border-[#303034] text-white text-xs font-bold rounded-xl shadow-xs">
               {drivers.length} Total Drivers
             </span>
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-slate-100">
-            <table className="w-full text-left text-xs text-slate-600 min-w-[680px]">
-              <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-100">
+          <div className="overflow-x-auto rounded-2xl border border-[#303034] bg-[#202023]">
+            <table className="w-full text-left text-xs text-white min-w-[680px]">
+              <thead className="bg-[#171719] text-[10px] uppercase font-bold text-[#A1A1AA] border-b border-[#303034]">
                 <tr>
                   <th className="px-4 py-3">Driver</th>
                   <th className="px-4 py-3">Auto Details</th>
@@ -509,46 +498,46 @@ const handleSaveTripQuote = async (tripId: number) => {
                   <th className="px-4 py-3">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#E5E7EB]">
                 {drivers.map((d) => {
                   const status = (d.approval_status || 'PENDING').toUpperCase();
                   return (
-                    <tr key={d.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr key={d.id} className="hover:bg-neutral-50 transition-colors">
                       <td className="px-4 py-3.5">
-                        <div className="font-bold text-slate-900">{d.name}</div>
-                        <div className="text-[10px] text-slate-400">{d.mobile} • {d.email}</div>
+                        <div className="font-bold text-white">{d.name}</div>
+                        <div className="text-[10px] text-[#A1A1AA]">{d.mobile} • {d.email}</div>
                       </td>
 
                       <td className="px-4 py-3.5">
-                        <div className="font-mono font-bold uppercase text-slate-800 bg-[#FF8A00]/10 px-2 py-0.5 rounded-lg inline-block border border-[#FF8A00]/20">{d.auto_number}</div>
-                        <div className="text-[10px] text-slate-500">{d.auto_model}</div>
+                        <div className="font-mono font-bold uppercase text-white bg-[#171719] px-2 py-0.5 rounded-lg inline-block border border-[#303034]">{d.auto_number}</div>
+                        <div className="text-[10px] text-[#A1A1AA]">{d.auto_model}</div>
                       </td>
 
-                      <td className="px-4 py-3.5 font-mono text-[11px]">
+                      <td className="px-4 py-3.5 font-mono text-[11px] text-[#A1A1AA]">
                         {d.license_number}
                       </td>
 
                       <td className="px-4 py-3.5">
-                        <div className="font-semibold text-slate-800">UPI: {d.payout_upi || '—'}</div>
+                        <div className="font-semibold text-white">UPI: {d.payout_upi || '—'}</div>
                         {d.payout_bank_account && (
-                          <div className="text-[10px] text-slate-400 font-mono">
+                          <div className="text-[10px] text-[#A1A1AA] font-mono">
                             A/C: {d.payout_bank_account} ({d.payout_ifsc})
                           </div>
                         )}
                       </td>
 
                       <td className="px-4 py-3.5">
-                        <div className="font-bold text-slate-900">{d.total_trips || 0} trips</div>
-                        <div className="text-[10px] text-emerald-600 font-bold">₹{d.total_earnings || 0} earned</div>
+                        <div className="font-bold text-white">{d.total_trips || 0} trips</div>
+                        <div className="text-[10px] text-[#C6FF3D] font-bold">₹{d.total_earnings || 0} earned</div>
                       </td>
 
                       <td className="px-4 py-3.5 whitespace-nowrap">
                         <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
                           status === 'APPROVED' || status === 'ACTIVE'
-                            ? 'bg-emerald-100 text-emerald-800'
+                            ? 'bg-[#C6FF3D]/10 text-[#C6FF3D] border border-[#36C98F]/40'
                             : status === 'PENDING'
-                            ? 'bg-[#FF8A00]/15 text-[#FF8A00]'
-                            : 'bg-rose-100 text-rose-800'
+                            ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                            : 'bg-rose-50 text-rose-700 border border-rose-200'
                         }`}>
                           {status}
                         </span>
@@ -559,7 +548,7 @@ const handleSaveTripQuote = async (tripId: number) => {
                           {status !== 'APPROVED' && (
                             <button
                               onClick={() => handleDriverApproval(d.id, 'APPROVED')}
-                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-xs"
+                              className="px-2.5 py-1 bg-[#C6FF3D] hover:bg-[#B5F028] text-white font-bold text-[11px] rounded-lg shadow-xs"
                             >
                               Approve
                             </button>
@@ -575,7 +564,7 @@ const handleSaveTripQuote = async (tripId: number) => {
                           {status === 'APPROVED' && (
                             <button
                               onClick={() => handleDriverApproval(d.id, 'SUSPENDED')}
-                              className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[11px] rounded-lg shadow-xs"
+                              className="px-2.5 py-1 bg-[#171719] hover:bg-[#26262A] text-white border border-[#303034] font-bold text-[11px] rounded-lg"
                             >
                               Suspend
                             </button>
@@ -583,7 +572,7 @@ const handleSaveTripQuote = async (tripId: number) => {
                           {status === 'SUSPENDED' && (
                             <button
                               onClick={() => handleDriverApproval(d.id, 'APPROVED')}
-                              className="px-2.5 py-1 bg-slate-900 text-white font-bold text-[11px] rounded-lg shadow-xs"
+                              className="px-2.5 py-1 bg-[#171717] hover:bg-[#262626] text-white font-bold text-[11px] rounded-lg shadow-xs"
                             >
                               Re-activate
                             </button>
@@ -601,30 +590,30 @@ const handleSaveTripQuote = async (tripId: number) => {
 
       {/* TAB 3: PAYOUT SETTLEMENTS */}
       {activeTab === 'settlements' && (
-        <div className="space-y-4 sm:space-y-6">
-          <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-sm border border-slate-200/80 space-y-4 sm:space-y-6">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+        <div className="space-y-6">
+          <div className="bg-[#171719] rounded-3xl p-6 sm:p-8 border border-[#303034] shadow-card space-y-6">
+            <div className="flex items-center justify-between pb-4 border-b border-[#303034]">
               <div>
-                <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <CreditCard className="w-5 h-5 text-emerald-600" />
+                <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-[#C6FF3D]" />
                   <span>Pending Driver Payouts</span>
                 </h2>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-[#A1A1AA]">
                   Driver balances earned from completed customer rides pending bank/UPI transfer
                 </p>
               </div>
             </div>
 
             {(!settlements?.pendingDrivers || settlements.pendingDrivers.length === 0) ? (
-              <div className="py-10 text-center space-y-2">
-                <div className="text-3xl">✓</div>
-                <p className="text-xs font-bold text-slate-700">All driver accounts are settled</p>
-                <p className="text-[11px] text-slate-400">Zero pending driver payout balances</p>
+              <div className="py-10 text-center space-y-2 bg-[#202023] rounded-2xl border border-[#303034]">
+                <div className="text-3xl text-[#C6FF3D]">✓</div>
+                <p className="text-xs font-bold text-white">All driver accounts are settled</p>
+                <p className="text-[11px] text-[#A1A1AA]">Zero pending driver payout balances</p>
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-2xl border border-slate-100">
-                <table className="w-full text-left text-xs text-slate-600 min-w-[640px]">
-                  <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-100">
+              <div className="overflow-x-auto rounded-2xl border border-[#303034] bg-[#202023]">
+                <table className="w-full text-left text-xs text-white min-w-[640px]">
+                  <thead className="bg-[#171719] text-[10px] uppercase font-bold text-[#A1A1AA] border-b border-[#303034]">
                     <tr>
                       <th className="px-4 py-3">Driver</th>
                       <th className="px-4 py-3">Auto Number</th>
@@ -634,25 +623,25 @@ const handleSaveTripQuote = async (tripId: number) => {
                       <th className="px-4 py-3">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-[#E5E7EB]">
                     {settlements.pendingDrivers.map((p) => (
-                      <tr key={p.driver_id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="px-4 py-3.5 font-bold text-slate-900">
+                      <tr key={p.driver_id} className="hover:bg-neutral-50 transition-colors">
+                        <td className="px-4 py-3.5 font-bold text-white">
                           <div>{p.driver_name}</div>
-                          <div className="text-[10px] text-slate-400">{p.mobile}</div>
+                          <div className="text-[10px] text-[#A1A1AA]">{p.mobile}</div>
                         </td>
-                        <td className="px-4 py-3.5 font-mono font-bold uppercase text-slate-800">
-                          <span className="bg-[#FF8A00]/10 px-2 py-0.5 rounded-lg border border-[#FF8A00]/20">{p.auto_number}</span>
+                        <td className="px-4 py-3.5 font-mono font-bold uppercase text-white">
+                          <span className="bg-[#171719] px-2 py-0.5 rounded-lg border border-[#303034]">{p.auto_number}</span>
                         </td>
                         <td className="px-4 py-3.5">
-                          <div className="font-semibold text-slate-800">UPI: {p.payout_upi || '—'}</div>
+                          <div className="font-semibold text-white">UPI: {p.payout_upi || '—'}</div>
                           {p.payout_bank_account && (
-                            <div className="text-[10px] text-slate-400 font-mono">
+                            <div className="text-[10px] text-[#A1A1AA] font-mono">
                               A/C: {p.payout_bank_account} ({p.payout_ifsc})
                             </div>
                           )}
                         </td>
-                        <td className="px-4 py-3.5 font-bold text-slate-700">
+                        <td className="px-4 py-3.5 font-bold text-white">
                           {p.pending_trips_count} trip(s)
                         </td>
                         <td className="px-4 py-3.5 font-black text-rose-600 text-sm">
@@ -661,7 +650,7 @@ const handleSaveTripQuote = async (tripId: number) => {
                         <td className="px-4 py-3.5 whitespace-nowrap">
                           <button
                             onClick={() => handleSettlePayout(p.driver_id)}
-                            className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-transform hover:scale-102 flex items-center gap-1.5"
+                            className="px-4 py-1.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-white font-black text-xs rounded-xl shadow-xs transition-transform hover:scale-102 flex items-center gap-1.5"
                           >
                             <CheckCircle className="w-3.5 h-3.5" />
                             <span>Mark as Settled</span>
@@ -677,21 +666,21 @@ const handleSaveTripQuote = async (tripId: number) => {
 
           {/* Settled History Log */}
           {settlements?.settledHistory && settlements.settledHistory.length > 0 && (
-            <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-sm border border-slate-200/80 space-y-4">
-              <h3 className="text-base font-bold text-slate-900">Recent Settled Payouts History</h3>
-              <div className="divide-y divide-slate-100">
+            <div className="bg-[#171719] rounded-3xl p-6 sm:p-8 border border-[#303034] shadow-card space-y-4">
+              <h3 className="text-base font-bold text-white">Recent Settled Payouts History</h3>
+              <div className="divide-y divide-[#E5E7EB] bg-[#202023] rounded-2xl border border-[#303034] px-4">
                 {settlements.settledHistory.map((s) => (
                   <div key={s.id} className="py-3 flex items-start sm:items-center justify-between gap-3 text-xs">
                     <div>
-                      <span className="font-bold text-slate-800">{s.driver_name}</span>
-                      <span className="text-slate-400 font-mono ml-2">({s.auto_number})</span>
-                      <div className="text-[10px] text-slate-500 break-all">
+                      <span className="font-bold text-white">{s.driver_name}</span>
+                      <span className="text-[#A1A1AA] font-mono ml-2">({s.auto_number})</span>
+                      <div className="text-[10px] text-[#A1A1AA] break-all">
                         Ref: {s.transaction_reference} • Booking: {s.booking_reference}
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <div className="font-black text-emerald-600">₹{s.driver_amount} Paid</div>
-                      <span className="text-[10px] text-slate-400">
+                      <div className="font-black text-[#C6FF3D]">₹{s.driver_amount} Paid</div>
+                      <span className="text-[10px] text-[#A1A1AA]">
                         {s.settled_at ? new Date(s.settled_at).toLocaleDateString() : 'Settled'}
                       </span>
                     </div>
@@ -705,26 +694,26 @@ const handleSaveTripQuote = async (tripId: number) => {
 
       {/* TAB 4: FIXED ROUTES & FARES */}
       {activeTab === 'routes' && (
-        <div className="space-y-4 sm:space-y-6">
-          <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-sm border border-slate-200/80 space-y-4 sm:space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+        <div className="space-y-6">
+          <div className="bg-[#171719] rounded-3xl p-6 sm:p-8 border border-[#303034] shadow-card space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#303034]">
               <div>
-                <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <Sliders className="w-5 h-5 text-[#FF8A00]" />
+                <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                  <Sliders className="w-5 h-5 text-[#C6FF3D]" />
                   <span>Fixed Place-to-Place Routes & Fares</span>
                 </h2>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-[#A1A1AA]">
                   Manage fixed rate routes stored in the database. Fares are fixed place-to-place with zero distance calculations.
                 </p>
               </div>
-              <span className="px-3 py-1 bg-slate-100 text-slate-800 text-xs font-bold rounded-xl self-start sm:self-auto">
+              <span className="px-3 py-1 bg-[#202023] border border-[#303034] text-white text-xs font-bold rounded-xl shadow-xs self-start sm:self-auto">
                 {routes.length} Configured Routes
               </span>
             </div>
 
-            <div className="overflow-x-auto rounded-2xl border border-slate-100">
-              <table className="w-full text-left text-xs text-slate-600 min-w-[640px]">
-                <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-100">
+            <div className="overflow-x-auto rounded-2xl border border-[#303034] bg-[#202023]">
+              <table className="w-full text-left text-xs text-white min-w-[640px]">
+                <thead className="bg-[#171719] text-[10px] uppercase font-bold text-[#A1A1AA] border-b border-[#303034]">
                   <tr>
                     <th className="px-4 py-3">Route ID</th>
                     <th className="px-4 py-3">From Location</th>
@@ -734,21 +723,21 @@ const handleSaveTripQuote = async (tripId: number) => {
                     <th className="px-4 py-3">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-[#E5E7EB]">
                   {routes.map((r) => (
-                    <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-4 py-3.5 font-mono font-bold text-slate-400">
+                    <tr key={r.id} className="hover:bg-neutral-50 transition-colors">
+                      <td className="px-4 py-3.5 font-mono font-bold text-[#A1A1AA]">
                         #{r.id}
                       </td>
-                      <td className="px-4 py-3.5 font-bold text-slate-900">
+                      <td className="px-4 py-3.5 font-bold text-white">
                         {r.from_location}
                       </td>
-                      <td className="px-4 py-3.5 font-bold text-slate-900">
+                      <td className="px-4 py-3.5 font-bold text-white">
                         {r.to_location}
                       </td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-slate-400 font-bold">₹</span>
+                          <span className="text-[#A1A1AA] font-bold">₹</span>
                           <input
                             type="number"
                             min="1"
@@ -759,14 +748,14 @@ const handleSaveTripQuote = async (tripId: number) => {
                                 [r.id]: Number(e.target.value)
                               })
                             }
-                            className="w-20 px-2 py-1 border border-slate-200 rounded-lg text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
+                            className="w-20 px-2.5 py-1 border border-[#303034] rounded-lg text-xs font-black text-white focus:outline-none focus:ring-2 focus:ring-[#36C98F]"
                           />
                           <button
                             onClick={() => handleSaveRouteFare(r.id)}
                             disabled={isSavingFare === r.id}
-                            className="px-2.5 py-1 bg-[#071426] hover:bg-[#10243D] text-[#FF8A00] font-bold text-[11px] rounded-lg transition-colors flex items-center gap-1"
+                            className="px-2.5 py-1 bg-[#171717] hover:bg-[#262626] text-white font-bold text-[11px] rounded-lg transition-colors flex items-center gap-1"
                           >
-                            <Save className="w-3 h-3" />
+                            <Save className="w-3 h-3 text-[#C6FF3D]" />
                             <span>{isSavingFare === r.id ? 'Saving...' : 'Save'}</span>
                           </button>
                         </div>
@@ -775,8 +764,8 @@ const handleSaveTripQuote = async (tripId: number) => {
                         <span
                           className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
                             r.is_active
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-slate-100 text-slate-500'
+                              ? 'bg-[#C6FF3D]/10 text-[#C6FF3D] border border-[#36C98F]/40'
+                              : 'bg-neutral-100 text-[#A1A1AA]'
                           }`}
                         >
                           {r.is_active ? 'Active' : 'Inactive'}
@@ -785,10 +774,10 @@ const handleSaveTripQuote = async (tripId: number) => {
                       <td className="px-4 py-3.5 whitespace-nowrap">
                         <button
                           onClick={() => handleToggleRoute(r.id)}
-                          className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                          className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-colors border ${
                             r.is_active
-                              ? 'bg-rose-50 text-rose-600 hover:bg-rose-100'
-                              : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
+                              ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                              : 'bg-[#C6FF3D]/10 text-[#C6FF3D] border-[#36C98F]/40 hover:bg-[#D5F5E7]'
                           }`}
                         >
                           {r.is_active ? 'Disable' : 'Enable'}
@@ -801,42 +790,42 @@ const handleSaveTripQuote = async (tripId: number) => {
             </div>
 
             {/* Add New Route Card */}
-            <div className="bg-slate-50 rounded-xl sm:rounded-2xl p-4 sm:p-5 border border-slate-200/80">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-3 flex items-center gap-1.5">
-                <Plus className="w-4 h-4 text-[#FF8A00]" />
+            <div className="bg-[#202023] rounded-2xl p-5 border border-[#303034] shadow-xs">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-white mb-3 flex items-center gap-1.5">
+                <Plus className="w-4 h-4 text-[#C6FF3D]" />
                 <span>Add New Fixed Fare Route</span>
               </h3>
               <form onSubmit={handleAddRoute} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">From Location</label>
+                  <label className="block text-[10px] font-bold text-[#A1A1AA] uppercase mb-1">From Location</label>
                   <input
                     type="text"
                     value={newFrom}
                     onChange={(e) => setNewFrom(e.target.value)}
                     placeholder="e.g. JNTUA"
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
+                    className="w-full px-3 py-2 bg-[#171719] border border-[#303034] rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#36C98F]"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">To Location</label>
+                  <label className="block text-[10px] font-bold text-[#A1A1AA] uppercase mb-1">To Location</label>
                   <input
                     type="text"
                     value={newTo}
                     onChange={(e) => setNewTo(e.target.value)}
                     placeholder="e.g. Railway Station"
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
+                    className="w-full px-3 py-2 bg-[#171719] border border-[#303034] rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#36C98F]"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Fixed Fare (₹)</label>
+                  <label className="block text-[10px] font-bold text-[#A1A1AA] uppercase mb-1">Fixed Fare (₹)</label>
                   <input
                     type="number"
                     min="1"
                     value={newFare}
                     onChange={(e) => setNewFare(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
+                    className="w-full px-3 py-2 bg-[#171719] border border-[#303034] rounded-xl text-xs font-black focus:outline-none focus:ring-2 focus:ring-[#36C98F]"
                     required
                   />
                 </div>
@@ -844,7 +833,7 @@ const handleSaveTripQuote = async (tripId: number) => {
                   <button
                     type="submit"
                     disabled={isAddingRoute}
-                    className="w-full py-2.5 bg-gradient-to-r from-[#FF8A00] to-[#FF9D2E] hover:from-[#FF9D2E] hover:to-[#FF8A00] text-slate-950 font-bold text-xs rounded-xl shadow-md transition-transform hover:scale-102 flex items-center justify-center gap-1.5 min-h-[40px]"
+                    className="w-full py-2.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-white font-black text-xs rounded-xl shadow-subtle transition-transform hover:scale-102 flex items-center justify-center gap-1.5 min-h-[40px]"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>{isAddingRoute ? 'Adding...' : 'Add Route'}</span>
@@ -858,60 +847,61 @@ const handleSaveTripQuote = async (tripId: number) => {
 
       {/* TAB 5: COMMISSION SETTINGS */}
       {activeTab === 'commission' && (
-        <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-sm border border-slate-200/80 max-w-xl space-y-4 sm:space-y-6">
-          <div className="pb-4 border-b border-slate-100">
-            <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Percent className="w-5 h-5 text-[#FF8A00]" />
+        <div className="bg-[#171719] rounded-3xl p-6 sm:p-8 border border-[#303034] shadow-card max-w-xl space-y-6">
+          <div className="pb-4 border-b border-[#303034]">
+            <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+              <Percent className="w-5 h-5 text-[#C6FF3D]" />
               <span>Platform Commission Settings</span>
             </h2>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-[#A1A1AA] mt-1">
               Fixed commission retained by the platform owner for each completed auto ride.
             </p>
           </div>
 
           <form onSubmit={handleUpdateCommission} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+              <label className="block text-xs font-bold text-white uppercase mb-1">
                 Owner Commission Per Trip (₹) *
               </label>
               <div className="relative">
-                <span className="absolute left-3.5 top-2.5 text-sm font-bold text-slate-400">₹</span>
+                <span className="absolute left-3.5 top-2.5 text-sm font-bold text-[#A1A1AA]">₹</span>
                 <input
                   type="number"
                   step="0.5"
                   min={0}
                   value={commissionInput}
                   onChange={(e) => setCommissionInput(Number(e.target.value))}
-                  className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
+                  className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-[#303034] text-sm font-black text-white bg-[#202023] focus:outline-none focus:ring-2 focus:ring-[#36C98F]"
                   required
                 />
               </div>
-              <p className="text-[11px] text-slate-500 mt-1.5">
+              <p className="text-[11px] text-[#A1A1AA] mt-1.5">
                 Example: On a ₹20 ride (JNTUA ↔ Cross), driver receives <strong>₹{Math.max(0, 20 - commissionInput)}</strong> and owner retains <strong>₹{commissionInput}</strong>.
               </p>
             </div>
 
             <button
               type="submit"
-              className="px-6 py-2.5 bg-[#071426] hover:bg-[#10243D] text-[#FF8A00] font-bold text-xs rounded-xl shadow-md transition-transform hover:scale-102 flex items-center gap-1.5 border border-[#1A3353] min-h-[40px]"
+              className="px-6 py-2.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-white font-black text-xs rounded-xl shadow-subtle transition-transform hover:scale-102 flex items-center gap-1.5 min-h-[40px]"
             >
-              <Save className="w-3.5 h-3.5 text-[#FF8A00]" />
+              <Save className="w-3.5 h-3.5" />
               <span>Update Commission Rate</span>
             </button>
           </form>
         </div>
       )}
-            {/* TAB: CAR / TRIP BOOKINGS */}
+
+      {/* TAB: CAR / TRIP BOOKINGS */}
       {activeTab === 'tripBookings' && (
-        <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-sm border border-slate-200/80 space-y-4 sm:space-y-6">
+        <div className="bg-[#171719] rounded-3xl p-6 sm:p-8 border border-[#303034] shadow-card space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Car className="w-5 h-5 text-[#FF8A00]" />
+              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                <span>🚗</span>
                 <span>Car / Trip Bookings</span>
               </h2>
-              <p className="text-xs text-slate-500">
-                Manage customer trip requests, get the travel quote, and confirm bookings.
+              <p className="text-xs text-[#A1A1AA]">
+                Manage customer trip requests, enter travel quotes, and confirm bookings.
               </p>
             </div>
 
@@ -919,7 +909,7 @@ const handleSaveTripQuote = async (tripId: number) => {
               <select
                 value={tripStatusFilter}
                 onChange={(e) => setTripStatusFilter(e.target.value)}
-                className="px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold bg-slate-50 w-full sm:w-auto"
+                className="px-3 py-2 border border-[#303034] rounded-xl text-xs font-semibold bg-[#202023] w-full sm:w-auto"
               >
                 <option value="all">All Statuses</option>
                 <option value="NEW">NEW</option>
@@ -934,15 +924,14 @@ const handleSaveTripQuote = async (tripId: number) => {
                 value={tripSearchQuery}
                 onChange={(e) => setTripSearchQuery(e.target.value)}
                 placeholder="Search booking / customer / place"
-                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs w-full sm:w-auto"
-              >
-              </input>
+                className="px-3 py-2 bg-[#202023] border border-[#303034] rounded-xl text-xs w-full sm:w-auto"
+              />
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-slate-100">
-            <table className="w-full text-left text-xs text-slate-600 min-w-[720px]">
-              <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-100">
+          <div className="overflow-x-auto rounded-2xl border border-[#303034] bg-[#202023]">
+            <table className="w-full text-left text-xs text-white min-w-[720px]">
+              <thead className="bg-[#171719] text-[10px] uppercase font-bold text-[#A1A1AA] border-b border-[#303034]">
                 <tr>
                   <th className="px-4 py-3">Booking</th>
                   <th className="px-4 py-3">Customer</th>
@@ -954,20 +943,12 @@ const handleSaveTripQuote = async (tripId: number) => {
                 </tr>
               </thead>
 
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#E5E7EB]">
                 {tripBookings
                   .filter((trip) => {
-                    if (
-                      tripStatusFilter !== 'all' &&
-                      trip.status !== tripStatusFilter
-                    ) {
-                      return false;
-                    }
-
+                    if (tripStatusFilter !== 'all' && trip.status !== tripStatusFilter) return false;
                     const q = tripSearchQuery.trim().toLowerCase();
-
                     if (!q) return true;
-
                     return (
                       trip.booking_reference.toLowerCase().includes(q) ||
                       trip.customer_name.toLowerCase().includes(q) ||
@@ -976,49 +957,46 @@ const handleSaveTripQuote = async (tripId: number) => {
                     );
                   })
                   .map((trip) => (
-                    <tr
-                      key={trip.id}
-                      className="hover:bg-slate-50/80 transition-colors"
-                    >
+                    <tr key={trip.id} className="hover:bg-neutral-50 transition-colors">
                       <td className="px-4 py-4">
-                        <div className="font-mono font-bold text-slate-900">
+                        <div className="font-mono font-bold text-white">
                           {trip.booking_reference}
                         </div>
-                        <div className="text-[10px] text-slate-400 break-all">
+                        <div className="text-[10px] text-[#A1A1AA] break-all">
                           {trip.email || ''}
                         </div>
                       </td>
 
                       <td className="px-4 py-4">
-                        <div className="font-bold text-slate-900">
+                        <div className="font-bold text-white">
                           {trip.customer_name}
                         </div>
-                        <div className="text-[10px] text-slate-400">
+                        <div className="text-[10px] text-[#A1A1AA]">
                           {trip.phone_number}
                         </div>
                       </td>
 
                       <td className="px-4 py-4">
-                        <div className="font-bold text-slate-900">
+                        <div className="font-bold text-white">
                           {trip.trip_place}
                         </div>
-                        <div className="text-[10px] text-slate-500">
+                        <div className="text-[10px] text-[#A1A1AA]">
                           {trip.members} member(s) • {trip.days} day(s)
                         </div>
                       </td>
 
                       <td className="px-4 py-4">
-                        <div className="font-semibold text-slate-800">
+                        <div className="font-semibold text-white">
                           {trip.trip_date}
                         </div>
-                        <div className="text-[10px] text-slate-500">
+                        <div className="text-[10px] text-[#A1A1AA]">
                           Pickup: {trip.pickup_time}
                         </div>
                       </td>
 
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-1">
-                          <span className="text-slate-400">₹</span>
+                          <span className="text-[#A1A1AA]">₹</span>
                           <input
                             type="number"
                             min="0"
@@ -1030,13 +1008,13 @@ const handleSaveTripQuote = async (tripId: number) => {
                               })
                             }
                             placeholder="Enter quote"
-                            className="w-28 px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold"
+                            className="w-28 px-2 py-1.5 border border-[#303034] rounded-lg text-xs font-bold"
                           />
                         </div>
 
                         <button
                           onClick={() => handleSaveTripQuote(trip.id)}
-                          className="mt-2 px-3 py-1.5 bg-[#071426] hover:bg-[#10243D] text-[#FF8A00] rounded-lg text-[10px] font-bold transition-colors border border-[#1A3353]"
+                          className="mt-2 px-3 py-1 bg-[#171717] hover:bg-[#262626] text-white rounded-lg text-[10px] font-bold transition-colors shadow-xs"
                         >
                           Save Quote
                         </button>
@@ -1046,8 +1024,8 @@ const handleSaveTripQuote = async (tripId: number) => {
                         <span
                           className={`px-2 py-1 rounded-full text-[10px] font-bold ${
                             trip.payment_status === 'PAID'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-slate-100 text-slate-600'
+                              ? 'bg-[#C6FF3D]/10 text-[#C6FF3D] border border-[#36C98F]/40'
+                              : 'bg-neutral-100 text-[#A1A1AA]'
                           }`}
                         >
                           {trip.payment_status}
@@ -1062,7 +1040,7 @@ const handleSaveTripQuote = async (tripId: number) => {
                               status: e.target.value
                             })
                           }
-                          className="px-2 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-bold"
+                          className="px-2 py-1.5 bg-[#171719] border border-[#303034] rounded-lg text-[10px] font-bold"
                         >
                           <option value="NEW">NEW</option>
                           <option value="CONTACTED">CONTACTED</option>
@@ -1077,7 +1055,7 @@ const handleSaveTripQuote = async (tripId: number) => {
             </table>
 
             {tripBookings.length === 0 && (
-              <div className="py-12 text-center text-xs text-slate-400">
+              <div className="py-12 text-center text-xs text-[#A1A1AA]">
                 No car / trip bookings yet.
               </div>
             )}
@@ -1087,18 +1065,18 @@ const handleSaveTripQuote = async (tripId: number) => {
 
       {/* TAB 6: ALL BOOKINGS */}
       {activeTab === 'bookings' && (
-        <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-sm border border-slate-200/80 space-y-4 sm:space-y-6">
+        <div className="bg-[#171719] rounded-3xl p-6 sm:p-8 border border-[#303034] shadow-card space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900">All System Bookings</h2>
-              <p className="text-xs text-slate-500">Live feed of all customer ride bookings with split payment records</p>
+              <h2 className="text-base sm:text-lg font-bold text-white">All System Bookings</h2>
+              <p className="text-xs text-[#A1A1AA]">Live feed of all customer ride bookings with split payment records</p>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold bg-slate-50 focus:outline-none w-full sm:w-auto"
+                className="px-3 py-2 border border-[#303034] rounded-xl text-xs font-semibold bg-[#202023] focus:outline-none w-full sm:w-auto"
               >
                 <option value="all">All Statuses</option>
                 <option value="Searching for Auto">Searching for Auto</option>
@@ -1110,21 +1088,21 @@ const handleSaveTripQuote = async (tripId: number) => {
               </select>
 
               <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-[#A1A1AA]" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search reference, customer..."
-                  className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none font-medium"
+                  className="w-full pl-8 pr-3 py-2 bg-[#202023] border border-[#303034] rounded-xl text-xs focus:outline-none font-medium"
                 />
               </div>
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-slate-100">
-            <table className="w-full text-left text-xs text-slate-600 min-w-[760px]">
-              <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-100">
+          <div className="overflow-x-auto rounded-2xl border border-[#303034] bg-[#202023]">
+            <table className="w-full text-left text-xs text-white min-w-[760px]">
+              <thead className="bg-[#171719] text-[10px] uppercase font-bold text-[#A1A1AA] border-b border-[#303034]">
                 <tr>
                   <th className="px-4 py-3">Booking ID</th>
                   <th className="px-4 py-3">Customer</th>
@@ -1136,37 +1114,37 @@ const handleSaveTripQuote = async (tripId: number) => {
                   <th className="px-4 py-3">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#E5E7EB]">
                 {filteredBookings.map((b) => (
-                  <tr key={b.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="px-4 py-3.5 font-mono font-bold text-slate-900">
+                  <tr key={b.id} className="hover:bg-neutral-50 transition-colors">
+                    <td className="px-4 py-3.5 font-mono font-bold text-white">
                       {b.booking_reference}
                     </td>
 
-                    <td className="px-4 py-3.5 font-semibold text-slate-800">
+                    <td className="px-4 py-3.5 font-semibold text-white">
                       <div>{b.customer_name || 'Customer'}</div>
-                      <div className="text-[10px] text-slate-400">{b.customer_mobile}</div>
+                      <div className="text-[10px] text-[#A1A1AA]">{b.customer_mobile}</div>
                     </td>
 
                     <td className="px-4 py-3.5">
                       {b.auto_number ? (
                         <div>
-                          <div className="font-bold text-slate-800">{b.driver_name}</div>
-                          <div className="text-[10px] text-[#FF8A00] font-mono font-bold uppercase">{b.auto_number}</div>
+                          <div className="font-bold text-white">{b.driver_name}</div>
+                          <div className="text-[10px] text-[#C6FF3D] font-mono font-bold uppercase">{b.auto_number}</div>
                         </div>
                       ) : (
-                        <span className="text-slate-400 italic text-[11px]">Unassigned</span>
+                        <span className="text-[#A1A1AA] italic text-[11px]">Unassigned</span>
                       )}
                     </td>
 
                     <td className="px-4 py-3.5 max-w-[200px]">
-                      <div className="font-bold text-slate-900 break-words">{b.pickup_address} → {b.destination_address}</div>
+                      <div className="font-bold text-white break-words">{b.pickup_address} → {b.destination_address}</div>
                     </td>
 
                     <td className="px-4 py-3.5 whitespace-nowrap">
-                      <div className="font-black text-slate-900">₹{b.estimated_fare}</div>
+                      <div className="font-black text-white">₹{b.estimated_fare}</div>
                       {b.driver_amount !== undefined && (
-                        <div className="text-[10px] text-slate-500">
+                        <div className="text-[10px] text-[#A1A1AA]">
                           Driver: ₹{b.driver_amount} • Owner: ₹{b.owner_amount}
                         </div>
                       )}
@@ -1174,11 +1152,11 @@ const handleSaveTripQuote = async (tripId: number) => {
 
                     <td className="px-4 py-3.5 whitespace-nowrap">
                       {b.payment_status === 'COMPLETED' ? (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                        <span className="px-2 py-0.5 rounded-full bg-[#C6FF3D]/10 text-[#C6FF3D] border border-[#36C98F]/40 font-bold text-[10px]">
                           ✓ Paid ({b.payment_method || 'UPI'})
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px]">
+                        <span className="px-2 py-0.5 rounded-full bg-neutral-100 text-[#A1A1AA] text-[10px]">
                           Unpaid
                         </span>
                       )}
@@ -1192,7 +1170,7 @@ const handleSaveTripQuote = async (tripId: number) => {
                       <select
                         value={b.status}
                         onChange={(e) => handleUpdateStatus(b.id, e.target.value)}
-                        className="text-[11px] font-semibold bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 focus:outline-none cursor-pointer"
+                        className="text-[11px] font-semibold bg-[#171719] border border-[#303034] rounded-lg px-2 py-1 focus:outline-none cursor-pointer"
                       >
                         <option value="Searching for Auto">Searching for Auto</option>
                         <option value="Driver Assigned">Driver Assigned</option>
@@ -1210,25 +1188,26 @@ const handleSaveTripQuote = async (tripId: number) => {
         </div>
       )}
 
+      {/* TAB 7: RATINGS */}
       {activeTab === 'ratings' && ( 
-        <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-sm border border-slate-200/80 space-y-4 sm:space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base sm:text-lg font-bold text-slate-900">
+        <div className="bg-[#171719] rounded-3xl p-6 sm:p-8 border border-[#303034] shadow-card space-y-6">
+          <div className="flex items-center justify-between pb-3 border-b border-[#303034]">
+            <h2 className="text-base sm:text-lg font-bold text-white">
               Driver Ratings & Reviews
             </h2>
-            <span className="text-xs font-bold text-slate-500">
+            <span className="text-xs font-bold text-[#A1A1AA]">
               {driverRatings.length} Reviews
             </span>
           </div>
 
           {driverRatings.length === 0 ? (
-            <div className="py-12 text-center text-sm text-slate-400">
+            <div className="py-12 text-center text-sm text-[#A1A1AA] bg-[#202023] rounded-2xl border border-[#303034]">
               No driver ratings submitted yet.
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-2xl border border-slate-100">
-              <table className="w-full text-left text-xs text-slate-600 min-w-[640px]">
-                <thead className="bg-slate-50 text-slate-500">
+            <div className="overflow-x-auto rounded-2xl border border-[#303034] bg-[#202023]">
+              <table className="w-full text-left text-xs text-white min-w-[640px]">
+                <thead className="bg-[#171719] text-[#A1A1AA] border-b border-[#303034]">
                   <tr>
                     <th className="px-4 py-3">Driver</th>
                     <th className="px-4 py-3">Rating</th>
@@ -1238,17 +1217,17 @@ const handleSaveTripQuote = async (tripId: number) => {
                     <th className="px-4 py-3">Date</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-[#E5E7EB]">
                   {driverRatings.map((r) => (
-                    <tr key={r.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 font-bold text-slate-900">
+                    <tr key={r.id} className="hover:bg-neutral-50">
+                      <td className="px-4 py-3 font-bold text-white">
                         {r.driver_name || `Driver #${r.driver_id}`}
-                        <div className="text-[10px] text-slate-400">
+                        <div className="text-[10px] text-[#A1A1AA]">
                           {r.auto_number || ''}
                         </div>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <span className="text-[#FF8A00]">
+                        <span className="text-amber-500">
                           {'★'.repeat(Math.max(0, Math.min(5, Number(r.rating) || 0)))}
                         </span>
                         {' '}{r.rating}/5
@@ -1278,4 +1257,3 @@ const handleSaveTripQuote = async (tripId: number) => {
     </div>
   );
 };
-

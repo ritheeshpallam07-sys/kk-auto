@@ -12,6 +12,8 @@ export interface User {
   email: string;
   mobile: string;
   role: 'customer' | 'driver' | 'admin';
+  terms_version?: string | null;
+  terms_accepted_at?: string | null;
 }
 
 export interface FareEstimate {
@@ -272,7 +274,12 @@ export const api = {
       body: JSON.stringify({ identifier, password })
     }),
     logout: () => request('/auth/logout', { method: 'POST' }),
-    me: () => request<User>('/auth/me')
+    me: () => request<User>('/auth/me'),
+    acceptTerms: (version = '1.0') =>
+      request<User>('/auth/accept-terms', {
+        method: 'POST',
+        body: JSON.stringify({ version })
+      })
   },
   bookings: {
     getLocations: () => request<string[]>('/bookings/locations'),

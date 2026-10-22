@@ -6,10 +6,16 @@ import {
   X,
   User,
   LogOut,
+  Car,
   Compass,
   Clock,
-  Car,
-  ChevronDown,
+  ShieldCheck,
+  Phone,
+  HelpCircle,
+  Sparkles,
+  Info,
+  ChevronRight,
+  ExternalLink,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -22,437 +28,340 @@ export const Navbar: React.FC<NavbarProps> = ({
   navigate,
 }) => {
   const { user, logout, isDriver, isAdmin } = useAuth();
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [activeDrawerTab, setActiveDrawerTab] = useState<'menu' | 'how' | 'why' | 'support'>('menu');
 
   const handleNav = (path: string) => {
     navigate(path);
-    setIsMobileMenuOpen(false);
-    setIsProfileDropdownOpen(false);
+    setIsDrawerOpen(false);
   };
 
-  /*
-   * ROLE DEFINITIONS
-   * Customer: Dashboard, My Rides, Profile, Book an Auto
-   * Driver: Driver Dashboard, Driver Profile
-   * Admin / Owner: Admin Console
-   * Driver and Admin users must NOT see customer navigation.
-   */
-  const isCustomer = !!user && !isDriver && !isAdmin;
+  const handleLogout = () => {
+    logout();
+    setIsDrawerOpen(false);
+    navigate('/login');
+  };
 
   return (
-    <nav className="sticky top-0 z-40 bg-[#071426]/95 backdrop-blur-md border-b border-[#10243D] shadow-md transition-all">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 md:h-20">
+    <>
+      {/* Top Bar Header */}
+      <nav className="sticky top-0 z-40 bg-[#0B0B0D]/95 backdrop-blur-md border-b border-[#303034] transition-all safe-top">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
 
-          {/* Logo */}
-          <div
-            onClick={() => handleNav('/')}
-            className="cursor-pointer"
-          >
-            <Logo size="md" showTagline={true} theme="light" />
-          </div>
-
-          {/* =========================
-              DESKTOP NAVIGATION
-          ========================== */}
-          <div className="hidden md:flex items-center gap-1.5 lg:gap-2">
-
-            {/* Home */}
-            <button
+            {/* Left: Clik2Go Logo */}
+            <div
               onClick={() => handleNav('/')}
-              className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all ${
-                currentPath === '/'
-                  ? 'text-[#FF8A00] bg-[#10243D]/90 shadow-2xs'
-                  : 'text-[#A9B7C9] hover:text-white hover:bg-[#10243D]/50'
-              }`}
+              className="cursor-pointer"
             >
-              Home
-            </button>
+              <Logo size="md" showTagline={false} />
+            </div>
 
-            {/* How It Works */}
+            {/* Right: Quick actions + Hamburger Menu Button */}
+            <div className="flex items-center gap-2">
+              {/* Desktop quick shortcuts */}
+              <div className="hidden sm:flex items-center gap-1.5 mr-2">
+                <button
+                  type="button"
+                  onClick={() => handleNav('/book')}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#202023] hover:bg-[#303034] text-xs font-bold text-white border border-[#303034] flex items-center gap-1.5 transition-colors"
+                >
+                  <Car className="w-3.5 h-3.5 text-[#C6FF3D]" />
+                  <span>Book Auto</span>
+                </button>
+              </div>
+
+              {/* Hamburger Menu Toggle Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveDrawerTab('menu');
+                  setIsDrawerOpen(true);
+                }}
+                className="w-10 h-10 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] hover:border-[#C6FF3D]/50 text-white flex items-center justify-center transition-all shadow-subtle active:scale-95"
+                aria-label="Open menu"
+              >
+                <Menu className="w-5 h-5 text-[#C6FF3D]" />
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </nav>
+
+      {/* Hamburger Slide-Over Drawer Backdrop */}
+      {isDrawerOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm transition-opacity"
+          onClick={() => setIsDrawerOpen(false)}
+        />
+      )}
+
+      {/* Slide-Over Drawer Container */}
+      <aside
+        className={`fixed top-0 right-0 z-50 h-full w-full max-w-sm bg-[#0B0B0D] border-l border-[#303034] shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out safe-top safe-bottom ${
+          isDrawerOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {/* Drawer Header */}
+        <div className="p-4 sm:p-5 border-b border-[#303034] flex items-center justify-between bg-[#171719]">
+          <div onClick={() => handleNav('/')} className="cursor-pointer">
+            <Logo size="sm" showTagline={false} />
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsDrawerOpen(false)}
+            className="w-9 h-9 rounded-xl bg-[#202023] hover:bg-[#303034] border border-[#303034] text-[#A1A1AA] hover:text-white flex items-center justify-center transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* User Card if logged in */}
+        {user ? (
+          <div className="p-4 bg-[#171719] border-b border-[#303034] flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-[#202023] border border-[#303034] flex items-center justify-center text-[#C6FF3D] font-bold text-sm">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-white truncate">{user.name}</p>
+                <p className="text-[11px] text-[#A1A1AA] truncate">{user.mobile}</p>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#C6FF3D]/10 text-[#C6FF3D] border border-[#C6FF3D]/30">
+              {user.role}
+            </span>
+          </div>
+        ) : (
+          <div className="p-4 bg-[#171719] border-b border-[#303034] space-y-2">
+            <p className="text-xs text-[#A1A1AA]">Sign in to book rides, track history, and access quick fares</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => handleNav('/login')}
+                className="w-full py-2 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs rounded-xl transition-all text-center"
+              >
+                Log In
+              </button>
+              <button
+                type="button"
+                onClick={() => handleNav('/register')}
+                className="w-full py-2 bg-[#202023] hover:bg-[#303034] text-white border border-[#303034] font-bold text-xs rounded-xl transition-all text-center"
+              >
+                Sign Up
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Scrollable Drawer Body */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+
+          {/* Quick Navigation Links */}
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA] px-2 mb-1">
+              Actions
+            </p>
+
             <button
-              onClick={() => {
-                if (currentPath !== '/') {
-                  handleNav('/#how-it-works');
-                } else {
-                  document
-                    .getElementById('how-it-works')
-                    ?.scrollIntoView({ behavior: 'smooth' });
-                }
-              }}
-              className="px-3.5 py-2 rounded-xl text-sm font-semibold text-[#A9B7C9] hover:text-white hover:bg-[#10243D]/50 transition-all"
+              type="button"
+              onClick={() => handleNav('/book')}
+              className="w-full p-3 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] hover:border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
             >
-              How It Works
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-[#202023] group-hover:bg-[#C6FF3D]/10 text-[#C6FF3D] flex items-center justify-center">
+                  <Car className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-white">Book Auto</p>
+                  <p className="text-[10px] text-[#A1A1AA]">Point-to-point fixed pricing</p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
             </button>
 
-            {/* About */}
             <button
-              onClick={() => {
-                if (currentPath !== '/') {
-                  handleNav('/#benefits');
-                } else {
-                  document
-                    .getElementById('benefits')
-                    ?.scrollIntoView({ behavior: 'smooth' });
-                }
-              }}
-              className="px-3.5 py-2 rounded-xl text-sm font-semibold text-[#A9B7C9] hover:text-white hover:bg-[#10243D]/50 transition-all"
+              type="button"
+              onClick={() => handleNav('/dashboard?tab=trips')}
+              className="w-full p-3 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] hover:border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
             >
-              About
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-[#202023] group-hover:bg-[#C6FF3D]/10 text-[#C6FF3D] flex items-center justify-center">
+                  <Compass className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-white">Plan a Trip</p>
+                  <p className="text-[10px] text-[#A1A1AA]">Outstation car bookings</p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
             </button>
 
-            {/* =========================
-                CUSTOMER NAVIGATION
-            ========================== */}
-            {isCustomer && (
+            {user && (
               <>
                 <button
-                  onClick={() => handleNav('/dashboard')}
-                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all ${
-                    currentPath === '/dashboard'
-                      ? 'text-[#FF8A00] bg-[#10243D]/90 shadow-2xs'
-                      : 'text-[#A9B7C9] hover:text-white hover:bg-[#10243D]/50'
-                  }`}
+                  type="button"
+                  onClick={() => handleNav('/my-rides')}
+                  className="w-full p-3 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] hover:border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
                 >
-                  Dashboard
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-[#202023] group-hover:bg-[#C6FF3D]/10 text-[#C6FF3D] flex items-center justify-center">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">My Rides</p>
+                      <p className="text-[10px] text-[#A1A1AA]">History & active rides</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
                 </button>
 
                 <button
-                  onClick={() => handleNav('/my-rides')}
-                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all ${
-                    currentPath === '/my-rides'
-                      ? 'text-[#FF8A00] bg-[#10243D]/90 shadow-2xs'
-                      : 'text-[#A9B7C9] hover:text-white hover:bg-[#10243D]/50'
-                  }`}
+                  type="button"
+                  onClick={() => handleNav('/profile')}
+                  className="w-full p-3 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] hover:border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
                 >
-                  My Rides
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-[#202023] group-hover:bg-[#C6FF3D]/10 text-[#C6FF3D] flex items-center justify-center">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">My Profile</p>
+                      <p className="text-[10px] text-[#A1A1AA]">Account & settings</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
                 </button>
               </>
             )}
 
-            {/* =========================
-                DRIVER NAVIGATION
-            ========================== */}
             {isDriver && (
               <button
+                type="button"
                 onClick={() => handleNav('/driver')}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all ${
-                  currentPath === '/driver'
-                    ? 'text-[#FF8A00] bg-[#10243D]'
-                    : 'text-emerald-400 hover:text-emerald-300 hover:bg-[#10243D]/50'
-                }`}
+                className="w-full p-3 rounded-2xl bg-[#C6FF3D]/10 border border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
               >
-                <Car className="w-4 h-4" />
-                <span>Driver Dashboard</span>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-[#C6FF3D] text-[#0B0B0D] flex items-center justify-center">
+                    🛺
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">Driver Console</p>
+                    <p className="text-[10px] text-[#C6FF3D]">Manage rides & earnings</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-[#C6FF3D]" />
+              </button>
+            )}
+
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => handleNav('/owner/dashboard')}
+                className="w-full p-3 rounded-2xl bg-[#C6FF3D]/10 border border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-[#C6FF3D] text-[#0B0B0D] flex items-center justify-center">
+                    🛡️
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">Owner Console</p>
+                    <p className="text-[10px] text-[#C6FF3D]">Operations & routes</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-[#C6FF3D]" />
               </button>
             )}
           </div>
 
-          {/* =========================
-              DESKTOP RIGHT SIDE
-          ========================== */}
-          <div className="hidden md:flex items-center gap-3">
+          {/* Informational Sections Relocated into Hamburger Drawer */}
+          <div className="space-y-3 pt-2 border-t border-[#303034]">
 
-            {user ? (
-              <div className="relative">
-
-                {/* User Button */}
-                <button
-                  onClick={() =>
-                    setIsProfileDropdownOpen(!isProfileDropdownOpen)
-                  }
-                  className="flex items-center gap-2.5 px-3.5 py-2 rounded-full border border-[#10243D] hover:border-[#1A3353] bg-[#0B1B32] hover:bg-[#10243D] transition-colors"
-                >
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#FF8A00] to-[#E67600] text-[#071426] font-extrabold flex items-center justify-center text-xs shadow-sm">
-                    {user.name.charAt(0).toUpperCase()}
-                  </div>
-
-                  <div className="text-left">
-                    <div className="text-xs font-bold text-white leading-tight">
-                      {user.name.split(' ')[0]}
-                    </div>
-
-                    <div className="text-[10px] text-[#A9B7C9] capitalize">
-                      {user.role}
-                    </div>
-                  </div>
-
-                  <ChevronDown className="w-3.5 h-3.5 text-[#A9B7C9]" />
-                </button>
-
-                {/* Profile Dropdown */}
-                {isProfileDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-56 bg-[#0B1B32] rounded-2xl shadow-2xl border border-[#1A3353] py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
-
-                    {/* User Information */}
-                    <div className="px-4 py-2.5 border-b border-[#10243D]">
-                      <div className="text-xs font-bold text-white">
-                        {user.name}
-                      </div>
-
-                      <div className="text-xs text-[#A9B7C9] truncate">
-                        {user.email}
-                      </div>
-                    </div>
-
-                    {/* Customer dropdown */}
-                    {isCustomer && (
-                      <>
-                        <button
-                          onClick={() => handleNav('/dashboard')}
-                          className="w-full text-left px-4 py-2 text-xs font-semibold text-[#A9B7C9] hover:bg-[#10243D] hover:text-[#FF8A00] flex items-center gap-2.5 transition-colors"
-                        >
-                          <Compass className="w-4 h-4 text-[#FF8A00]" />
-                          <span>Customer Dashboard</span>
-                        </button>
-
-                        <button
-                          onClick={() => handleNav('/my-rides')}
-                          className="w-full text-left px-4 py-2 text-xs font-semibold text-[#A9B7C9] hover:bg-[#10243D] hover:text-[#FF8A00] flex items-center gap-2.5 transition-colors"
-                        >
-                          <Clock className="w-4 h-4 text-[#A9B7C9]" />
-                          <span>My Rides</span>
-                        </button>
-
-                        <button
-                          onClick={() => handleNav('/profile')}
-                          className="w-full text-left px-4 py-2 text-xs font-semibold text-[#A9B7C9] hover:bg-[#10243D] hover:text-[#FF8A00] flex items-center gap-2.5 transition-colors"
-                        >
-                          <User className="w-4 h-4 text-[#A9B7C9]" />
-                          <span>My Profile</span>
-                        </button>
-                      </>
-                    )}
-
-                    {/* Driver dropdown */}
-                    {isDriver && (
-                      <>
-                        <button
-                          onClick={() => handleNav('/driver')}
-                          className="w-full text-left px-4 py-2 text-xs font-semibold text-emerald-400 hover:bg-[#10243D] flex items-center gap-2.5 transition-colors"
-                        >
-                          <Car className="w-4 h-4 text-emerald-400" />
-                          <span>Driver Dashboard</span>
-                        </button>
-
-                        <button
-                          onClick={() => handleNav('/profile')}
-                          className="w-full text-left px-4 py-2 text-xs font-semibold text-[#A9B7C9] hover:bg-[#10243D] hover:text-white flex items-center gap-2.5 transition-colors"
-                        >
-                          <User className="w-4 h-4 text-[#A9B7C9]" />
-                          <span>Driver Profile</span>
-                        </button>
-                      </>
-                    )}
-
-                    {/* Logout */}
-                    <div className="border-t border-[#10243D] my-1" />
-
-                    <button
-                      onClick={() => {
-                        logout();
-                        handleNav('/login');
-                      }}
-                      className="w-full text-left px-4 py-2 text-xs font-semibold text-rose-400 hover:bg-rose-950/30 flex items-center gap-2.5 transition-colors"
-                    >
-                      <LogOut className="w-4 h-4 text-rose-400" />
-                      <span>Log Out</span>
-                    </button>
-                  </div>
-                )}
+            {/* How Clik2Go Works */}
+            <div className="bg-[#171719] rounded-2xl border border-[#303034] p-3.5 space-y-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-white">
+                <Sparkles className="w-4 h-4 text-[#C6FF3D]" />
+                <span>How Clik2Go Works</span>
               </div>
-            ) : (
-              <>
-                {/* Login */}
-                <button
-                  onClick={() => handleNav('/login')}
-                  className="px-4 py-2 text-sm font-semibold text-[#A9B7C9] hover:text-white rounded-xl hover:bg-[#10243D] transition-colors"
-                >
-                  Login
-                </button>
+              <ol className="text-[11px] text-[#A1A1AA] space-y-1.5 list-decimal pl-4">
+                <li><strong className="text-white">Choose route:</strong> Set pickup and destination on the map.</li>
+                <li><strong className="text-white">Fixed fare:</strong> Instant upfront fare calculation with no surprises.</li>
+                <li><strong className="text-white">Ride & Pay:</strong> Driver arrives in 3–7 mins. Pay via Cash or UPI.</li>
+              </ol>
+            </div>
 
-                {/* Register */}
-                <button
-                  onClick={() => handleNav('/register')}
-                  className="px-4 py-2 text-sm font-bold text-[#071426] bg-[#FF8A00] hover:bg-[#FF9D2E] rounded-xl shadow-glow-orange transition-all hover:scale-102"
-                >
-                  Register
-                </button>
-              </>
-            )}
+            {/* Why Choose Us */}
+            <div className="bg-[#171719] rounded-2xl border border-[#303034] p-3.5 space-y-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-white">
+                <ShieldCheck className="w-4 h-4 text-[#C6FF3D]" />
+                <span>Why Choose Clik2Go</span>
+              </div>
+              <ul className="text-[11px] text-[#A1A1AA] space-y-1.5 list-disc pl-4">
+                <li><strong className="text-white">Zero Haggling:</strong> Guaranteed fixed rates approved by admin.</li>
+                <li><strong className="text-white">Verified Drivers:</strong> Local trusted drivers with valid licenses.</li>
+                <li><strong className="text-white">Up to 6 Passengers:</strong> Book rides for your whole party.</li>
+              </ul>
+            </div>
 
-            {/* Book Auto - CUSTOMER ONLY */}
-            {isCustomer && (
-              <button
-                onClick={() => handleNav('/book')}
-                className="px-4 py-2 text-sm font-bold text-[#071426] bg-[#FF8A00] hover:bg-[#FF9D2E] rounded-xl shadow-glow-orange transition-all hover:scale-102 flex items-center gap-2"
-              >
-                <span>Book an Auto</span>
-              </button>
-            )}
+            {/* Services */}
+            <div className="bg-[#171719] rounded-2xl border border-[#303034] p-3.5 space-y-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-white">
+                <Car className="w-4 h-4 text-[#C6FF3D]" />
+                <span>Services</span>
+              </div>
+              <p className="text-[11px] text-[#A1A1AA]">
+                • <strong className="text-white">City Auto:</strong> Daily point-to-point auto rides across town.<br />
+                • <strong className="text-white">Plan a Trip:</strong> Outstation cars and tourist packages with Cashfree payments.
+              </p>
+            </div>
+
+            {/* Support & Contact */}
+            <div className="bg-[#171719] rounded-2xl border border-[#303034] p-3.5 space-y-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-white">
+                <Phone className="w-4 h-4 text-[#C6FF3D]" />
+                <span>Support & Helpdesk</span>
+              </div>
+              <p className="text-[11px] text-[#A1A1AA] leading-relaxed">
+                Need immediate ride help or special booking assistance?
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <a
+                  href="tel:919876543210"
+                  className="px-3 py-1.5 rounded-xl bg-[#202023] hover:bg-[#303034] border border-[#303034] text-[11px] font-bold text-[#C6FF3D] flex items-center gap-1.5 transition-colors"
+                >
+                  <Phone className="w-3 h-3" />
+                  <span>Call Support</span>
+                </a>
+                <a
+                  href="https://wa.me/919876543210"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-xl bg-[#202023] hover:bg-[#303034] border border-[#303034] text-[11px] font-bold text-white flex items-center gap-1.5 transition-colors"
+                >
+                  <span>WhatsApp</span>
+                  <ExternalLink className="w-3 h-3 text-[#A1A1AA]" />
+                </a>
+              </div>
+            </div>
+
           </div>
+        </div>
 
-          {/* =========================
-              MOBILE HEADER
-          ========================== */}
-          <div className="md:hidden flex items-center gap-1.5 sm:gap-2">
-
-            {/* Book Auto - CUSTOMER ONLY */}
-            {isCustomer && (
-              <button
-                onClick={() => handleNav('/book')}
-                className="px-2.5 sm:px-3 py-1.5 text-xs font-bold text-[#071426] bg-[#FF8A00] hover:bg-[#FF9D2E] rounded-lg shadow-sm whitespace-nowrap"
-              >
-                Book Auto
-              </button>
-            )}
-
+        {/* Drawer Footer with Sign Out */}
+        {user && (
+          <div className="p-4 border-t border-[#303034] bg-[#171719]">
             <button
-              onClick={() =>
-                setIsMobileMenuOpen(!isMobileMenuOpen)
-              }
-              className="p-1.5 sm:p-2 rounded-lg text-[#A9B7C9] hover:text-white hover:bg-[#10243D] transition-colors"
-              aria-label="Toggle navigation menu"
+              type="button"
+              onClick={handleLogout}
+              className="w-full py-2.5 rounded-xl bg-[#202023] hover:bg-rose-950/40 text-rose-400 border border-[#303034] hover:border-rose-800 text-xs font-bold flex items-center justify-center gap-2 transition-colors"
             >
-              {isMobileMenuOpen ? (
-                <X className="w-5 h-5 sm:w-6 sm:h-6" />
-              ) : (
-                <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
-              )}
+              <LogOut className="w-4 h-4" />
+              <span>Sign Out</span>
             </button>
           </div>
-        </div>
-      </div>
-
-      {/* =========================
-          MOBILE DRAWER
-      ========================== */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden bg-[#071426] border-b border-[#10243D] px-4 pt-2 pb-6 space-y-2 animate-in slide-in-from-top-4 duration-200">
-
-          {/* Home */}
-          <button
-            onClick={() => handleNav('/')}
-            className="w-full text-left px-3.5 py-2.5 rounded-lg text-sm font-semibold text-white hover:bg-[#10243D] transition-colors"
-          >
-            Home
-          </button>
-
-          {/* How It Works */}
-          <button
-            onClick={() => {
-              handleNav('/#how-it-works');
-              document
-                .getElementById('how-it-works')
-                ?.scrollIntoView({ behavior: 'smooth' });
-            }}
-            className="w-full text-left px-3.5 py-2.5 rounded-lg text-sm font-semibold text-[#A9B7C9] hover:text-white hover:bg-[#10243D] transition-colors"
-          >
-            How It Works
-          </button>
-
-          {/* About */}
-          <button
-            onClick={() => {
-              handleNav('/#benefits');
-              document
-                .getElementById('benefits')
-                ?.scrollIntoView({ behavior: 'smooth' });
-            }}
-            className="w-full text-left px-3.5 py-2.5 rounded-lg text-sm font-semibold text-[#A9B7C9] hover:text-white hover:bg-[#10243D] transition-colors"
-          >
-            About
-          </button>
-
-          {/* Mobile Logged-in */}
-          {user ? (
-            <div className="pt-2 border-t border-[#10243D] space-y-1">
-
-              <div className="px-3 py-2 text-xs font-bold text-[#FF8A00] uppercase">
-                Account: {user.name} ({user.role})
-              </div>
-
-              {isCustomer && (
-                <>
-                  <button
-                    onClick={() => handleNav('/dashboard')}
-                    className="w-full text-left px-3.5 py-2 rounded-lg text-sm font-medium text-white hover:bg-[#10243D]"
-                  >
-                    Customer Dashboard
-                  </button>
-
-                  <button
-                    onClick={() => handleNav('/my-rides')}
-                    className="w-full text-left px-3.5 py-2 rounded-lg text-sm font-medium text-white hover:bg-[#10243D]"
-                  >
-                    My Rides
-                  </button>
-
-                  <button
-                    onClick={() => handleNav('/profile')}
-                    className="w-full text-left px-3.5 py-2 rounded-lg text-sm font-medium text-white hover:bg-[#10243D]"
-                  >
-                    My Profile
-                  </button>
-
-                  <button
-                    onClick={() => handleNav('/book')}
-                    className="w-full text-left px-3.5 py-2.5 rounded-lg text-sm font-bold text-[#071426] bg-[#FF8A00] hover:bg-[#FF9D2E] shadow-sm"
-                  >
-                    Book an Auto
-                  </button>
-                </>
-              )}
-
-              {isDriver && (
-                <>
-                  <button
-                    onClick={() => handleNav('/driver')}
-                    className="w-full text-left px-3.5 py-2 rounded-lg text-sm font-medium text-emerald-400 bg-emerald-950/40"
-                  >
-                    Driver Dashboard
-                  </button>
-
-                  <button
-                    onClick={() => handleNav('/profile')}
-                    className="w-full text-left px-3.5 py-2 rounded-lg text-sm font-medium text-[#A9B7C9] hover:bg-[#10243D]"
-                  >
-                    Driver Profile
-                  </button>
-                </>
-              )}
-
-              {/* Logout */}
-              <button
-                onClick={() => {
-                  logout();
-                  handleNav('/login');
-                }}
-                className="w-full text-left px-3.5 py-2 rounded-lg text-sm font-semibold text-rose-400 hover:bg-rose-950/30"
-              >
-                Log Out
-              </button>
-            </div>
-          ) : (
-            <div className="pt-3 border-t border-[#10243D] flex flex-col gap-2">
-              <button
-                onClick={() => handleNav('/login')}
-                className="w-full py-2.5 text-center text-sm font-semibold text-white bg-[#10243D] rounded-xl hover:bg-[#1A3353]"
-              >
-                Login
-              </button>
-
-              <button
-                onClick={() => handleNav('/register')}
-                className="w-full py-2.5 text-center text-sm font-bold text-[#071426] bg-[#FF8A00] hover:bg-[#FF9D2E] rounded-xl shadow-glow-orange"
-              >
-                Register
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </nav>
+        )}
+      </aside>
+    </>
   );
 };

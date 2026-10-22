@@ -217,6 +217,31 @@ export class AuthController {
     }
   }
 
+  public static async acceptTerms(req: Request, res: Response) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: 'Not authenticated.' });
+      }
+      const version = String(req.body.version || '1.0').trim();
+      const now = new Date();
+      await query(
+        `UPDATE users
+         SET terms_version = $1, terms_accepted_at = $2, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $3`,
+        [version, now, req.user.id]
+      );
+
+      const updatedUser = await AuthService.getUserById(req.user.id);
+      return res.json({
+        success: true,
+        message: 'Terms of service accepted successfully.',
+        data: updatedUser
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
   public static async logout(req: Request, res: Response) {
     return res.json({ success: true, message: 'Logged out successfully.' });
   }

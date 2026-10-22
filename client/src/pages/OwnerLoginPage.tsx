@@ -51,108 +51,107 @@ export const OwnerLoginPage: React.FC<OwnerLoginPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center py-8 sm:py-12 px-3 sm:px-4 bg-[#071426] relative overflow-hidden">
-      {/* Subtle ambient orange glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-[#FF8A00]/5 rounded-full blur-3xl pointer-events-none" />
-
-      <div className="relative max-w-md w-full bg-[#10243D] p-5 sm:p-10 rounded-2xl sm:rounded-3xl shadow-2xl border border-[#1A3353]">
+    <div className="min-h-screen flex items-center justify-center py-8 sm:py-16 px-4 bg-[#0B0B0D] text-white relative safe-top safe-bottom">
+      <div className="max-w-md w-full bg-[#171719] p-6 sm:p-10 rounded-3xl shadow-card border border-[#303034]">
 
         {/* Logo & Portal Header */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-5">
-            <Logo size="md" theme="light" />
+            <Logo size="md" />
           </div>
 
-          <div className="w-14 h-14 mx-auto rounded-2xl bg-[#071426] text-[#FF8A00] flex items-center justify-center mb-4 border border-[#1A3353] shadow-glow-orange">
-            <ShieldCheck className="w-7 h-7" />
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#202023] border border-[#303034] text-[#C6FF3D] text-xs font-bold uppercase tracking-wider mb-3">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>Clik2Go Admin Console</span>
           </div>
 
-          <h1 className="text-2xl font-black text-white tracking-tight">
-            Clik2Go Owner Portal
-          </h1>
-
-          <p className="text-xs text-[#A9B7C9] mt-1.5">
-            Private management console for Clik2Go platform administration
+          <h2 className="text-2xl font-black text-white tracking-tight">
+            Owner Sign In
+          </h2>
+          <p className="text-xs text-[#A1A1AA] mt-1">
+            Access platform settlements, fare configuration, and driver approvals
           </p>
         </div>
 
-        {/* Error */}
+        {/* Quick Demo Pill */}
+        <div className="p-3 bg-[#202023] rounded-2xl border border-[#303034] mb-6 flex items-center justify-between">
+          <div>
+            <span className="text-[10px] uppercase font-bold text-[#A1A1AA] block">Demo Credentials</span>
+            <span className="text-xs font-mono text-white">admin@example.com</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setIdentifier('admin@example.com');
+              setPassword('password123');
+            }}
+            className="px-3 py-1 bg-[#171719] hover:bg-[#26262A] border border-[#303034] text-[11px] font-bold text-[#C6FF3D] rounded-lg"
+          >
+            Auto-fill
+          </button>
+        </div>
+
         {error && (
-          <div className="p-3.5 rounded-xl bg-rose-950/50 border border-rose-800 text-rose-300 text-xs flex items-center gap-2.5 mb-5 animate-in fade-in duration-150">
+          <div className="mb-6 p-4 rounded-xl bg-rose-950/40 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">
             <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-400" />
             <span>{error}</span>
           </div>
         )}
 
-        {/* Login Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-
-          {/* Email */}
           <div>
-            <label className="block text-xs font-bold text-[#A9B7C9] uppercase mb-1">
-              Owner Email or Mobile *
+            <label className="block text-xs font-bold text-[#A1A1AA] uppercase mb-1.5">
+              Owner Email / Username
             </label>
-
             <div className="relative">
-              <User className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
-
+              <User className="absolute left-3.5 top-3 w-4 h-4 text-[#A1A1AA]" />
               <input
                 type="text"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="Owner email or mobile"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-[#1A3353] bg-[#071426] text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
+                placeholder="admin@example.com"
+                className="w-full pl-10 pr-3.5 py-3 rounded-xl border border-[#303034] bg-[#202023] text-white text-sm font-medium focus:outline-none focus:border-[#C6FF3D]"
                 required
               />
             </div>
           </div>
 
-          {/* Password */}
           <div>
-            <label className="block text-xs font-bold text-[#A9B7C9] uppercase mb-1">
-              Password *
+            <label className="block text-xs font-bold text-[#A1A1AA] uppercase mb-1.5">
+              Password
             </label>
-
             <div className="relative">
-              <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
-
+              <Lock className="absolute left-3.5 top-3 w-4 h-4 text-[#A1A1AA]" />
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Owner password"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-[#1A3353] bg-[#071426] text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
+                placeholder="••••••••"
+                className="w-full pl-10 pr-3.5 py-3 rounded-xl border border-[#303034] bg-[#202023] text-white text-sm font-medium focus:outline-none focus:border-[#C6FF3D]"
                 required
               />
             </div>
           </div>
 
-          {/* Submit */}
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-3.5 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-sm rounded-xl shadow-glow-orange transition-all hover:scale-102 flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full py-3.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs uppercase tracking-wider rounded-xl shadow-glow-lime transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 mt-2"
           >
-            {isSubmitting ? (
-              <span>Signing in...</span>
-            ) : (
-              <>
-                <span>Enter Owner Portal</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
+            {isSubmitting ? 'Authenticating...' : 'Sign In to Console'}
+            <ArrowRight className="w-4 h-4 text-[#0B0B0D]" />
           </button>
         </form>
 
-        <div className="text-center mt-6">
+        <div className="text-center pt-6 text-xs text-[#A1A1AA]">
           <button
-            type="button"
             onClick={() => navigate('/')}
-            className="text-xs font-semibold text-[#A9B7C9] hover:text-white transition-colors"
+            className="font-bold text-[#C6FF3D] hover:underline"
           >
-            ← Back to Clik2Go Home
+            ← Return to Customer Portal
           </button>
         </div>
+
       </div>
     </div>
   );

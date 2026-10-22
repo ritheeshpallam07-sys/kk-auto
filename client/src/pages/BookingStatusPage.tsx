@@ -3,18 +3,18 @@ import { api, Booking, PaymentRecord, RatingRecord, getCashfreeMode } from '../a
 import { StatusBadge } from '../components/StatusBadge';
 import { Modal } from '../components/Modal';
 import { load } from '@cashfreepayments/cashfree-js';
-import { 
-  ArrowLeft, 
-  MapPin, 
-  Navigation, 
-  Clock, 
-  Users, 
-  IndianRupee, 
-  Phone, 
-  ShieldCheck, 
-  Car, 
-  AlertCircle, 
-  XCircle, 
+import {
+  ArrowLeft,
+  MapPin,
+  Navigation,
+  Clock,
+  Users,
+  IndianRupee,
+  Phone,
+  ShieldCheck,
+  Car,
+  AlertCircle,
+  XCircle,
   PlayCircle,
   CheckCircle2,
   CreditCard,
@@ -74,9 +74,21 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
         if (isCancelled || !mapContainerRef.current) return;
 
         const defaultCenter = { lat: 13.6480, lng: 78.7950 };
+        const darkMapStyle = [
+          { elementType: 'geometry', stylers: [{ color: '#171719' }] },
+          { elementType: 'labels.text.stroke', stylers: [{ color: '#0B0B0D' }] },
+          { elementType: 'labels.text.fill', stylers: [{ color: '#A1A1AA' }] },
+          { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#202023' }] },
+          { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#303034' }] },
+          { featureType: 'transit', stylers: [{ visibility: 'simplified' }] },
+          { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0B0B0D' }] },
+        ];
+
         const map = new Map(mapContainerRef.current, {
           center: defaultCenter,
           zoom: 14,
+          styles: darkMapStyle,
           disableDefaultUI: true,
           zoomControl: false,
         });
@@ -90,49 +102,47 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
     return () => { isCancelled = true; };
   }, []);
 
+  // Update map markers when booking coordinates or status load
   useEffect(() => {
-    if (!mapsLoaded || !mapInstanceRef.current || !booking || !window.google) return;
+    if (!mapsLoaded || !mapInstanceRef.current || !booking) return;
     const map = mapInstanceRef.current;
-    const google = window.google;
+    const google = (window as any).google;
+    if (!google) return;
 
-    const KNOWN_COORDS: Record<string, { lat: number; lng: number }> = {
-      'jntua': { lat: 13.6508, lng: 78.7860 },
-      'cross': { lat: 13.6525, lng: 78.8035 },
-      'bus stand': { lat: 13.6455, lng: 78.8035 },
-      'marava': { lat: 13.6408, lng: 78.8010 }
+    const pPos = {
+      lat: Number(booking.pickup_latitude) || 13.6480,
+      lng: Number(booking.pickup_longitude) || 78.7950
     };
-
-    const pLat = booking.pickup_latitude || KNOWN_COORDS[booking.pickup_address.toLowerCase().trim()]?.lat || 13.6508;
-    const pLng = booking.pickup_longitude || KNOWN_COORDS[booking.pickup_address.toLowerCase().trim()]?.lng || 78.7860;
-    const dLat = booking.destination_latitude || KNOWN_COORDS[booking.destination_address.toLowerCase().trim()]?.lat || 13.6455;
-    const dLng = booking.destination_longitude || KNOWN_COORDS[booking.destination_address.toLowerCase().trim()]?.lng || 78.8035;
-
-    const pPos = { lat: pLat, lng: pLng };
-    const dPos = { lat: dLat, lng: dLng };
+    const dPos = {
+      lat: Number(booking.destination_latitude) || 13.6525,
+      lng: Number(booking.destination_longitude) || 78.8035
+    };
 
     new google.maps.Marker({
       position: pPos,
       map,
+      title: 'Pickup',
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
         scale: 8,
-        fillColor: '#FF8A00',
+        fillColor: '#C6FF3D',
         fillOpacity: 1,
-        strokeColor: '#FFFFFF',
-        strokeWeight: 2,
+        strokeColor: '#0B0B0D',
+        strokeWeight: 2.5
       }
     });
 
     new google.maps.Marker({
       position: dPos,
       map,
+      title: 'Destination',
       icon: {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 8,
-        fillColor: '#10B981',
+        path: 'M -5,-5 L 5,-5 L 5,5 L -5,5 Z',
+        scale: 1,
+        fillColor: '#FFFFFF',
         fillOpacity: 1,
-        strokeColor: '#FFFFFF',
-        strokeWeight: 2,
+        strokeColor: '#C6FF3D',
+        strokeWeight: 2
       }
     });
 
@@ -143,7 +153,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
 
     new google.maps.Polyline({
       path: [pPos, dPos],
-      strokeColor: '#FF8A00',
+      strokeColor: '#C6FF3D',
       strokeOpacity: 0.85,
       strokeWeight: 4,
       map
@@ -198,47 +208,48 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   };
 
   const handleProcessPayment = async () => {
-  if (!booking) return;
+    if (!booking) return;
 
-  setIsPaying(true);
+    setIsPaying(true);
 
-  try {
-    const res = await api.payments.createOrder({
-      bookingId: booking.id,
-      paymentMethod: selectedPaymentMethod
-    });
-
-    if (res.success && res.data?.payment_session_id) {
-      const cashfree = await load({
-        mode: getCashfreeMode(res.data?.environment)
+    try {
+      const res = await api.payments.createOrder({
+        bookingId: booking.id,
+        paymentMethod: selectedPaymentMethod
       });
 
-      if (!cashfree) {
-        throw new Error('Unable to load Cashfree Checkout.');
+      if (res.success && res.data?.payment_session_id) {
+        const cashfree = await load({
+          mode: getCashfreeMode(res.data?.environment)
+        });
+
+        if (!cashfree) {
+          throw new Error('Unable to load Cashfree Checkout.');
+        }
+
+        setIsPayModalOpen(false);
+
+        await cashfree.checkout({
+          paymentSessionId: res.data.payment_session_id,
+          redirectTarget: '_self'
+        });
+
+        return;
       }
 
-      setIsPayModalOpen(false);
-
-      await cashfree.checkout({
-        paymentSessionId: res.data.payment_session_id,
-        redirectTarget: '_self'
-      });
-
-      return;
+      throw new Error(res.error || 'Unable to create payment order.');
+    } catch (error) {
+      console.error('Payment checkout error:', error);
+      setError(
+        error instanceof Error
+          ? error.message
+          : 'Payment failed. Please try again.'
+      );
+    } finally {
+      setIsPaying(false);
     }
+  };
 
-    throw new Error(res.error || 'Unable to create payment order.');
-  } catch (error) {
-    console.error('Payment checkout error:', error);
-    setError(
-      error instanceof Error
-        ? error.message
-        : 'Payment failed. Please try again.'
-    );
-  } finally {
-    setIsPaying(false);
-  }
-};
   const handleSubmitRating = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!booking) return;
@@ -281,24 +292,24 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
 
   if (isLoading) {
     return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3">
-        <div className="w-10 h-10 border-4 border-[#FF8A00] border-t-transparent rounded-full animate-spin" />
-        <p className="text-xs font-semibold text-slate-500">Loading ride tracking...</p>
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3 bg-[#0B0B0D] text-white">
+        <div className="w-10 h-10 border-4 border-[#C6FF3D] border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs font-semibold text-[#A1A1AA]">Loading ride tracking...</p>
       </div>
     );
   }
 
   if (error || !booking) {
     return (
-      <div className="max-w-md mx-auto py-16 px-4 text-center">
-        <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+      <div className="max-w-md mx-auto py-16 px-4 text-center bg-[#0B0B0D] text-white">
+        <div className="w-12 h-12 bg-rose-950/40 text-rose-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-rose-800">
           <AlertCircle className="w-6 h-6" />
         </div>
-        <h2 className="text-xl font-bold text-slate-900 mb-2">Booking Not Found</h2>
-        <p className="text-xs text-slate-600 mb-6">{error || 'Unable to locate this booking.'}</p>
+        <h2 className="text-xl font-bold text-white mb-2">Booking Not Found</h2>
+        <p className="text-xs text-[#A1A1AA] mb-6">{error || 'Unable to locate this booking.'}</p>
         <button
           onClick={() => navigate('/my-rides')}
-          className="px-6 py-2.5 bg-[#071426] hover:bg-[#10243D] text-white font-bold text-xs rounded-xl"
+          className="px-6 py-2.5 bg-[#C6FF3D] text-[#0B0B0D] font-black text-xs rounded-xl shadow-glow-lime"
         >
           Back to My Rides
         </button>
@@ -318,17 +329,19 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   const isCancelled = booking.status === 'Cancelled';
   const isCompleted = booking.status === 'Ride Completed';
   const isPaid =
-         payment?.payment_status === 'COMPLETED' &&
-         payment?.payment_method !== 'Cash';
+    payment?.payment_status === 'COMPLETED' &&
+    payment?.payment_method !== 'Cash';
+
   return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-8 space-y-5 sm:space-y-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8 bg-[#0B0B0D] text-white safe-bottom">
+
       {/* Navigation Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pb-3 border-b border-[#303034]">
         <button
           onClick={() => navigate('/my-rides')}
-          className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors"
+          className="inline-flex items-center gap-2 text-xs font-bold text-white hover:text-[#C6FF3D] transition-colors px-3 py-2 rounded-xl bg-[#171719] border border-[#303034]"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="w-4 h-4 text-[#C6FF3D]" />
           <span>Back to All Rides</span>
         </button>
 
@@ -337,7 +350,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
           {isCompleted && !isPaid && !isCancelled && (
             <button
               onClick={() => setIsPayModalOpen(true)}
-              className="px-3.5 sm:px-4 py-2 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-xs rounded-xl shadow-glow-orange transition-transform hover:scale-105 flex items-center gap-1.5"
+              className="px-4 py-2 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs rounded-xl shadow-glow-lime transition-transform active:scale-95 flex items-center gap-1.5"
             >
               <CreditCard className="w-3.5 h-3.5" />
               <span>Pay Online (₹{booking.estimated_fare})</span>
@@ -347,9 +360,9 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
           {/* View Receipt */}
           <button
             onClick={() => setIsReceiptModalOpen(true)}
-            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5"
+            className="px-3.5 py-2 bg-[#171719] hover:bg-[#202023] text-white text-xs font-bold rounded-xl border border-[#303034] transition-colors flex items-center gap-1.5"
           >
-            <Receipt className="w-3.5 h-3.5 text-slate-600" />
+            <Receipt className="w-3.5 h-3.5 text-[#C6FF3D]" />
             <span>View Receipt</span>
           </button>
 
@@ -358,10 +371,10 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
             <button
               onClick={handleSimulateNextStatus}
               disabled={isSimulating}
-              className="px-3 py-2 bg-[#071426] hover:bg-[#10243D] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
-              title="Advances ride progression for quick testing"
+              className="px-3.5 py-2 bg-[#202023] hover:bg-[#26262A] text-white rounded-xl text-xs font-bold border border-[#303034] flex items-center gap-1.5 transition-colors"
+              title="Advances ride progression for testing"
             >
-              <PlayCircle className="w-3.5 h-3.5 text-[#FF8A00]" />
+              <PlayCircle className="w-3.5 h-3.5 text-[#C6FF3D]" />
               <span>Simulate Next Step</span>
             </button>
           )}
@@ -370,7 +383,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
           {!isCompleted && !isCancelled && (
             <button
               onClick={() => setIsCancelModalOpen(true)}
-              className="px-3 py-2 border border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-bold rounded-xl transition-colors flex items-center gap-1"
+              className="px-3.5 py-2 border border-rose-900/60 bg-rose-950/20 text-rose-400 hover:bg-rose-950/40 text-xs font-bold rounded-xl transition-colors flex items-center gap-1"
             >
               <XCircle className="w-3.5 h-3.5" />
               <span>Cancel</span>
@@ -381,25 +394,25 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
 
       {/* Main Status & Tracking Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start">
-        
+
         {/* Left Column: Live Progress Stepper & Details */}
-        <div className="lg:col-span-7 space-y-5 sm:space-y-6">
-          <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-sm border border-slate-200/80 space-y-5 sm:space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 pb-4 border-b border-slate-100">
+        <div className="lg:col-span-7 space-y-6">
+          <div className="bg-[#171719] rounded-3xl p-5 sm:p-8 border border-[#303034] shadow-card space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 pb-4 border-b border-[#303034]">
               <div>
-                <span className="text-[10px] font-bold uppercase text-slate-400">Booking Reference</span>
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900 font-mono tracking-wider">
+                <span className="text-[10px] font-bold uppercase text-[#A1A1AA]">Booking Reference</span>
+                <h1 className="text-xl sm:text-2xl font-black text-white font-mono tracking-wider">
                   {booking.booking_reference}
                 </h1>
               </div>
               <div className="flex items-center gap-2">
                 {isPaid ? (
-                  <span className="px-2.5 sm:px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-xs flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="px-3 py-1 bg-emerald-950/40 text-emerald-300 border border-emerald-800 rounded-full font-bold text-xs flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Paid Online</span>
                   </span>
                 ) : (
-                  <span className="px-2.5 sm:px-3 py-1 bg-slate-100 text-slate-600 rounded-full font-bold text-xs">
+                  <span className="px-3 py-1 bg-[#202023] text-[#A1A1AA] border border-[#303034] rounded-full font-bold text-xs">
                     Pay on Arrival
                   </span>
                 )}
@@ -412,9 +425,9 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
               <div className="overflow-x-auto -mx-2 px-2 pb-2 scrollbar-none">
                 <div className="min-w-[340px] py-2">
                   <div className="relative">
-                    <div className="absolute top-4 sm:top-5 left-4 right-4 sm:left-5 sm:right-5 h-0.5 bg-slate-200 -z-0" />
+                    <div className="absolute top-4 sm:top-5 left-4 right-4 sm:left-5 sm:right-5 h-0.5 bg-[#303034] -z-0" />
                     <div
-                      className="absolute top-4 sm:top-5 left-4 sm:left-5 h-0.5 bg-[#FF8A00] transition-all duration-500 -z-0"
+                      className="absolute top-4 sm:top-5 left-4 sm:left-5 h-0.5 bg-[#C6FF3D] transition-all duration-500 -z-0"
                       style={{
                         width: `${Math.max(0, currentStepIndex) / (steps.length - 1) * 90}%`
                       }}
@@ -428,17 +441,17 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                         return (
                           <div key={step.label} className="flex flex-col items-center text-center max-w-[64px] sm:max-w-[80px]">
                             <div
-                              className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-[11px] sm:text-xs transition-all shadow-sm ${
+                              className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-[11px] sm:text-xs transition-all shadow-subtle ${
                                 isCurrent
-                                  ? 'bg-[#FF8A00] text-[#071426] ring-4 ring-orange-100 scale-105 sm:scale-110 font-black shadow-glow-orange'
+                                  ? 'bg-[#C6FF3D] text-[#0B0B0D] ring-4 ring-[#C6FF3D]/20 scale-105 sm:scale-110 font-black'
                                   : isPast
-                                  ? 'bg-[#071426] text-[#FF8A00]'
-                                  : 'bg-white border-2 border-slate-300 text-slate-400'
+                                  ? 'bg-white text-[#0B0B0D]'
+                                  : 'bg-[#202023] border border-[#303034] text-[#A1A1AA]'
                               }`}
                             >
                               {isPast ? (idx < currentStepIndex ? '✓' : idx + 1) : idx + 1}
                             </div>
-                            <div className={`mt-1.5 sm:mt-2 text-[9px] sm:text-[10px] font-bold leading-tight ${isCurrent ? 'text-orange-900 font-black' : isPast ? 'text-slate-900' : 'text-slate-400'}`}>
+                            <div className={`mt-2 text-[9px] sm:text-[10px] font-bold leading-tight ${isCurrent ? 'text-[#C6FF3D] font-black' : isPast ? 'text-white' : 'text-[#A1A1AA]'}`}>
                               {step.label}
                             </div>
                           </div>
@@ -449,87 +462,87 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                 </div>
               </div>
             ) : (
-              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-3">
-                <XCircle className="w-6 h-6 text-rose-600 flex-shrink-0" />
+              <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-800 text-rose-300 text-xs flex items-center gap-3">
+                <XCircle className="w-6 h-6 text-rose-400 flex-shrink-0" />
                 <div>
                   <div className="font-bold">This booking has been cancelled</div>
-                  <div className="text-[11px] text-rose-600 mt-0.5">No charges were deducted. You may book another auto at any time.</div>
+                  <div className="text-[11px] text-rose-400/80 mt-0.5">No cancellation fee was charged. You may book another auto at any time.</div>
                 </div>
               </div>
             )}
 
             {/* Ride Route Card */}
-            <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-3.5 text-xs">
+            <div className="p-5 bg-[#202023] rounded-2xl border border-[#303034] space-y-3.5 text-xs">
               <div className="flex items-start gap-3">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 mt-1 flex-shrink-0" />
+                <div className="w-2.5 h-2.5 rounded-full bg-[#C6FF3D] mt-1 flex-shrink-0 ring-4 ring-[#C6FF3D]/20" />
                 <div className="flex-1">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase">Pickup Location</div>
-                  <div className="font-bold text-slate-800 text-sm">{booking.pickup_address}</div>
+                  <div className="text-[10px] font-bold text-[#A1A1AA] uppercase">Pickup Location</div>
+                  <div className="font-bold text-white text-sm">{booking.pickup_address}</div>
                 </div>
               </div>
 
               <div className="flex items-start gap-3">
-                <div className="w-2.5 h-2.5 rounded-full bg-rose-500 mt-1 flex-shrink-0" />
+                <div className="w-2.5 h-2.5 bg-white mt-1 flex-shrink-0 ring-4 ring-white/20 rounded-xs" />
                 <div className="flex-1">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase">Destination</div>
-                  <div className="font-bold text-slate-800 text-sm">{booking.destination_address}</div>
+                  <div className="text-[10px] font-bold text-[#A1A1AA] uppercase">Destination</div>
+                  <div className="font-bold text-white text-sm">{booking.destination_address}</div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-slate-200/80">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-[#303034]">
                 <div>
-                  <div className="text-[10px] font-bold text-slate-400 uppercase">Date & Time</div>
-                  <div className="font-semibold text-slate-800">
+                  <div className="text-[10px] font-bold text-[#A1A1AA] uppercase">Date & Time</div>
+                  <div className="font-semibold text-white">
                     {new Date(booking.pickup_datetime).toLocaleDateString()} {new Date(booking.pickup_datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
 
                 <div>
-                  <div className="text-[10px] font-bold text-slate-400 uppercase">Passengers</div>
-                  <div className="font-semibold text-slate-800">{booking.passengers} Passenger(s)</div>
+                  <div className="text-[10px] font-bold text-[#A1A1AA] uppercase">Passengers</div>
+                  <div className="font-semibold text-white">{booking.passengers} Passenger(s)</div>
                 </div>
 
                 <div>
-                  <div className="text-[10px] font-bold text-slate-400 uppercase">Fixed Route Fare</div>
-                  <div className="font-black text-[#FF8A00] text-base">₹{booking.estimated_fare}</div>
+                  <div className="text-[10px] font-bold text-[#A1A1AA] uppercase">Fixed Route Fare</div>
+                  <div className="font-black text-[#C6FF3D] text-base">₹{booking.estimated_fare}</div>
                 </div>
               </div>
             </div>
 
             {/* Assigned Driver Card */}
             {booking.auto_number && (
-              <div className="p-5 bg-gradient-to-r from-orange-50 to-orange-100/60 rounded-2xl border border-orange-200 space-y-3">
+              <div className="p-5 bg-[#202023] rounded-2xl border border-[#303034] space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-orange-950 uppercase flex items-center gap-1.5">
-                    <Car className="w-4 h-4 text-[#FF8A00]" />
+                  <span className="text-xs font-black text-white uppercase flex items-center gap-1.5">
+                    <Car className="w-4 h-4 text-[#C6FF3D]" />
                     <span>Assigned Auto Driver</span>
                   </span>
-                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                  <span className="px-2.5 py-0.5 rounded-full bg-[#C6FF3D]/10 text-[#C6FF3D] text-[10px] font-bold border border-[#C6FF3D]/30">
                     Verified Driver
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-base font-black text-[#071426]">{booking.driver_name || 'Ramesh Kumar'}</div>
-                    <div className="text-xs text-slate-600 font-medium">{booking.auto_model || 'Bajaj Compact 4S'}</div>
+                    <div className="text-base font-black text-white">{booking.driver_name || 'Ramesh Kumar'}</div>
+                    <div className="text-xs text-[#A1A1AA] font-medium">{booking.auto_model || 'Bajaj Compact 4S'}</div>
                   </div>
 
                   <div className="text-right">
-                    <div className="px-3 py-1 bg-[#FF8A00] text-[#071426] font-black rounded-lg text-xs font-mono uppercase tracking-wider shadow-sm">
+                    <div className="px-3 py-1 bg-[#171719] text-[#C6FF3D] border border-[#303034] font-black rounded-lg text-xs font-mono uppercase tracking-wider">
                       {booking.auto_number}
                     </div>
                   </div>
                 </div>
 
                 {booking.driver_mobile && (
-                  <div className="pt-2 flex items-center justify-between text-xs border-t border-orange-200">
-                    <span className="text-slate-600 font-semibold">Contact: {booking.driver_mobile}</span>
+                  <div className="pt-2 flex items-center justify-between text-xs border-t border-[#303034]">
+                    <span className="text-[#A1A1AA] font-semibold">Contact: {booking.driver_mobile}</span>
                     <a
                       href={`tel:${booking.driver_mobile}`}
-                      className="px-3 py-1.5 bg-[#071426] hover:bg-[#10243D] text-white rounded-lg font-bold text-[11px] flex items-center gap-1.5 transition-colors"
+                      className="px-3 py-1.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] rounded-lg font-black text-[11px] flex items-center gap-1.5 transition-colors shadow-subtle"
                     >
-                      <Phone className="w-3 h-3 text-[#FF8A00]" />
+                      <Phone className="w-3 h-3 text-[#0B0B0D]" />
                       <span>Call Driver</span>
                     </a>
                   </div>
@@ -537,16 +550,16 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
               </div>
             )}
 
-            {/* RATE DRIVER SECTION (When completed) */}
+            {/* RATE DRIVER SECTION */}
             {isCompleted && (
-              <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-4">
+              <div className="p-6 bg-[#202023] rounded-2xl border border-[#303034] space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                    <Star className="w-4 h-4 text-[#FF8A00] fill-[#FF8A00]" />
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Star className="w-4 h-4 text-[#C6FF3D] fill-[#C6FF3D]" />
                     <span>Rate Your Driver</span>
                   </h3>
                   {rating && (
-                    <span className="text-xs font-bold text-emerald-700">✓ Submitted</span>
+                    <span className="text-xs font-bold text-[#C6FF3D]">✓ Submitted</span>
                   )}
                 </div>
 
@@ -558,17 +571,17 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                           key={star}
                           className={`w-5 h-5 ${
                             star <= rating.rating
-                              ? 'text-[#FF8A00] fill-[#FF8A00]'
-                              : 'text-slate-300'
+                              ? 'text-[#C6FF3D] fill-[#C6FF3D]'
+                              : 'text-[#303034]'
                           }`}
                         />
                       ))}
-                      <span className="text-xs font-bold ml-2 text-slate-800">
+                      <span className="text-xs font-bold ml-2 text-white">
                         {rating.rating} / 5 Stars
                       </span>
                     </div>
                     {rating.review && (
-                      <p className="text-xs text-slate-600 italic">"{rating.review}"</p>
+                      <p className="text-xs text-[#A1A1AA] italic">"{rating.review}"</p>
                     )}
                   </div>
                 ) : (
@@ -584,13 +597,13 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                           <Star
                             className={`w-6 h-6 ${
                               star <= selectedStars
-                                ? 'text-[#FF8A00] fill-[#FF8A00]'
-                                : 'text-slate-300'
+                                ? 'text-[#C6FF3D] fill-[#C6FF3D]'
+                                : 'text-[#303034]'
                             }`}
                           />
                         </button>
                       ))}
-                      <span className="text-xs font-bold ml-2 text-slate-700">
+                      <span className="text-xs font-bold ml-2 text-white">
                         {selectedStars} Star{selectedStars > 1 ? 's' : ''}
                       </span>
                     </div>
@@ -599,16 +612,16 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                       value={reviewText}
                       onChange={(e) => setReviewText(e.target.value)}
                       placeholder="Write optional review comments for this trip..."
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
+                      className="w-full px-3 py-2 text-xs bg-[#171719] border border-[#303034] rounded-xl text-white placeholder-[#71717A] focus:outline-none focus:border-[#C6FF3D]"
                       rows={2}
                     />
 
                     <button
                       type="submit"
                       disabled={isSubmittingRating}
-                      className="px-4 py-2 bg-[#071426] hover:bg-[#10243D] text-[#FF8A00] font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-transform hover:scale-102 disabled:opacity-50 border border-[#1A3353]"
+                      className="px-4 py-2 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs rounded-xl shadow-glow-lime flex items-center gap-1.5 transition-transform active:scale-95 disabled:opacity-50"
                     >
-                      <Send className="w-3.5 h-3.5 text-[#FF8A00]" />
+                      <Send className="w-3.5 h-3.5" />
                       <span>{isSubmittingRating ? 'Submitting...' : 'Submit Rating'}</span>
                     </button>
                   </form>
@@ -618,137 +631,118 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
           </div>
         </div>
 
-        {/* Right Column: Live Tracking Map & Phone Screen 2 Cards */}
+        {/* Right Column: Live Tracking Map */}
         <div className="lg:col-span-5 space-y-6">
-          {/* Live Map Card matching Reference Image Screen 2 */}
-          <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-sm border border-slate-200/80 space-y-3 sm:space-y-4 overflow-hidden">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
-                <Navigation className="w-4 h-4 text-[#FF8A00]" />
+          <div className="bg-[#171719] rounded-3xl p-5 border border-[#303034] shadow-card space-y-4 overflow-hidden">
+            <div className="flex items-center justify-between pb-2 border-b border-[#303034]">
+              <h3 className="text-xs font-black uppercase text-white tracking-wider flex items-center gap-2">
+                <Navigation className="w-4 h-4 text-[#C6FF3D]" />
                 <span>Live Route Tracking</span>
               </h3>
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+              <span className="px-2.5 py-0.5 rounded-full bg-[#C6FF3D]/10 text-[#C6FF3D] border border-[#C6FF3D]/30 text-[10px] font-bold">
                 GPS Active
               </span>
             </div>
 
             {/* Map Canvas with overlay badge */}
-            <div className="relative w-full h-52 sm:h-56 rounded-2xl overflow-hidden border border-slate-200 bg-[#071426]">
+            <div className="relative w-full h-52 sm:h-56 rounded-2xl overflow-hidden border border-[#303034] bg-[#202023]">
               <div ref={mapContainerRef} className="w-full h-full" />
 
-              {/* Floating "Driver is 2 min away" pill matching Reference Image Screen 2 */}
-              <div className="absolute left-1/2 -translate-x-1/2 bottom-3 z-10 px-3 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-[#071426]/90 backdrop-blur-md text-white border border-[#FF8A00]/40 text-[11px] sm:text-xs font-bold shadow-lg flex items-center gap-1.5 sm:gap-2 whitespace-nowrap max-w-[90%]">
-                <span className="w-2 h-2 rounded-full bg-[#FF8A00] animate-ping flex-shrink-0" />
-                <span className="truncate">Driver is 2 min away</span>
+              {/* Floating "Driver is nearby" pill */}
+              <div className="absolute left-1/2 -translate-x-1/2 bottom-3 z-10 px-3.5 py-1.5 rounded-full bg-[#0B0B0D]/90 border border-[#303034] text-white text-xs font-bold shadow-elevated flex items-center gap-2 whitespace-nowrap max-w-[90%] backdrop-blur-md">
+                <span className="w-2 h-2 rounded-full bg-[#C6FF3D] animate-ping flex-shrink-0" />
+                <span className="truncate">Auto driver en route</span>
               </div>
             </div>
 
-            {/* Driver Profile Card matching Reference Image Screen 2 */}
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-3">
+            {/* Driver Profile Card */}
+            <div className="p-4 bg-[#202023] rounded-2xl border border-[#303034] flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#FF8A00] to-[#E67600] text-slate-950 font-black text-lg flex items-center justify-center shadow-md">
+                <div className="w-11 h-11 rounded-2xl bg-[#171719] border border-[#303034] text-[#C6FF3D] font-black text-lg flex items-center justify-center">
                   {(booking.driver_name || 'Ramesh').charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <div className="font-black text-slate-900 text-sm">{booking.driver_name || 'Ramesh'}</div>
-                  <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-                    <span className="text-[#FF8A00] font-bold">4.8 ★</span>
+                  <div className="font-black text-white text-sm">{booking.driver_name || 'Ramesh'}</div>
+                  <div className="flex items-center gap-1.5 text-xs text-[#A1A1AA] font-medium">
+                    <span className="text-[#C6FF3D] font-bold">4.8 ★</span>
                     <span>•</span>
-                    <span className="font-mono text-[11px] font-bold text-slate-700">Auto • {booking.auto_number || 'AP 39 XX 1234'}</span>
+                    <span className="font-mono text-[11px] font-bold text-white">Auto • {booking.auto_number || 'AP 39 XX 1234'}</span>
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center gap-1.5">
-                {booking.driver_mobile ? (
+                {booking.driver_mobile && (
                   <a
                     href={`tel:${booking.driver_mobile}`}
-                    className="w-9 h-9 rounded-full bg-[#071426] hover:bg-[#10243D] text-[#FF8A00] flex items-center justify-center transition-transform hover:scale-105 shadow-sm"
+                    className="w-9 h-9 rounded-full bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] flex items-center justify-center transition-transform hover:scale-105 shadow-subtle"
                     title="Call Driver"
                   >
                     <Phone className="w-4 h-4" />
                   </a>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => alert('Driver will contact you upon arriving.')}
-                    className="w-9 h-9 rounded-full bg-[#071426] text-[#FF8A00] flex items-center justify-center shadow-sm"
-                    title="Call Driver"
-                  >
-                    <Phone className="w-4 h-4" />
-                  </button>
                 )}
-
-                <button
-                  type="button"
-                  onClick={() => alert('In-app messaging active with driver.')}
-                  className="w-9 h-9 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-800 flex items-center justify-center transition-transform hover:scale-105"
-                  title="Message Driver"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                </button>
               </div>
             </div>
           </div>
 
-          {/* Fare Guarantee & Receipt Summary Card */}
-          <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80 space-y-5">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="text-sm font-extrabold uppercase text-slate-900 tracking-wider flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+          {/* Fare Guarantee Card */}
+          <div className="bg-[#171719] rounded-3xl p-6 border border-[#303034] shadow-card space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-[#303034]">
+              <h3 className="text-xs font-black uppercase text-white tracking-wider flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-[#C6FF3D]" />
                 <span>Verified Route Fare</span>
               </h3>
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+              <span className="px-2.5 py-0.5 rounded-full bg-[#C6FF3D]/10 text-[#C6FF3D] border border-[#C6FF3D]/30 text-[10px] font-bold">
                 Fixed Rate
               </span>
             </div>
 
-            <div className="p-4 bg-orange-50/70 rounded-2xl border border-orange-200/80 space-y-3">
-              <div className="text-xs font-bold text-orange-950">
+            <div className="p-4 bg-[#202023] rounded-2xl border border-[#303034] space-y-3">
+              <div className="text-xs font-bold text-white">
                 Route: {booking.pickup_address} → {booking.destination_address}
               </div>
               <div className="flex items-baseline justify-between">
-                <span className="text-xs text-slate-600">Total Fare:</span>
-                <span className="text-2xl font-black text-[#071426]">₹{booking.estimated_fare}</span>
+                <span className="text-xs text-[#A1A1AA]">Total Fare:</span>
+                <span className="text-2xl font-black text-[#C6FF3D]">₹{booking.estimated_fare}</span>
               </div>
-              <div className="text-[11px] text-slate-500 italic">
-                Direct fixed point-to-point auto-rickshaw fare from Clik2Go verified fare schedule.
+              <div className="text-[11px] text-[#A1A1AA]">
+                Direct fixed point-to-point auto fare from Clik2Go verified fare schedule.
               </div>
             </div>
 
             {/* Payment status pill */}
-            <div className="p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between text-xs">
-              <span className="font-semibold text-slate-600">Payment Status:</span>
+            <div className="p-3.5 rounded-2xl bg-[#202023] border border-[#303034] flex items-center justify-between text-xs">
+              <span className="font-semibold text-[#A1A1AA]">Payment Status:</span>
               {isPaid ? (
-                <span className="font-black text-emerald-600 flex items-center gap-1">
-                  <CheckCircle2 className="w-4 h-4" />
+                <span className="font-black text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                   <span>Paid ({payment?.payment_method || 'UPI'})</span>
                 </span>
               ) : isCompleted && !isCancelled ? (
                 <button
                   onClick={() => setIsPayModalOpen(true)}
-                  className="px-3.5 py-1.5 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black rounded-lg text-xs shadow-glow-orange"
+                  className="px-3.5 py-1.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black rounded-lg text-xs shadow-glow-lime"
                 >
                   Pay Online
                 </button>
               ) : (
-                <span className="font-semibold text-slate-500">
+                <span className="font-semibold text-[#A1A1AA]">
                   Payment after ride
                 </span>
               )}
             </div>
 
-            <div className="space-y-2 text-xs text-slate-600">
+            <div className="space-y-2 text-xs text-[#A1A1AA]">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                <span>No meter tampering or surge pricing</span>
+                <CheckCircle2 className="w-4 h-4 text-[#C6FF3D]" />
+                <span>No meter haggling or surge pricing</span>
               </div>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <CheckCircle2 className="w-4 h-4 text-[#C6FF3D]" />
                 <span>Doorstep pickup by verified auto driver</span>
               </div>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <CheckCircle2 className="w-4 h-4 text-[#C6FF3D]" />
                 <span>Split payment recorded with driver & owner</span>
               </div>
             </div>
@@ -758,28 +752,28 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
 
       {/* PAY ONLINE MODAL */}
       {isPayModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#071426]/75 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-100 space-y-6">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#171719] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-[#303034] space-y-6">
+            <div className="flex items-center justify-between pb-3 border-b border-[#303034]">
               <div className="flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-[#FF8A00]" />
-                <h3 className="text-base font-black text-[#071426]">Pay Online</h3>
+                <CreditCard className="w-5 h-5 text-[#C6FF3D]" />
+                <h3 className="text-base font-black text-white">Pay Online</h3>
               </div>
-              <button onClick={() => setIsPayModalOpen(false)} className="text-slate-400 hover:text-slate-800">✕</button>
+              <button onClick={() => setIsPayModalOpen(false)} className="text-[#A1A1AA] hover:text-white">✕</button>
             </div>
 
-            <div className="p-4 bg-orange-50/70 rounded-2xl border border-orange-200 space-y-2 text-xs">
-              <div className="flex justify-between font-bold text-slate-700">
+            <div className="p-4 bg-[#202023] rounded-2xl border border-[#303034] space-y-2 text-xs">
+              <div className="flex justify-between font-bold text-white">
                 <span>Trip: {booking.pickup_address} → {booking.destination_address}</span>
               </div>
-              <div className="flex justify-between text-base font-black text-[#071426]">
+              <div className="flex justify-between text-base font-black text-white">
                 <span>Total Amount:</span>
-                <span className="text-[#FF8A00]">₹{booking.estimated_fare}</span>
+                <span className="text-[#C6FF3D]">₹{booking.estimated_fare}</span>
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="block text-xs font-bold uppercase text-slate-700">Select Payment Method</label>
+              <label className="block text-xs font-bold uppercase text-[#A1A1AA]">Select Payment Method</label>
               <div className="grid grid-cols-3 gap-2">
                 {['UPI', 'Card', 'NetBanking'].map((method) => (
                   <button
@@ -788,8 +782,8 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                     onClick={() => setSelectedPaymentMethod(method)}
                     className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
                       selectedPaymentMethod === method
-                        ? 'bg-[#071426] text-white border-[#071426] shadow-sm'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        ? 'bg-[#C6FF3D] text-[#0B0B0D] border-[#C6FF3D]'
+                        : 'bg-[#202023] text-white border-[#303034] hover:bg-[#26262A]'
                     }`}
                   >
                     {method}
@@ -798,21 +792,21 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
               </div>
             </div>
 
-            <div className="text-[11px] text-slate-500 bg-slate-50 p-3 rounded-xl">
-              Simulated sandbox gateway with server-side marketplace split calculation (Driver cut + Owner commission).
+            <div className="text-[11px] text-[#A1A1AA] bg-[#202023] p-3 rounded-xl border border-[#303034]">
+              Cashfree secure checkout with platform marketplace split calculation.
             </div>
 
             <button
               onClick={handleProcessPayment}
               disabled={isPaying}
-              className="w-full py-3.5 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-sm rounded-xl shadow-glow-orange transition-transform hover:scale-102 flex items-center justify-center gap-2 disabled:opacity-50"
+              className="w-full py-3.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-sm rounded-xl shadow-glow-lime transition-transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {isPaying ? (
                 <span>Processing Payment...</span>
               ) : (
                 <>
                   <span>Confirm & Pay ₹{booking.estimated_fare}</span>
-                  <CheckCircle2 className="w-4 h-4" />
+                  <CheckCircle2 className="w-4 h-4 text-[#0B0B0D]" />
                 </>
               )}
             </button>
@@ -822,57 +816,57 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
 
       {/* VIEW RECEIPT MODAL */}
       {isReceiptModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#071426]/75 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-100 space-y-6">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#171719] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-[#303034] space-y-6">
+            <div className="flex items-center justify-between pb-3 border-b border-[#303034]">
               <div className="flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-[#FF8A00]" />
-                <h3 className="text-base font-black text-[#071426]">Clik2Go Tax Invoice</h3>
+                <Receipt className="w-5 h-5 text-[#C6FF3D]" />
+                <h3 className="text-base font-black text-white">Clik2Go Tax Invoice</h3>
               </div>
-              <button onClick={() => setIsReceiptModalOpen(false)} className="text-slate-400 hover:text-slate-800">✕</button>
+              <button onClick={() => setIsReceiptModalOpen(false)} className="text-[#A1A1AA] hover:text-white">✕</button>
             </div>
 
             <div className="space-y-3 text-xs">
-              <div className="flex justify-between text-slate-500">
+              <div className="flex justify-between text-[#A1A1AA]">
                 <span>Receipt No:</span>
-                <span className="font-mono font-bold text-slate-900">{payment?.transaction_reference || 'RECEIPT-C2G-' + booking.id}</span>
+                <span className="font-mono font-bold text-white">{payment?.transaction_reference || 'RECEIPT-C2G-' + booking.id}</span>
               </div>
-              <div className="flex justify-between text-slate-500">
+              <div className="flex justify-between text-[#A1A1AA]">
                 <span>Booking ID:</span>
-                <span className="font-mono font-bold text-slate-900">{booking.booking_reference}</span>
+                <span className="font-mono font-bold text-white">{booking.booking_reference}</span>
               </div>
-              <div className="flex justify-between text-slate-500">
+              <div className="flex justify-between text-[#A1A1AA]">
                 <span>Date:</span>
-                <span className="font-medium text-slate-800">{new Date(booking.pickup_datetime).toLocaleString()}</span>
+                <span className="font-medium text-white">{new Date(booking.pickup_datetime).toLocaleString()}</span>
               </div>
-              <div className="flex justify-between text-slate-500">
+              <div className="flex justify-between text-[#A1A1AA]">
                 <span>Pickup → Drop:</span>
-                <span className="font-bold text-slate-900">{booking.pickup_address} → {booking.destination_address}</span>
+                <span className="font-bold text-white">{booking.pickup_address} → {booking.destination_address}</span>
               </div>
-              <div className="flex justify-between text-slate-500">
+              <div className="flex justify-between text-[#A1A1AA]">
                 <span>Payment Mode:</span>
-                <span className="font-bold text-slate-900">{payment?.payment_method || 'Cash / Post-Ride'}</span>
+                <span className="font-bold text-white">{payment?.payment_method || 'Cash / Post-Ride'}</span>
               </div>
 
-              <div className="pt-3 border-t border-slate-200 space-y-2">
-                <div className="flex justify-between text-slate-600">
+              <div className="pt-3 border-t border-[#303034] space-y-2">
+                <div className="flex justify-between text-[#A1A1AA]">
                   <span>Driver Base Fare:</span>
                   <span>₹{payment?.driver_amount ?? Math.max(0, booking.estimated_fare - 5)}</span>
                 </div>
-                <div className="flex justify-between text-slate-600">
+                <div className="flex justify-between text-[#A1A1AA]">
                   <span>Platform Commission & Tech Fee:</span>
                   <span>₹{payment?.owner_amount ?? 5}</span>
                 </div>
-                <div className="flex justify-between text-sm font-black text-[#071426] pt-2 border-t border-slate-200">
+                <div className="flex justify-between text-sm font-black text-white pt-2 border-t border-[#303034]">
                   <span>Total Paid:</span>
-                  <span className="text-[#FF8A00]">₹{booking.estimated_fare}</span>
+                  <span className="text-[#C6FF3D]">₹{booking.estimated_fare}</span>
                 </div>
               </div>
             </div>
 
             <button
               onClick={() => setIsReceiptModalOpen(false)}
-              className="w-full py-2.5 bg-[#071426] hover:bg-[#10243D] text-white font-bold text-xs rounded-xl"
+              className="w-full py-3 bg-[#202023] hover:bg-[#26262A] text-white border border-[#303034] font-bold text-xs rounded-xl"
             >
               Close Receipt
             </button>

@@ -11,16 +11,16 @@ import {
   AlertCircle,
   ArrowRight,
   ChevronLeft,
+  ChevronUp,
+  ChevronDown,
   Car,
   Navigation,
   Loader2,
   CheckCircle2,
   Sparkles,
-  Search,
   Crosshair,
-  RotateCcw,
-  X,
-  Compass
+  Compass,
+  X
 } from 'lucide-react';
 
 interface BookingFormPageProps {
@@ -32,7 +32,6 @@ interface Coordinates {
   lng: number;
 }
 
-// Fallback coordinates for known service landmarks in the local service area
 export const LOCATION_COORDINATES: Record<string, Coordinates> = {
   'JNTUA': { lat: 13.6508, lng: 78.7860 },
   'Cross': { lat: 13.6525, lng: 78.8035 },
@@ -49,28 +48,17 @@ const DEFAULT_MAP_CENTER: Coordinates = {
   lng: 78.7950,
 };
 
-const POPULAR_SUGGESTIONS = [
-  'JNTUA',
-  'Cross',
-  'Bus Stand',
-  'Marava',
-  'Indiramma Colony',
-  'Railway Station',
-  'Main Bazaar'
-];
-
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
 export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) => {
   const { user } = useAuth();
 
-  // Read optional URL parameters
   const params = new URLSearchParams(window.location.search);
   const initialPickup = params.get('pickup') || '';
   const initialDest = params.get('dest') || '';
-  const initialPassengers = Number(params.get('passengers')) || 1;
+  const initialPassengers = Math.min(6, Math.max(1, Number(params.get('passengers')) || 1));
 
-  // Search input and location state (Google Maps based, not restricted to fixed routes)
+  // Search input and location state
   const [fromLocation, setFromLocation] = useState(initialPickup);
   const [toLocation, setToLocation] = useState(initialDest);
   const [pickupCoords, setPickupCoords] = useState<Coordinates | null>(() => {
@@ -84,6 +72,7 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
       : null;
   });
 
+  // Passengers: 1 to 6
   const [passengers, setPassengers] = useState(initialPassengers);
 
   // Time options
@@ -108,22 +97,20 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
     distanceKm: number;
   } | null>(null);
 
+  // Mobile layout state: map height mode ('default' ~40%, 'expanded' ~72%, 'compact' ~22%)
+  const [mobileMapMode, setMobileMapMode] = useState<'default' | 'expanded' | 'compact'>('default');
+
   // Google Maps state
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
   const pickupMarkerRef = useRef<any>(null);
   const destMarkerRef = useRef<any>(null);
   const directionsRendererRef = useRef<any>(null);
-  const pickupInputRef = useRef<HTMLInputElement | null>(null);
-  const destInputRef = useRef<HTMLInputElement | null>(null);
-  const pickupAutocompleteRef = useRef<any>(null);
-  const destAutocompleteRef = useRef<any>(null);
 
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [mapsError, setMapsError] = useState<string | null>(null);
   const [activePinMode, setActivePinMode] = useState<'pickup' | 'destination' | null>(null);
 
-  // Helper: resolve coordinates from text
   const resolveCoordinates = (name: string): Coordinates | null => {
     const clean = name.trim();
     if (LOCATION_COORDINATES[clean]) return LOCATION_COORDINATES[clean];
@@ -134,7 +121,7 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
     return null;
   };
 
-  // 1. Initialize Google Maps with Places Library
+  // 1. Initialize Google Maps with dark theme styling
   useEffect(() => {
     let isCancelled = false;
 
@@ -155,75 +142,34 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
 
         const { Map } = (await importLibrary('maps')) as any;
         try {
-          await importLibrary('places');
-        } catch (e) {
-          console.warn('Google Places library warning:', e);
-        }
-        try {
           await importLibrary('geometry');
         } catch (e) {
-          console.warn('Google Geometry library warning:', e);
+          console.warn('Google Geometry warning:', e);
         }
 
         const google = window.google;
         if (isCancelled || !mapContainerRef.current || !google) return;
 
-        // Custom Dark Navy Map Style matching Clik2Go theme
-        const darkNavyStyle = [
-          { elementType: 'geometry', stylers: [{ color: '#091524' }] },
-          { elementType: 'labels.text.stroke', stylers: [{ color: '#091524' }] },
-          { elementType: 'labels.text.fill', stylers: [{ color: '#8fa4be' }] },
-          {
-            featureType: 'administrative.locality',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#ff9d2e' }],
-          },
-          {
-            featureType: 'poi',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#6882a1' }],
-          },
-          {
-            featureType: 'poi.park',
-            elementType: 'geometry',
-            stylers: [{ color: '#0d2238' }],
-          },
-          {
-            featureType: 'road',
-            elementType: 'geometry',
-            stylers: [{ color: '#1a3350' }],
-          },
-          {
-            featureType: 'road',
-            elementType: 'geometry.stroke',
-            stylers: [{ color: '#13283f' }],
-          },
-          {
-            featureType: 'road.highway',
-            elementType: 'geometry',
-            stylers: [{ color: '#274b73' }],
-          },
-          {
-            featureType: 'road.highway',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#ffffff' }],
-          },
-          {
-            featureType: 'transit',
-            elementType: 'geometry',
-            stylers: [{ color: '#14293f' }],
-          },
-          {
-            featureType: 'water',
-            elementType: 'geometry',
-            stylers: [{ color: '#050d18' }],
-          },
+        // Premium Dark Map styling matching #0B0B0D & #171719
+        const darkMapStyle = [
+          { elementType: 'geometry', stylers: [{ color: '#171719' }] },
+          { elementType: 'labels.text.stroke', stylers: [{ color: '#0B0B0D' }] },
+          { elementType: 'labels.text.fill', stylers: [{ color: '#A1A1AA' }] },
+          { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#FFFFFF' }] },
+          { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#202023' }] },
+          { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#303034' }] },
+          { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#71717A' }] },
+          { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#28282D' }] },
+          { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#303034' }] },
+          { featureType: 'transit', stylers: [{ visibility: 'simplified' }] },
+          { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0B0B0D' }] },
         ];
 
         const map = new google.maps.Map(mapContainerRef.current, {
           center: pickupCoords || DEFAULT_MAP_CENTER,
           zoom: 14,
-          styles: darkNavyStyle,
+          styles: darkMapStyle,
           disableDefaultUI: false,
           zoomControl: true,
           streetViewControl: false,
@@ -242,56 +188,6 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
           const lng = e.latLng.lng();
           handleMapPinClick(lat, lng, google);
         });
-
-        // Setup Places Autocomplete on Pickup Input
-        if (pickupInputRef.current && google.maps.places?.Autocomplete) {
-          const autoPickup = new google.maps.places.Autocomplete(pickupInputRef.current, {
-            fields: ['formatted_address', 'geometry', 'name'],
-          });
-          autoPickup.bindTo('bounds', map);
-          autoPickup.addListener('place_changed', () => {
-            const place = autoPickup.getPlace();
-            if (place.geometry?.location) {
-              const lat = place.geometry.location.lat();
-              const lng = place.geometry.location.lng();
-              const addr = place.formatted_address || place.name || '';
-              setFromLocation(addr);
-              setPickupCoords({ lat, lng });
-              map.panTo({ lat, lng });
-            } else if (pickupInputRef.current?.value) {
-              const typed = pickupInputRef.current.value;
-              setFromLocation(typed);
-              const known = resolveCoordinates(typed);
-              if (known) setPickupCoords(known);
-            }
-          });
-          pickupAutocompleteRef.current = autoPickup;
-        }
-
-        // Setup Places Autocomplete on Destination Input
-        if (destInputRef.current && google.maps.places?.Autocomplete) {
-          const autoDest = new google.maps.places.Autocomplete(destInputRef.current, {
-            fields: ['formatted_address', 'geometry', 'name'],
-          });
-          autoDest.bindTo('bounds', map);
-          autoDest.addListener('place_changed', () => {
-            const place = autoDest.getPlace();
-            if (place.geometry?.location) {
-              const lat = place.geometry.location.lat();
-              const lng = place.geometry.location.lng();
-              const addr = place.formatted_address || place.name || '';
-              setToLocation(addr);
-              setDestCoords({ lat, lng });
-              map.panTo({ lat, lng });
-            } else if (destInputRef.current?.value) {
-              const typed = destInputRef.current.value;
-              setToLocation(typed);
-              const known = resolveCoordinates(typed);
-              if (known) setDestCoords(known);
-            }
-          });
-          destAutocompleteRef.current = autoDest;
-        }
       } catch (err: any) {
         console.warn('Google Maps initialization error:', err);
         setMapsError('Could not load Google Maps. You can still enter addresses manually.');
@@ -335,7 +231,7 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
     }
   };
 
-  // Use current GPS location
+  // GPS Current location
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) {
       setRouteError('Geolocation is not supported by your browser.');
@@ -384,7 +280,7 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
     if (destMarkerRef.current) destMarkerRef.current.setMap(null);
     if (directionsRendererRef.current) directionsRendererRef.current.setMap(null);
 
-    // Pickup Marker (Vibrant Orange)
+    // Pickup Marker (Vibrant Lime circle with dark center)
     if (pickupCoords) {
       pickupMarkerRef.current = new google.maps.Marker({
         position: pickupCoords,
@@ -393,26 +289,26 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
           scale: 9,
-          fillColor: '#FF8A00',
+          fillColor: '#C6FF3D',
           fillOpacity: 1,
-          strokeColor: '#FFFFFF',
-          strokeWeight: 2.5,
+          strokeColor: '#0B0B0D',
+          strokeWeight: 3,
         },
       });
     }
 
-    // Destination Marker (Emerald Green)
+    // Destination Marker (White square with lime border)
     if (destCoords) {
       destMarkerRef.current = new google.maps.Marker({
         position: destCoords,
         map,
         title: `Destination: ${toLocation || 'Destination'}`,
         icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 9,
-          fillColor: '#10B981',
+          path: 'M -6,-6 L 6,-6 L 6,6 L -6,6 Z',
+          scale: 1.1,
+          fillColor: '#FFFFFF',
           fillOpacity: 1,
-          strokeColor: '#FFFFFF',
+          strokeColor: '#C6FF3D',
           strokeWeight: 2.5,
         },
       });
@@ -426,8 +322,8 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
           map,
           suppressMarkers: true,
           polylineOptions: {
-            strokeColor: '#FF8A00',
-            strokeOpacity: 0.9,
+            strokeColor: '#C6FF3D',
+            strokeOpacity: 0.95,
             strokeWeight: 5,
           },
         });
@@ -534,7 +430,7 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
     };
   }, [fromLocation, toLocation, passengers, pickupCoords, destCoords]);
 
-  // 4. Handle booking creation
+  // 4. Handle booking creation (prevent duplicate clicks)
   const handleBookAuto = async () => {
     if (!user) {
       navigate('/login');
@@ -589,562 +485,415 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
         destinationLongitude: effectiveDest?.lng,
       });
 
-      setIsBooking(false);
-
       if (res.success && res.data) {
         navigate(`/booking/${res.data.id}`);
       } else {
-        setRouteError(res.error || 'Failed to book auto. Please try again.');
+        setRouteError(res.error || 'Booking failed. Please try again.');
+        setIsBooking(false);
       }
     } catch (err: any) {
+      setRouteError(err.message || 'Error creating booking.');
       setIsBooking(false);
-      setRouteError(err.message || 'Network error occurred while booking.');
     }
   };
 
-  // Helper to quickly apply a suggestion chip
-  const handleApplySuggestion = (place: string) => {
-    const coords = LOCATION_COORDINATES[place] || null;
-    if (!fromLocation.trim()) {
-      setFromLocation(place);
-      if (coords) setPickupCoords(coords);
-    } else if (!toLocation.trim()) {
-      if (fromLocation.trim().toLowerCase() === place.toLowerCase()) {
-        setRouteError('Pickup and destination cannot be the same place.');
-        return;
-      }
-      setToLocation(place);
-      if (coords) setDestCoords(coords);
-    } else {
-      // Overwrite destination if both filled
-      setToLocation(place);
-      if (coords) setDestCoords(coords);
-    }
+  // Helper classes for map height on mobile
+  const getMobileMapHeightClass = () => {
+    if (mobileMapMode === 'expanded') return 'h-[72dvh]';
+    if (mobileMapMode === 'compact') return 'h-[22dvh]';
+    return 'h-[38dvh]'; // Default ~40%
   };
 
   return (
-    <div className="min-h-screen bg-[#071426] text-white py-4 sm:py-8 px-3 sm:px-6 lg:px-8">
-      {/* Background ambient lighting */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
-        <div className="absolute top-1/4 -left-48 w-96 h-96 bg-[#FF8A00]/10 rounded-full blur-3xl" />
-        <div className="absolute top-1/3 -right-48 w-96 h-96 bg-[#FF8A00]/10 rounded-full blur-3xl" />
-      </div>
+    <div className="min-h-[calc(100dvh-4rem)] bg-[#0B0B0D] text-white flex flex-col lg:flex-row relative overflow-hidden safe-bottom">
 
-      <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
-        {/* Top Header bar with Back button and live status badge */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-white/10">
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="inline-flex items-center gap-1.5 sm:gap-2 text-xs font-bold text-slate-300 hover:text-white transition-colors px-2.5 sm:px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10"
-          >
-            <ChevronLeft className="w-4 h-4 text-[#FF8A00]" />
-            <span>Back to Dashboard</span>
-          </button>
+      {/* ── TOP SECTION ON MOBILE / RIGHT ON DESKTOP: Interactive Google Map ── */}
+      <div
+        className={`w-full lg:w-7/12 order-1 lg:order-2 relative transition-all duration-300 ease-in-out ${getMobileMapHeightClass()} lg:h-[calc(100dvh-4rem)] border-b lg:border-b-0 lg:border-l border-[#303034] bg-[#171719]`}
+      >
+        <div ref={mapContainerRef} className="w-full h-full" />
 
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-[11px] sm:text-xs font-semibold text-slate-300">Google Maps Selection</span>
+        {/* Map Loading / Fallback Banner */}
+        {mapsError && (
+          <div className="absolute top-3 left-3 right-3 p-3 bg-[#171719]/90 border border-[#303034] rounded-2xl text-xs text-[#A1A1AA] flex items-center justify-between backdrop-blur-md">
+            <span>{mapsError}</span>
+            <span className="text-[10px] text-[#C6FF3D] font-bold">Manual Entry Active</span>
+          </div>
+        )}
+
+        {/* Map action controls float over map */}
+        <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">
+          <div className="pointer-events-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="p-2 rounded-xl bg-[#0B0B0D]/90 hover:bg-[#0B0B0D] border border-[#303034] text-white flex items-center gap-1 shadow-card text-xs font-bold backdrop-blur-md"
+            >
+              <ChevronLeft className="w-4 h-4 text-[#C6FF3D]" />
+              <span className="hidden sm:inline">Back</span>
+            </button>
+
+            {routeInfo && (
+              <div className="px-3 py-1.5 rounded-xl bg-[#0B0B0D]/90 border border-[#303034] text-[11px] font-bold text-[#C6FF3D] backdrop-blur-md">
+                {routeInfo.distanceText} • {routeInfo.durationText}
+              </div>
+            )}
+          </div>
+
+          {/* Toggle Map Expand / Collapse on Mobile */}
+          <div className="pointer-events-auto lg:hidden">
+            <button
+              type="button"
+              onClick={() => {
+                if (mobileMapMode === 'expanded') {
+                  setMobileMapMode('default');
+                } else {
+                  setMobileMapMode('expanded');
+                }
+              }}
+              className="px-3 py-1.5 rounded-xl bg-[#0B0B0D]/90 hover:bg-[#0B0B0D] border border-[#303034] text-xs font-bold text-white shadow-card backdrop-blur-md flex items-center gap-1.5"
+            >
+              {mobileMapMode === 'expanded' ? (
+                <>
+                  <ChevronDown className="w-3.5 h-3.5 text-[#C6FF3D]" />
+                  <span>Show Booking Details</span>
+                </>
+              ) : (
+                <>
+                  <ChevronUp className="w-3.5 h-3.5 text-[#C6FF3D]" />
+                  <span>Expand Map</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
 
-        {/* Responsive Grid: Phone-Style Booking Form + Interactive Google Maps */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start">
+        {/* Pin mode indicator banner */}
+        {activePinMode && (
+          <div className="absolute bottom-4 left-4 right-4 p-3 rounded-2xl bg-[#C6FF3D] text-[#0B0B0D] font-black text-xs text-center shadow-glow-lime flex items-center justify-between">
+            <span>Tap on the map to set {activePinMode === 'pickup' ? 'Pickup' : 'Destination'} location</span>
+            <button
+              type="button"
+              onClick={() => setActivePinMode(null)}
+              className="px-2 py-0.5 rounded-lg bg-[#0B0B0D] text-white text-[10px]"
+            >
+              Done
+            </button>
+          </div>
+        )}
+      </div>
 
-          {/* LEFT COLUMN: Phone-Style Booking Card (Matches Reference Image Screen 1) */}
-          <div className="lg:col-span-5 w-full max-w-md mx-auto">
-            <div className="bg-white text-slate-900 rounded-3xl sm:rounded-[2.5rem] shadow-2xl border-2 sm:border-4 border-[#10243D] overflow-hidden p-4 sm:p-7 flex flex-col justify-between space-y-4 sm:space-y-5 relative">
+      {/* ── BOTTOM SHEET ON MOBILE / LEFT ON DESKTOP: Booking Controls ── */}
+      <div
+        className={`w-full lg:w-5/12 order-2 lg:order-1 flex-1 flex flex-col bg-[#171719] lg:h-[calc(100dvh-4rem)] overflow-y-auto rounded-t-3xl lg:rounded-none border-t lg:border-t-0 border-[#303034] shadow-sheet z-20`}
+      >
+        {/* Mobile Drag Handle Bar */}
+        <div
+          onClick={() => {
+            if (mobileMapMode === 'default') setMobileMapMode('compact');
+            else if (mobileMapMode === 'compact') setMobileMapMode('default');
+            else setMobileMapMode('default');
+          }}
+          className="lg:hidden flex flex-col items-center justify-center py-2.5 cursor-pointer hover:bg-[#202023] transition-colors"
+        >
+          <div className="w-12 h-1 rounded-full bg-[#303034]" />
+        </div>
 
-              {/* Phone Header */}
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        {/* Form Container */}
+        <div className="p-4 sm:p-6 lg:p-7 space-y-4 sm:space-y-5 flex-1">
+
+          {/* Card Title */}
+          <div className="flex items-center justify-between pb-2 border-b border-[#303034]">
+            <div>
+              <h1 className="text-lg sm:text-xl font-black text-white tracking-tight">
+                Book Auto
+              </h1>
+              <p className="text-[11px] text-[#A1A1AA]">
+                Guaranteed point-to-point fixed pricing
+              </p>
+            </div>
+            <div className="w-8 h-8 rounded-xl bg-[#202023] border border-[#303034] flex items-center justify-center text-sm">
+              🛺
+            </div>
+          </div>
+
+          {/* Location Inputs (Manual + GPS / Map Pin - NO autocomplete popup or chips) */}
+          <div className="relative space-y-3 bg-[#202023] p-3.5 rounded-2xl border border-[#303034]">
+            {/* Connecting line */}
+            <div className="absolute left-[22px] top-[28px] bottom-[28px] w-0.5 bg-[#303034] pointer-events-none" />
+
+            {/* 1. Pickup Input */}
+            <div className="relative pl-7">
+              <div className="absolute left-0 top-3 w-2.5 h-2.5 rounded-full bg-[#C6FF3D] ring-4 ring-[#C6FF3D]/20" />
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA]">Pickup</span>
                 <button
                   type="button"
-                  onClick={() => navigate('/dashboard')}
-                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors text-slate-700"
+                  onClick={handleUseCurrentLocation}
+                  className="text-[10px] font-bold text-[#C6FF3D] hover:underline flex items-center gap-1"
                 >
-                  <ChevronLeft className="w-4 h-4" />
+                  <Crosshair className="w-3 h-3" />
+                  <span>Current GPS</span>
                 </button>
-
-                <h1 className="text-base font-black text-slate-900 tracking-tight">
-                  Book an Auto
-                </h1>
-
-                <div className="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center">
-                  <Car className="w-4 h-4 text-[#FF8A00]" />
-                </div>
               </div>
 
-              {/* Form Fields */}
-              <div className="space-y-4">
-
-                {/* 1. FROM (PICKUP LOCATION SEARCH) */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-[#FF8A00]" />
-                      <span>From (Pickup Location)</span>
-                    </label>
-
-                    <button
-                      type="button"
-                      onClick={handleUseCurrentLocation}
-                      className="text-[10px] font-bold text-[#FF8A00] hover:text-[#FF9D2E] flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:bg-orange-50 transition-colors"
-                      title="Locate via device GPS"
-                    >
-                      <Crosshair className="w-3 h-3" />
-                      <span>Current Location</span>
-                    </button>
-                  </div>
-
-                  <div className="relative">
-                    <input
-                      ref={pickupInputRef}
-                      type="text"
-                      value={fromLocation}
-                      onChange={(e) => {
-                        setFromLocation(e.target.value);
-                        const coords = resolveCoordinates(e.target.value);
-                        if (coords) setPickupCoords(coords);
-                      }}
-                      placeholder="Search pickup address, area, or landmark..."
-                      className="w-full bg-slate-50 border border-slate-200 hover:border-[#FF8A00]/50 rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF8A00] transition-all pr-9 sm:pr-10"
-                    />
-
-                    {fromLocation ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFromLocation('');
-                          setPickupCoords(null);
-                        }}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    ) : (
-                      <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                    )}
-                  </div>
-                </div>
-
-                {/* 2. TO (DESTINATION LOCATION SEARCH) */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-[#071426]" />
-                      <span>To (Destination)</span>
-                    </label>
-
-                    <button
-                      type="button"
-                      onClick={() => setActivePinMode('destination')}
-                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md transition-colors flex items-center gap-1 ${
-                        activePinMode === 'destination'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
-                      }`}
-                    >
-                      <Compass className="w-3 h-3" />
-                      <span>Pin on Map</span>
-                    </button>
-                  </div>
-
-                  <div className="relative">
-                    <input
-                      ref={destInputRef}
-                      type="text"
-                      value={toLocation}
-                      onChange={(e) => {
-                        setToLocation(e.target.value);
-                        const coords = resolveCoordinates(e.target.value);
-                        if (coords) setDestCoords(coords);
-                      }}
-                      placeholder="Search destination, street, or landmark..."
-                      className="w-full bg-slate-50 border border-slate-200 hover:border-[#FF8A00]/50 rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF8A00] transition-all pr-9 sm:pr-10"
-                    />
-
-                    {toLocation ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setToLocation('');
-                          setDestCoords(null);
-                        }}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    ) : (
-                      <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                    )}
-                  </div>
-                </div>
-
-                {/* Popular Location Suggestions Chips */}
-                <div className="space-y-1 pt-1">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Quick Suggestions
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {POPULAR_SUGGESTIONS.map((place) => (
-                      <button
-                        key={place}
-                        type="button"
-                        onClick={() => handleApplySuggestion(place)}
-                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-orange-100 text-slate-700 hover:text-[#FF8A00] text-[11px] font-semibold transition-colors"
-                      >
-                        {place}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 3. PICKUP TIME */}
-                <div className="space-y-1.5 pt-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-[#FF8A00]" />
-                      <span>Pickup Time</span>
-                    </label>
-
-                    <div className="flex rounded-lg bg-slate-100 p-0.5 text-[10px] font-bold">
-                      <button
-                        type="button"
-                        onClick={() => setTimeMode('now')}
-                        className={`px-2.5 py-1 rounded-md transition-all ${
-                          timeMode === 'now'
-                            ? 'bg-white text-slate-900 shadow-xs'
-                            : 'text-slate-500 hover:text-slate-800'
-                        }`}
-                      >
-                        Ride Now
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setTimeMode('schedule')}
-                        className={`px-2.5 py-1 rounded-md transition-all ${
-                          timeMode === 'schedule'
-                            ? 'bg-white text-slate-900 shadow-xs'
-                            : 'text-slate-500 hover:text-slate-800'
-                        }`}
-                      >
-                        Schedule
-                      </button>
-                    </div>
-                  </div>
-
-                  {timeMode === 'now' ? (
-                    <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2.5 text-xs font-bold text-slate-800 flex items-center justify-between">
-                      <span>Today, Immediate Pickup (5-10 mins)</span>
-                      <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
-                        Active
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2 pt-1">
-                      <input
-                        type="date"
-                        value={scheduledDate}
-                        onChange={(e) => setScheduledDate(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
-                      />
-                      <input
-                        type="time"
-                        value={scheduledTime}
-                        onChange={(e) => setScheduledTime(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* 4. PASSENGERS SELECTOR */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5 text-[#FF8A00]" />
-                      <span>Passengers</span>
-                    </label>
-                    <span className="text-[10px] text-slate-400">Max 4 riders</span>
-                  </div>
-
-                  <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2 flex items-center justify-between">
-                    <span className="text-xs sm:text-sm font-bold text-slate-800">
-                      {passengers} {passengers === 1 ? 'Passenger' : 'Passengers'}
-                    </span>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setPassengers(Math.max(1, passengers - 1))}
-                        disabled={passengers <= 1}
-                        className="w-7 h-7 rounded-full bg-white border border-slate-200 hover:bg-slate-100 text-slate-800 font-black flex items-center justify-center transition-all disabled:opacity-40"
-                      >
-                        -
-                      </button>
-                      <span className="w-5 text-center font-black text-slate-900 text-sm">
-                        {passengers}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setPassengers(Math.min(4, passengers + 1))}
-                        disabled={passengers >= 4}
-                        className="w-7 h-7 rounded-full bg-white border border-slate-200 hover:bg-slate-100 text-slate-800 font-black flex items-center justify-center transition-all disabled:opacity-40"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 5. ESTIMATED FARE & ROUTE SUMMARY CARD */}
-                <div className="p-4 bg-orange-50/80 rounded-2xl border-2 border-orange-200/90 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                      Estimated Fare
-                    </span>
-                    {routeInfo && (
-                      <span className="text-[10px] font-bold text-[#FF8A00] uppercase tracking-wider">
-                        {routeInfo.distanceText} • {routeInfo.durationText}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-baseline justify-between pt-1">
-                    {isCalculating ? (
-                      <div className="flex items-center gap-2 text-xs font-bold text-[#FF8A00]">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Checking route fare...</span>
-                      </div>
-                    ) : fareEstimate && fareEstimate.available ? (
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-3xl font-black text-slate-900">
-                          ₹ {fareEstimate.estimatedFare}
-                        </span>
-                        {passengers > 1 && (
-                          <span className="text-[11px] font-semibold text-slate-500">
-                            ({passengers} × ₹{Math.round(fareEstimate.estimatedFare / passengers)})
-                          </span>
-                        )}
-                      </div>
-                    ) : routeError ? (
-                      <div className="space-y-0.5">
-                        <span className="text-xs font-bold text-rose-700 block">
-                          Fare not configured for this route. Please contact the admin.
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-xs font-bold text-slate-400">
-                        Select pickup & destination to calculate
-                      </span>
-                    )}
-
-                    <span className="text-[10px] font-semibold text-slate-500">
-                      Clik2Go Auto
-                    </span>
-                  </div>
-                </div>
-
-                {/* Route Error or Pricing Notification */}
-                {routeError && (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs font-semibold flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                    <span>{routeError}</span>
-                  </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={fromLocation}
+                  onChange={(e) => {
+                    setFromLocation(e.target.value);
+                    const coords = resolveCoordinates(e.target.value);
+                    if (coords) setPickupCoords(coords);
+                  }}
+                  placeholder="Enter pickup address..."
+                  autoComplete="off"
+                  className="w-full bg-[#171719] border border-[#303034] focus:border-[#C6FF3D] rounded-xl px-3 py-2 text-xs sm:text-sm font-semibold text-white placeholder-[#71717A] focus:outline-none pr-8"
+                />
+                {fromLocation && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFromLocation('');
+                      setPickupCoords(null);
+                    }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-white p-0.5"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 )}
               </div>
+            </div>
 
-              {/* 6. PRIMARY BOOKING BUTTON */}
-              <div>
+            <div className="h-px bg-[#303034] ml-7" />
+
+            {/* 2. Destination Input */}
+            <div className="relative pl-7">
+              <div className="absolute left-0 top-3 w-2.5 h-2.5 bg-white ring-4 ring-white/20 rounded-xs" />
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA]">Destination</span>
                 <button
                   type="button"
-                  onClick={handleBookAuto}
-                  disabled={isBooking || isCalculating || !fareEstimate?.available}
-                  className="w-full py-3.5 sm:py-4 bg-gradient-to-r from-[#FF8A00] to-[#FF9D2E] hover:from-[#FF9D2E] hover:to-[#FF8A00] text-slate-950 font-black text-sm rounded-2xl shadow-lg shadow-[#FF8A00]/25 transition-transform hover:scale-102 active:scale-98 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => setActivePinMode('destination')}
+                  className={`text-[10px] font-bold flex items-center gap-1 ${
+                    activePinMode === 'destination' ? 'text-[#C6FF3D]' : 'text-[#A1A1AA] hover:text-white'
+                  }`}
                 >
-                  {isBooking ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Booking Auto...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Continue</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
+                  <Compass className="w-3 h-3 text-[#C6FF3D]" />
+                  <span>Pin on Map</span>
                 </button>
+              </div>
 
-                <p className="text-[10px] text-center text-slate-400 mt-2">
-                  No hidden charges • Cash on arrival or Cashfree UPI
-                </p>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={toLocation}
+                  onChange={(e) => {
+                    setToLocation(e.target.value);
+                    const coords = resolveCoordinates(e.target.value);
+                    if (coords) setDestCoords(coords);
+                  }}
+                  placeholder="Enter destination address..."
+                  autoComplete="off"
+                  className="w-full bg-[#171719] border border-[#303034] focus:border-[#C6FF3D] rounded-xl px-3 py-2 text-xs sm:text-sm font-semibold text-white placeholder-[#71717A] focus:outline-none pr-8"
+                />
+                {toLocation && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setToLocation('');
+                      setDestCoords(null);
+                    }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-white p-0.5"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
           </div>
 
-          {/* RIGHT COLUMN: Interactive Google Maps Experience */}
-          <div className="lg:col-span-7 flex flex-col space-y-4">
+          {/* 3. Passengers Selector (1 to 6) */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA] flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-[#C6FF3D]" />
+                <span>Passengers (1 to 6 riders)</span>
+              </label>
+              <span className="text-[10px] text-[#A1A1AA]">Up to 6 allowed</span>
+            </div>
 
-            <div className="bg-[#10243D] rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-[#1A3353] shadow-2xl space-y-3 sm:space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                    <Navigation className="w-5 h-5 text-[#FF8A00]" />
-                    <span>Interactive Route Map</span>
-                  </h2>
-                  <p className="text-xs text-[#A9B7C9] mt-0.5">
-                    Search anywhere on Google Maps or click to set pickup and drop pins
-                  </p>
-                </div>
+            <div className="w-full bg-[#202023] border border-[#303034] rounded-2xl px-4 py-2.5 flex items-center justify-between">
+              <span className="text-xs sm:text-sm font-bold text-white">
+                {passengers} {passengers === 1 ? 'Passenger' : 'Passengers'}
+              </span>
 
-                {/* Map Action Controls */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => setActivePinMode(activePinMode === 'pickup' ? null : 'pickup')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
-                      activePinMode === 'pickup'
-                        ? 'bg-[#FF8A00] text-[#071426] border-[#FF8A00]'
-                        : 'bg-[#071426] text-slate-300 border-[#1A3353] hover:text-white'
-                    }`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-[#FF8A00]" />
-                    <span>Pin Pickup</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActivePinMode(activePinMode === 'destination' ? null : 'destination')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
-                      activePinMode === 'destination'
-                        ? 'bg-emerald-500 text-white border-emerald-500'
-                        : 'bg-[#071426] text-slate-300 border-[#1A3353] hover:text-white'
-                    }`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span>Pin Destination</span>
-                  </button>
-
-                  {(pickupCoords || destCoords) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPickupCoords(null);
-                        setDestCoords(null);
-                        setFromLocation('');
-                        setToLocation('');
-                        setRouteInfo(null);
-                        setActivePinMode(null);
-                      }}
-                      className="p-1.5 rounded-xl bg-[#071426] text-slate-400 hover:text-white border border-[#1A3353]"
-                      title="Clear markers"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Map Canvas */}
-              <div className="relative w-full h-[280px] sm:h-[380px] lg:h-[450px] rounded-xl sm:rounded-2xl overflow-hidden border border-[#1A3353] bg-[#071426]">
-
-                {/* Google Maps Viewport */}
-                <div ref={mapContainerRef} className="w-full h-full" />
-
-                {/* Active Pin Placement Banner */}
-                {activePinMode && (
-                  <div className="absolute top-2 sm:top-3 left-1/2 -translate-x-1/2 z-10 bg-[#FF8A00] text-[#071426] px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-black shadow-lg flex items-center gap-1.5 max-w-[90%] text-center animate-bounce">
-                    <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span className="truncate">Click map to set {activePinMode === 'pickup' ? 'Pickup' : 'Destination'}</span>
-                  </div>
-                )}
-
-                {/* Fallback / Error State overlay if Google Maps is unavailable */}
-                {mapsError && (
-                  <div className="absolute inset-0 bg-[#071426]/90 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center space-y-3 z-10">
-                    <div className="w-12 h-12 rounded-2xl bg-[#FF8A00]/15 text-[#FF8A00] flex items-center justify-center">
-                      <MapPin className="w-6 h-6" />
-                    </div>
-                    <div className="max-w-xs space-y-1">
-                      <h4 className="text-sm font-bold text-white">Interactive Map Ready</h4>
-                      <p className="text-[11px] text-[#A9B7C9]">{mapsError}</p>
-                    </div>
-
-                    {/* Styled Route Visualizer Card */}
-                    <div className="w-full max-w-sm bg-[#10243D] p-4 rounded-xl border border-[#1A3353] text-left space-y-3 mt-2">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-400 font-bold uppercase text-[10px]">Location Selection</span>
-                        <span className="text-[#FF8A00] font-black">Google Maps</span>
-                      </div>
-                      <div className="space-y-2 text-xs">
-                        <div className="flex items-center gap-2 text-white font-bold">
-                          <span className="w-2.5 h-2.5 rounded-full bg-[#FF8A00]" />
-                          <span className="truncate">Pickup: {fromLocation || 'Not selected'}</span>
-                        </div>
-                        <div className="w-0.5 h-4 bg-slate-700 ml-1" />
-                        <div className="flex items-center gap-2 text-white font-bold">
-                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-                          <span className="truncate">Destination: {toLocation || 'Not selected'}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Floating Live Driving Stats Pill Overlay */}
-                {routeInfo && (
-                  <div className="absolute top-3 left-3 z-10 bg-[#071426]/90 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-white/10 text-xs shadow-lg space-y-0.5">
-                    <div className="text-[10px] uppercase font-bold text-slate-400">Driving Path</div>
-                    <div className="text-white font-black flex items-center gap-2">
-                      <span className="text-[#FF8A00]">{routeInfo.distanceText}</span>
-                      <span className="text-slate-500">•</span>
-                      <span className="text-emerald-400">{routeInfo.durationText}</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Floating Map Legend Overlay */}
-                <div className="absolute left-3 bottom-3 z-10 bg-[#071426]/85 backdrop-blur-md px-3 py-2 rounded-xl border border-white/10 text-[10px] space-y-1 text-slate-300">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-[#FF8A00]" />
-                    <span className="truncate max-w-[180px]">Pickup ({fromLocation || 'Not set'})</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span className="truncate max-w-[180px]">Destination ({toLocation || 'Not set'})</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Service Assurance Footer below map */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                <div className="p-3 bg-[#071426] rounded-xl border border-[#1A3353] flex items-center gap-2.5">
-                  <span className="text-lg">⚡</span>
-                  <div>
-                    <div className="text-xs font-bold text-white">Instant Dispatch</div>
-                    <div className="text-[10px] text-[#A9B7C9]">Google Maps location accuracy</div>
-                  </div>
-                </div>
-
-                <div className="p-3 bg-[#071426] rounded-xl border border-[#1A3353] flex items-center gap-2.5">
-                  <span className="text-lg">🛡️</span>
-                  <div>
-                    <div className="text-xs font-bold text-white">Verified Drivers</div>
-                    <div className="text-[10px] text-[#A9B7C9]">Live navigation to your door</div>
-                  </div>
-                </div>
-
-                <div className="p-3 bg-[#071426] rounded-xl border border-[#1A3353] flex items-center gap-2.5">
-                  <span className="text-lg">₹</span>
-                  <div>
-                    <div className="text-xs font-bold text-white">Transparent Pricing</div>
-                    <div className="text-[10px] text-[#A9B7C9]">Zero hidden charges</div>
-                  </div>
-                </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPassengers(Math.max(1, passengers - 1))}
+                  disabled={passengers <= 1}
+                  className="w-8 h-8 rounded-xl bg-[#171719] border border-[#303034] hover:border-[#C6FF3D]/50 text-white font-black flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  −
+                </button>
+                <span className="w-6 text-center font-black text-white text-sm">
+                  {passengers}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPassengers(Math.min(6, passengers + 1))}
+                  disabled={passengers >= 6}
+                  className="w-8 h-8 rounded-xl bg-[#171719] border border-[#303034] hover:border-[#C6FF3D]/50 text-white font-black flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  +
+                </button>
               </div>
             </div>
           </div>
+
+          {/* 4. Pickup Time Mode */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA] flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-[#C6FF3D]" />
+                <span>Pickup Schedule</span>
+              </label>
+
+              <div className="flex rounded-xl bg-[#202023] border border-[#303034] p-0.5 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setTimeMode('now')}
+                  className={`px-3 py-1 rounded-lg transition-all ${
+                    timeMode === 'now'
+                      ? 'bg-[#C6FF3D] text-[#0B0B0D]'
+                      : 'text-[#A1A1AA] hover:text-white'
+                  }`}
+                >
+                  Ride Now
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTimeMode('schedule')}
+                  className={`px-3 py-1 rounded-lg transition-all ${
+                    timeMode === 'schedule'
+                      ? 'bg-[#C6FF3D] text-[#0B0B0D]'
+                      : 'text-[#A1A1AA] hover:text-white'
+                  }`}
+                >
+                  Schedule
+                </button>
+              </div>
+            </div>
+
+            {timeMode === 'now' ? (
+              <div className="w-full bg-[#202023] border border-[#303034] rounded-2xl px-4 py-2.5 text-xs font-bold text-white flex items-center justify-between">
+                <span>Immediate Driver Dispatch (3–7 mins)</span>
+                <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-md bg-[#C6FF3D]/10 text-[#C6FF3D] border border-[#C6FF3D]/30">
+                  Ready
+                </span>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="date"
+                  value={scheduledDate}
+                  onChange={(e) => setScheduledDate(e.target.value)}
+                  className="w-full bg-[#202023] border border-[#303034] rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-[#C6FF3D]"
+                />
+                <input
+                  type="time"
+                  value={scheduledTime}
+                  onChange={(e) => setScheduledTime(e.target.value)}
+                  className="w-full bg-[#202023] border border-[#303034] rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-[#C6FF3D]"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* 5. Live Fare Estimate Card */}
+          <div className="p-4 bg-[#202023] rounded-2xl border border-[#303034] space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA]">
+                Guaranteed Upfront Fare
+              </span>
+              {routeInfo && (
+                <span className="text-[10px] font-bold text-[#C6FF3D] uppercase tracking-wider">
+                  {routeInfo.distanceText} • {routeInfo.durationText}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-baseline justify-between pt-1">
+              {isCalculating ? (
+                <div className="flex items-center gap-2 text-xs font-bold text-[#C6FF3D]">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Calculating fixed fare...</span>
+                </div>
+              ) : fareEstimate && fareEstimate.available ? (
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-black text-[#C6FF3D]">
+                    ₹{fareEstimate.estimatedFare}
+                  </span>
+                  {passengers > 1 && (
+                    <span className="text-[11px] font-semibold text-[#A1A1AA]">
+                      ({passengers} × ₹{Math.round(fareEstimate.estimatedFare / passengers)})
+                    </span>
+                  )}
+                </div>
+              ) : routeError ? (
+                <span className="text-xs font-bold text-rose-400 block">
+                  {routeError}
+                </span>
+              ) : (
+                <span className="text-xs font-semibold text-[#A1A1AA]">
+                  Enter pickup & destination
+                </span>
+              )}
+
+              <span className="text-[10px] font-semibold text-[#A1A1AA]">
+                Fixed Rate
+              </span>
+            </div>
+          </div>
+
+          {/* Route Error Notification */}
+          {routeError && !isCalculating && (
+            <div className="p-3 bg-rose-950/40 border border-rose-800 rounded-xl text-rose-300 text-xs font-semibold flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
+              <span>{routeError}</span>
+            </div>
+          )}
+
+          {/* 6. Primary Booking Button */}
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={handleBookAuto}
+              disabled={isBooking || isCalculating || !fareEstimate?.available}
+              className="w-full py-4 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-sm rounded-2xl shadow-glow-lime transition-all active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isBooking ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-[#0B0B0D]" />
+                  <span>Confirming Auto...</span>
+                </>
+              ) : (
+                <>
+                  <span>Confirm Ride</span>
+                  <ArrowRight className="w-4 h-4 text-[#0B0B0D]" />
+                </>
+              )}
+            </button>
+
+            <p className="text-[10px] text-center text-[#A1A1AA] mt-2">
+              Transparent fixed fare • Pay driver via Cash or UPI
+            </p>
+          </div>
+
         </div>
       </div>
+
     </div>
   );
 };

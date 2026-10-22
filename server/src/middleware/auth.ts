@@ -9,6 +9,8 @@ export interface AuthUser {
   email: string;
   mobile: string;
   role: 'customer' | 'driver' | 'admin';
+  terms_version?: string | null;
+  terms_accepted_at?: string | null;
 }
 
 declare global {

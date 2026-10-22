@@ -21,7 +21,8 @@ export class AuthService {
         name: user.name,
         email: user.email,
         mobile: user.mobile,
-        role: user.role
+        role: user.role,
+        terms_version: user.terms_version || null
       },
       JWT_SECRET,
       { expiresIn: '7d' }
@@ -37,7 +38,7 @@ public static async login(
   const normalizedIdentifier = identifier.trim().toLowerCase();
 
   const result = await query(
-    `SELECT id, name, email, mobile, password_hash, role
+    `SELECT id, name, email, mobile, password_hash, role, terms_version, terms_accepted_at
      FROM users
      WHERE LOWER(email) = $1 OR mobile = $2
      LIMIT 1`,
@@ -60,7 +61,9 @@ public static async login(
     name: row.name,
     email: row.email,
     mobile: row.mobile,
-    role: row.role
+    role: row.role,
+    terms_version: row.terms_version || null,
+    terms_accepted_at: row.terms_accepted_at ? new Date(row.terms_accepted_at).toISOString() : null
   };
 
   return {
@@ -71,7 +74,7 @@ public static async login(
 
 public static async getUserById(id: number): Promise<AuthUser | null> {
   const result = await query(
-    `SELECT id, name, email, mobile, role
+    `SELECT id, name, email, mobile, role, terms_version, terms_accepted_at
      FROM users
      WHERE id = $1
      LIMIT 1`,
@@ -82,7 +85,16 @@ public static async getUserById(id: number): Promise<AuthUser | null> {
     return null;
   }
 
-  return result.rows[0] as AuthUser;
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    mobile: row.mobile,
+    role: row.role,
+    terms_version: row.terms_version || null,
+    terms_accepted_at: row.terms_accepted_at ? new Date(row.terms_accepted_at).toISOString() : null
+  };
 }
 
   public static async register(data: {

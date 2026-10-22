@@ -9,5 +9,6 @@ router.post('/verify-email-otp', AuthController.verifyEmailOtp);
 router.post('/login', AuthController.login);
 router.post('/logout', AuthController.logout);
 router.get('/me', authenticateToken, AuthController.getMe);
+router.post('/accept-terms', authenticateToken, AuthController.acceptTerms);
 
 export default router;

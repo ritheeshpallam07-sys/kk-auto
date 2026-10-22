@@ -23,7 +23,7 @@ export class BookingController {
     try {
       const fromLoc = req.body.fromLocation || req.body.pickupAddress;
       const toLoc = req.body.toLocation || req.body.destinationAddress;
-      const passengers = Math.min(4, Math.max(1, Number(req.body.passengers) || 1));
+      const passengers = Math.min(6, Math.max(1, Number(req.body.passengers) || 1));
 
       if (!fromLoc || !toLoc) {
         return res.status(400).json({
@@ -125,7 +125,7 @@ export class BookingController {
 
 
 
-      const numPassengers = Math.min(4, Math.max(1, Number(passengers) || 1));
+      const numPassengers = Math.min(6, Math.max(1, Number(passengers) || 1));
 
       // Validate pickup date time
       const scheduledTime = pickupDateTime ? new Date(pickupDateTime) : new Date();

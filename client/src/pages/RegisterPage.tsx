@@ -13,7 +13,6 @@ import {
   CreditCard,
   Building2,
   FileBadge,
-  ShieldCheck,
   Clock
 } from 'lucide-react';
 
@@ -56,7 +55,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
 
   const strengthScore = calculatePasswordStrength(password);
   const strengthLabels = ['Too weak', 'Weak', 'Good', 'Strong', 'Very Strong'];
-  const strengthColors = ['bg-slate-200', 'bg-rose-500', 'bg-[#FF8A00]', 'bg-emerald-500', 'bg-emerald-600'];
+  const strengthColors = ['bg-[#303034]', 'bg-rose-500', 'bg-amber-500', 'bg-[#C6FF3D]', 'bg-[#9ECE1E]'];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,7 +118,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
         } else if (role === 'driver') {
           navigate('/driver');
         } else {
-          navigate('/dashboard');
+          navigate('/accept-terms');
         }
       } else {
         setError(res.error || 'Failed to create account.');
@@ -132,29 +131,29 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
   };
 
   return (
-    <div className="min-h-[85vh] flex items-center justify-center py-6 sm:py-12 px-3 sm:px-6 lg:px-8 bg-[#F8FAFC]">
-      <div className="max-w-xl w-full space-y-6 sm:space-y-7 bg-white p-4 sm:p-8 md:p-10 rounded-2xl sm:rounded-3xl shadow-xl border border-slate-200/80">
+    <div className="min-h-[85vh] flex items-center justify-center py-8 sm:py-16 px-4 sm:px-6 lg:px-8 bg-[#0B0B0D] text-white safe-top safe-bottom">
+      <div className="max-w-xl w-full space-y-6 sm:space-y-7 bg-[#171719] p-6 sm:p-10 rounded-3xl shadow-card border border-[#303034]">
         <div className="text-center">
-          <div className="flex justify-center mb-3">
+          <div className="flex justify-center mb-4">
             <Logo size="md" />
           </div>
-          <h2 className="text-xl sm:text-2xl font-black text-[#071426] tracking-tight">
+          <h2 className="text-2xl font-black text-white tracking-tight">
             Create your account
           </h2>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-[#A1A1AA] mt-1">
             Sign up to start booking or driving auto-rickshaws with Clik2Go
           </p>
         </div>
 
         {/* Role switcher tab */}
-        <div className="flex flex-col sm:flex-row rounded-2xl bg-slate-100 p-1 sm:p-1.5 text-xs font-bold border border-slate-200/60 gap-1 sm:gap-0">
+        <div className="flex flex-col sm:flex-row rounded-2xl bg-[#202023] p-1 text-xs font-bold border border-[#303034] gap-1">
           <button
             type="button"
             onClick={() => setRole('customer')}
-            className={`flex-1 py-2 sm:py-2.5 rounded-xl transition-all ${
+            className={`flex-1 py-2.5 rounded-xl transition-all ${
               role === 'customer'
-                ? 'bg-white text-[#071426] shadow-xs'
-                : 'text-slate-500 hover:text-slate-800'
+                ? 'bg-[#171719] text-[#C6FF3D] border border-[#C6FF3D]/40 shadow-xs'
+                : 'text-[#A1A1AA] hover:text-white'
             }`}
           >
             👤 Customer Account
@@ -162,10 +161,10 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
           <button
             type="button"
             onClick={() => setRole('driver')}
-            className={`flex-1 py-2 sm:py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
               role === 'driver'
-                ? 'bg-[#FF8A00] text-[#071426] font-black shadow-glow-orange'
-                : 'text-slate-500 hover:text-slate-800'
+                ? 'bg-[#C6FF3D] text-[#0B0B0D] font-black shadow-xs'
+                : 'text-[#A1A1AA] hover:text-white'
             }`}
           >
             <Car className="w-3.5 h-3.5" />
@@ -174,25 +173,25 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
         </div>
 
         {error && (
-          <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2.5 animate-in fade-in duration-150">
-            <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-500" />
+          <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-800 text-rose-300 text-xs flex items-center gap-2.5">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-400" />
             <span>{error}</span>
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+            <label className="block text-xs font-bold text-[#A1A1AA] uppercase mb-1.5">
               Full Name *
             </label>
             <div className="relative">
-              <User className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+              <User className="absolute left-3.5 top-3 w-4 h-4 text-[#A1A1AA]" />
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Ramesh Babu"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8A00] bg-slate-50/50 focus:bg-white"
+                className="w-full pl-10 pr-3.5 py-3 rounded-xl border border-[#303034] text-sm focus:outline-none focus:border-[#C6FF3D] bg-[#202023] text-white placeholder-[#71717A]"
                 required
               />
             </div>
@@ -200,34 +199,34 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+              <label className="block text-xs font-bold text-[#A1A1AA] uppercase mb-1.5">
                 Mobile Number *
               </label>
               <div className="relative">
-                <Phone className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                <Phone className="absolute left-3.5 top-3 w-4 h-4 text-[#A1A1AA]" />
                 <input
                   type="tel"
                   value={mobile}
                   onChange={(e) => setMobile(e.target.value)}
                   placeholder="9876543210"
-                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8A00] bg-slate-50/50 focus:bg-white"
+                  className="w-full pl-10 pr-3.5 py-3 rounded-xl border border-[#303034] text-sm focus:outline-none focus:border-[#C6FF3D] bg-[#202023] text-white placeholder-[#71717A]"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+              <label className="block text-xs font-bold text-[#A1A1AA] uppercase mb-1.5">
                 Email Address *
               </label>
               <div className="relative">
-                <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                <Mail className="absolute left-3.5 top-3 w-4 h-4 text-[#A1A1AA]" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@mail.com"
-                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8A00] bg-slate-50/50 focus:bg-white"
+                  className="w-full pl-10 pr-3.5 py-3 rounded-xl border border-[#303034] text-sm focus:outline-none focus:border-[#C6FF3D] bg-[#202023] text-white placeholder-[#71717A]"
                   required
                 />
               </div>
@@ -236,21 +235,21 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
 
           {/* DRIVER SPECIFIC FIELDS */}
           {role === 'driver' && (
-            <div className="p-3.5 sm:p-5 bg-orange-50/60 rounded-2xl sm:rounded-3xl border border-orange-200/80 space-y-3 sm:space-y-4">
-              <div className="flex flex-col xs:flex-row sm:flex-row items-start sm:items-center justify-between gap-1.5">
-                <span className="text-xs font-black text-[#071426] uppercase flex items-center gap-1.5">
-                  <Car className="w-4 h-4 text-[#FF8A00]" />
+            <div className="p-5 bg-[#202023] rounded-3xl border border-[#303034] space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5">
+                <span className="text-xs font-black text-white uppercase flex items-center gap-1.5">
+                  <Car className="w-4 h-4 text-[#C6FF3D]" />
                   <span>Auto Vehicle & Payout Details</span>
                 </span>
-                <span className="text-[10px] font-bold text-orange-800 bg-orange-200/60 px-2 py-0.5 rounded-md flex items-center gap-1 self-start sm:self-auto">
-                  <Clock className="w-3 h-3 text-[#FF8A00]" />
+                <span className="text-[10px] font-bold text-amber-300 bg-amber-950/40 border border-amber-800 px-2 py-0.5 rounded-md flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-amber-400" />
                   <span>Pending Admin Review</span>
                 </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1">
+                  <label className="block text-[10px] font-bold text-[#A1A1AA] uppercase mb-1">
                     Auto Registration Number *
                   </label>
                   <input
@@ -258,80 +257,75 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
                     value={autoNumber}
                     onChange={(e) => setAutoNumber(e.target.value)}
                     placeholder="KA-01-AK-1234"
-                    className="w-full px-3 py-2 rounded-xl border border-orange-200 text-xs font-mono font-bold uppercase bg-white focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
+                    className="w-full px-3 py-2 rounded-xl border border-[#303034] text-xs bg-[#171719] text-white focus:outline-none focus:border-[#C6FF3D]"
                     required
                   />
                 </div>
-
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1">
-                    Auto Model / Type *
+                  <label className="block text-[10px] font-bold text-[#A1A1AA] uppercase mb-1">
+                    Auto Model / Make
                   </label>
                   <input
                     type="text"
                     value={autoModel}
                     onChange={(e) => setAutoModel(e.target.value)}
-                    placeholder="Bajaj Compact 4S"
-                    className="w-full px-3 py-2 rounded-xl border border-orange-200 text-xs font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
-                    required
+                    placeholder="Bajaj Compact RE"
+                    className="w-full px-3 py-2 rounded-xl border border-[#303034] text-xs bg-[#171719] text-white focus:outline-none focus:border-[#C6FF3D]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1">
+                <label className="block text-[10px] font-bold text-[#A1A1AA] uppercase mb-1">
                   Driving License Number
                 </label>
                 <div className="relative">
-                  <FileBadge className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                  <FileBadge className="absolute left-3 top-2.5 w-3.5 h-3.5 text-[#A1A1AA]" />
                   <input
                     type="text"
                     value={licenseNumber}
                     onChange={(e) => setLicenseNumber(e.target.value)}
-                    placeholder="DL-AUTO-2024-8899"
-                    className="w-full pl-8 pr-3 py-2 rounded-xl border border-orange-200 text-xs font-semibold uppercase bg-white focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
+                    placeholder="DL-0420240012345"
+                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#303034] text-xs bg-[#171719] text-white focus:outline-none focus:border-[#C6FF3D]"
                   />
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-orange-200/80 space-y-2">
-                <span className="text-[11px] font-bold text-[#071426] block">
-                  Driver Payout Bank / UPI Details (For Earnings Settlement)
-                </span>
+              <div>
+                <label className="block text-[10px] font-bold text-[#A1A1AA] uppercase mb-1">
+                  Payout UPI ID (Instant direct settlement)
+                </label>
+                <div className="relative">
+                  <CreditCard className="absolute left-3 top-2.5 w-3.5 h-3.5 text-[#A1A1AA]" />
+                  <input
+                    type="text"
+                    value={payoutUpi}
+                    onChange={(e) => setPayoutUpi(e.target.value)}
+                    placeholder="driver@okaxis"
+                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#303034] text-xs bg-[#171719] text-white focus:outline-none focus:border-[#C6FF3D]"
+                  />
+                </div>
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1 flex items-center gap-1">
-                      <CreditCard className="w-3 h-3 text-[#FF8A00]" />
-                      <span>UPI ID *</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={payoutUpi}
-                      onChange={(e) => setPayoutUpi(e.target.value)}
-                      placeholder="driver@oksbi"
-                      className="w-full px-3 py-2 rounded-xl border border-orange-200 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1 flex items-center gap-1">
-                      <Building2 className="w-3 h-3 text-[#FF8A00]" />
-                      <span>Bank Account No.</span>
-                    </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-[#A1A1AA] uppercase mb-1">
+                    Bank Account Number (Optional)
+                  </label>
+                  <div className="relative">
+                    <Building2 className="absolute left-3 top-2.5 w-3.5 h-3.5 text-[#A1A1AA]" />
                     <input
                       type="text"
                       value={payoutBankAccount}
                       onChange={(e) => setPayoutBankAccount(e.target.value)}
-                      placeholder="12-16 digit account number"
-                      className="w-full px-3 py-2 rounded-xl border border-orange-200 text-xs font-mono bg-white focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
+                      placeholder="123456789012"
+                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#303034] text-xs bg-[#171719] text-white focus:outline-none focus:border-[#C6FF3D]"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1">
+                  <label className="block text-[10px] font-bold text-[#A1A1AA] uppercase mb-1">
                     Bank IFSC Code
                   </label>
                   <input
@@ -339,75 +333,64 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
                     value={payoutIfsc}
                     onChange={(e) => setPayoutIfsc(e.target.value)}
                     placeholder="SBIN0001234"
-                    className="w-full px-3 py-2 rounded-xl border border-orange-200 text-xs font-mono uppercase bg-white focus:outline-none focus:ring-2 focus:ring-[#FF8A00]"
+                    className="w-full px-3 py-2 rounded-xl border border-[#303034] text-xs bg-[#171719] text-white uppercase focus:outline-none focus:border-[#C6FF3D]"
                   />
                 </div>
-              </div>
-
-              <div className="text-[11px] text-orange-950 bg-orange-100/70 p-3 rounded-2xl flex items-start gap-2">
-                <ShieldCheck className="w-4 h-4 text-[#FF8A00] flex-shrink-0 mt-0.5" />
-                <span>
-                  <strong>Approval Notice:</strong> When you register as a driver, your account will be set to <strong>PENDING</strong>. You will be able to accept passenger rides once verified and approved by the Clik2Go Admin.
-                </span>
               </div>
             </div>
           )}
 
+          {/* Passwords */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-              Password *
+            <label className="block text-xs font-bold text-[#A1A1AA] uppercase mb-1.5">
+              Password (at least 6 characters) *
             </label>
             <div className="relative">
-              <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+              <Lock className="absolute left-3.5 top-3 w-4 h-4 text-[#A1A1AA]" />
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 6 characters"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8A00] bg-slate-50/50 focus:bg-white"
+                placeholder="Create password"
+                className="w-full pl-10 pr-3.5 py-3 rounded-xl border border-[#303034] text-sm focus:outline-none focus:border-[#C6FF3D] bg-[#202023] text-white placeholder-[#71717A]"
                 required
               />
             </div>
-
-            {/* Password strength meter */}
             {password && (
-              <div className="mt-1.5">
-                <div className="flex items-center justify-between text-[11px] mb-1">
-                  <span className="text-slate-500">Strength:</span>
-                  <span className="font-bold text-slate-700">{strengthLabels[strengthScore]}</span>
-                </div>
-                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex gap-1">
-                  {[1, 2, 3, 4].map((step) => (
+              <div className="mt-2 flex items-center gap-2">
+                <div className="flex-1 h-1.5 bg-[#303034] rounded-full overflow-hidden flex">
+                  {[...Array(4)].map((_, i) => (
                     <div
-                      key={step}
-                      className={`h-full flex-1 transition-all ${
-                        strengthScore >= step ? strengthColors[strengthScore] : 'bg-slate-200'
-                      }`}
+                      key={i}
+                      className={`h-full flex-1 ${i < strengthScore ? strengthColors[strengthScore] : 'bg-[#303034]'} ${i > 0 ? 'ml-0.5' : ''}`}
                     />
                   ))}
                 </div>
+                <span className="text-[10px] font-bold text-[#A1A1AA]">
+                  {strengthLabels[strengthScore]}
+                </span>
               </div>
             )}
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+            <label className="block text-xs font-bold text-[#A1A1AA] uppercase mb-1.5">
               Confirm Password *
             </label>
             <div className="relative">
-              <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+              <Lock className="absolute left-3.5 top-3 w-4 h-4 text-[#A1A1AA]" />
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Re-type password"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8A00] bg-slate-50/50 focus:bg-white"
+                className="w-full pl-10 pr-3.5 py-3 rounded-xl border border-[#303034] text-sm focus:outline-none focus:border-[#C6FF3D] bg-[#202023] text-white placeholder-[#71717A]"
                 required
               />
             </div>
             {confirmPassword && password === confirmPassword && (
-              <p className="text-[11px] text-emerald-600 font-semibold mt-1 flex items-center gap-1">
-                <Check className="w-3 h-3" />
+              <p className="text-[11px] text-[#C6FF3D] font-semibold mt-1 flex items-center gap-1">
+                <Check className="w-3 h-3 text-[#C6FF3D]" />
                 <span>Passwords match</span>
               </p>
             )}
@@ -420,36 +403,36 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
               id="terms"
               checked={agreeTerms}
               onChange={(e) => setAgreeTerms(e.target.checked)}
-              className="w-4 h-4 mt-0.5 rounded text-[#FF8A00] focus:ring-[#FF8A00] border-slate-300"
+              className="w-4 h-4 mt-0.5 rounded text-[#C6FF3D] bg-[#202023] border-[#303034] focus:ring-[#C6FF3D]"
               required
             />
-            <label htmlFor="terms" className="text-xs text-slate-600 leading-tight">
-              I agree to the <span className="font-bold text-slate-800 underline">Terms of Service</span> and <span className="font-bold text-slate-800 underline">Privacy Policy</span>.
+            <label htmlFor="terms" className="text-xs text-[#A1A1AA] leading-tight">
+              I agree to the <span className="font-bold text-white underline">Terms of Service</span> and <span className="font-bold text-white underline">Privacy Policy</span>.
             </label>
           </div>
 
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-3.5 bg-[#FF8A00] hover:bg-[#FF9D2E] text-[#071426] font-black text-sm rounded-xl shadow-glow-orange transition-all hover:scale-102 flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full py-4 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-sm rounded-xl shadow-glow-lime transition-all active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {isSubmitting ? (
               <span>Creating Account...</span>
             ) : (
               <>
                 <span>{role === 'driver' ? 'Register Driver Partner' : 'Create Customer Account'}</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-4 h-4 text-[#0B0B0D]" />
               </>
             )}
           </button>
         </form>
 
-        <div className="text-center pt-2 text-xs text-slate-600">
+        <div className="text-center pt-2 text-xs text-[#A1A1AA]">
           Already have an account?{' '}
           <button
             type="button"
             onClick={() => navigate('/login')}
-            className="font-bold text-[#FF8A00] hover:text-[#E67600] underline"
+            className="font-bold text-[#C6FF3D] hover:underline"
           >
             Login here
           </button>
