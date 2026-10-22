@@ -50,6 +50,12 @@ export const App: React.FC = () => {
     currentPath === '/owner/login' ||
     currentPath === '/owner/dashboard';
 
+  const isBookingRoute =
+    currentPath === '/book' ||
+    currentPath === '/book/' ||
+    currentPath === '/book-auto' ||
+    currentPath === '/fare-estimate';
+
   const renderContent = () => {
 
     // =========================
@@ -259,8 +265,8 @@ export const App: React.FC = () => {
           {renderContent()}
         </main>
 
-        {/* Footer */}
-        {!isOwnerRoute && (
+        {/* Footer (hidden on Owner console and Book Auto screens) */}
+        {!isOwnerRoute && !isBookingRoute && (
           <Footer navigate={navigate} />
         )}
       </div>

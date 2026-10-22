@@ -505,7 +505,7 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
   };
 
   return (
-    <div className="min-h-[calc(100dvh-4rem)] bg-[#0B0B0D] text-white flex flex-col lg:flex-row relative overflow-hidden safe-bottom">
+    <div className="h-[calc(100dvh-4rem)] min-h-[calc(100dvh-4rem)] bg-[#0B0B0D] text-white flex flex-col lg:flex-row relative overflow-hidden">
 
       {/* ── TOP SECTION ON MOBILE / RIGHT ON DESKTOP: Interactive Google Map ── */}
       <div
@@ -600,7 +600,7 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
         </div>
 
         {/* Form Container */}
-        <div className="p-4 sm:p-6 lg:p-7 space-y-4 sm:space-y-5 flex-1">
+        <div className="p-4 sm:p-6 lg:p-7 space-y-4 sm:space-y-5 flex-1 pb-8 safe-bottom">
 
           {/* Card Title */}
           <div className="flex items-center justify-between pb-2 border-b border-[#303034]">
