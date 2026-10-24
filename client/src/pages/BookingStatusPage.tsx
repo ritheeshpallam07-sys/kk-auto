@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { api, Booking, PaymentRecord, RatingRecord, getCashfreeMode } from '../api/client';
+import { api, Booking, PaymentRecord, RatingRecord } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
 import { Modal } from '../components/Modal';
-import { load } from '@cashfreepayments/cashfree-js';
 import {
   ArrowLeft,
   MapPin,
@@ -44,7 +43,6 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('UPI');
 
   // Rating state
   const [selectedStars, setSelectedStars] = useState<number>(5);
@@ -207,48 +205,31 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
     }
   };
 
+  
   const handleProcessPayment = async () => {
     if (!booking) return;
 
-    setIsPaying(true);
+    const upiId = booking.driver_payout_upi?.trim();
 
-    try {
-      const res = await api.payments.createOrder({
-        bookingId: booking.id,
-        paymentMethod: selectedPaymentMethod
-      });
-
-      if (res.success && res.data?.payment_session_id) {
-        const cashfree = await load({
-          mode: getCashfreeMode(res.data?.environment)
-        });
-
-        if (!cashfree) {
-          throw new Error('Unable to load Cashfree Checkout.');
-        }
-
-        setIsPayModalOpen(false);
-
-        await cashfree.checkout({
-          paymentSessionId: res.data.payment_session_id,
-          redirectTarget: '_self'
-        });
-
-        return;
-      }
-
-      throw new Error(res.error || 'Unable to create payment order.');
-    } catch (error) {
-      console.error('Payment checkout error:', error);
-      setError(
-        error instanceof Error
-          ? error.message
-          : 'Payment failed. Please try again.'
-      );
-    } finally {
-      setIsPaying(false);
+    if (!upiId) {
+      setError('Driver UPI ID available ledu. Please contact the driver.');
+      return;
     }
+
+    const params = new URLSearchParams({
+      pa: upiId,
+      pn: booking.driver_name || 'Clik2Go Driver',
+      am: Number(booking.estimated_fare).toFixed(2),
+      cu: 'INR',
+      tn: `Clik2Go ${booking.booking_reference}`,
+    });
+
+    const upiUrl = `upi://pay?${params.toString()}`;
+
+    setIsPayModalOpen(false);
+    window.location.href = upiUrl;
   };
+
 
   const handleSubmitRating = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -773,28 +754,18 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
             </div>
 
             <div className="space-y-2">
-              <label className="block text-xs font-bold uppercase text-[#A1A1AA]">Select Payment Method</label>
-              <div className="grid grid-cols-3 gap-2">
-                {['UPI', 'Card', 'NetBanking'].map((method) => (
-                  <button
-                    key={method}
-                    type="button"
-                    onClick={() => setSelectedPaymentMethod(method)}
-                    className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                      selectedPaymentMethod === method
-                        ? 'bg-[#C6FF3D] text-[#0B0B0D] border-[#C6FF3D]'
-                        : 'bg-[#202023] text-white border-[#303034] hover:bg-[#26262A]'
-                    }`}
-                  >
-                    {method}
-                  </button>
-                ))}
-              </div>
-            </div>
+  <label className="block text-xs font-bold uppercase text-[#A1A1AA]">
+    Driver UPI ID
+  </label>
 
-            <div className="text-[11px] text-[#A1A1AA] bg-[#202023] p-3 rounded-xl border border-[#303034]">
-              Cashfree secure checkout with platform marketplace split calculation.
-            </div>
+  <div className="p-3 rounded-xl bg-[#202023] border border-[#303034] text-white text-sm break-all">
+    {booking.driver_payout_upi || 'Driver UPI ID not available'}
+  </div>
+</div>
+
+<div className="text-[11px] text-[#A1A1AA] bg-[#202023] p-3 rounded-xl border border-[#303034]">
+  UPI app lo payment complete cheyyi. Driver payment receive chesi confirm chesina tarvata status update avuthundi.
+</div>
 
             <button
               onClick={handleProcessPayment}
@@ -805,7 +776,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                 <span>Processing Payment...</span>
               ) : (
                 <>
-                  <span>Confirm & Pay ₹{booking.estimated_fare}</span>
+                  <span>Pay using UPI app · ₹{booking.estimated_fare}</span>
                   <CheckCircle2 className="w-4 h-4 text-[#0B0B0D]" />
                 </>
               )}

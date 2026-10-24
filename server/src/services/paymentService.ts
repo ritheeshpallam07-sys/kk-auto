@@ -568,6 +568,137 @@ payment: updated.rows[0] || existingPayment
 };
 }
 
+      /**
+   * Driver confirms direct UPI payment for a completed regular ride.
+   * Does not use Cashfree or marketplace splits.
+   */
+  public static async confirmDriverPayment(
+    bookingId: number,
+    userId: number
+  ): Promise<any> {
+    const bookingResult = await query(
+      `SELECT
+         b.id,
+         b.customer_id,
+         b.driver_id,
+         b.estimated_fare,
+         b.status,
+         d.id AS assigned_driver_id
+       FROM bookings b
+       JOIN drivers d ON d.id = b.driver_id
+       WHERE b.id = $1
+         AND d.user_id = $2
+         AND b.status = 'Ride Completed'
+       LIMIT 1`,
+      [bookingId, userId]
+    );
+
+    if (bookingResult.rows.length === 0) {
+      throw new Error('Completed ride not found for this driver.');
+    }
+
+    const booking = bookingResult.rows[0];
+    const fare = Number(booking.estimated_fare);
+
+    if (!Number.isFinite(fare) || fare <= 0) {
+      throw new Error('Invalid booking fare.');
+    }
+
+    const existing = await query(
+      `SELECT *
+       FROM payments
+       WHERE booking_id = $1
+         AND payment_method = 'UPI_DIRECT'
+         AND driver_payment_confirmed_at IS NOT NULL
+       LIMIT 1`,
+      [bookingId]
+    );
+
+    if (existing.rows.length > 0) {
+      throw new Error('Direct UPI payment has already been confirmed.');
+    }
+
+    const pending = await query(
+      `SELECT *
+       FROM payments
+       WHERE booking_id = $1
+         AND payment_status = 'PENDING'
+         AND gateway_order_id IS NULL
+       ORDER BY id DESC
+       LIMIT 1`,
+      [bookingId]
+    );
+
+    if (pending.rows.length > 0) {
+      const updated = await query(
+        `UPDATE payments
+         SET payment_status = 'COMPLETED',
+             payment_method = 'UPI_DIRECT',
+             driver_id = $2,
+             total_amount = $3,
+             driver_amount = $3,
+             owner_amount = 0,
+             commission_amount = 0,
+             driver_payment_confirmed_at = CURRENT_TIMESTAMP,
+             driver_payment_confirmed_by = $4,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1
+           AND payment_status = 'PENDING'
+           AND gateway_order_id IS NULL
+           AND driver_payment_confirmed_at IS NULL
+         RETURNING *`,
+        [pending.rows[0].id, booking.driver_id, fare, booking.assigned_driver_id]
+      );
+
+      if (updated.rows.length > 0) return updated.rows[0];
+      throw new Error('Payment status changed. Refresh and try again.');
+    }
+
+    const transactionReference = `UPIDIRECT_${bookingId}_${Date.now()}`;
+
+    const inserted = await query(
+      `INSERT INTO payments (
+         booking_id,
+         customer_id,
+         driver_id,
+         total_amount,
+         driver_amount,
+         owner_amount,
+         commission_amount,
+         payment_status,
+         settlement_status,
+         payment_method,
+         transaction_reference,
+         gateway_order_id,
+         driver_payment_confirmed_at,
+         driver_payment_confirmed_by,
+         created_at,
+         updated_at
+       ) VALUES (
+         $1, $2, $3, $4, $4, 0, 0,
+         'COMPLETED',
+         'PENDING',
+         'UPI_DIRECT',
+         $5,
+         NULL,
+         CURRENT_TIMESTAMP,
+         $6,
+         CURRENT_TIMESTAMP,
+         CURRENT_TIMESTAMP
+       )
+       RETURNING *`,
+      [
+        booking.id,
+        booking.customer_id,
+        booking.driver_id,
+        fare,
+        transactionReference,
+        booking.assigned_driver_id
+      ]
+    );
+
+    return inserted.rows[0];
+  }
   /**
    * Get payment details for a specific booking
    */

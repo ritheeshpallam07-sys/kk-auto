@@ -1,6 +1,5 @@
+import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -20,13 +19,7 @@ class ApiService {
   String _baseUrl = _defaultBaseUrl();
 
   static String _defaultBaseUrl() {
-    if (kIsWeb) return 'http://localhost:5000/api';
-    try {
-      if (Platform.isAndroid) return 'http://10.0.2.2:5000/api';
-      return 'http://localhost:5000/api';
-    } catch (_) {
-      return 'http://localhost:5000/api';
-    }
+  return 'https://kk-auto.onrender.com/api';
   }
 
   String get baseUrl => _baseUrl;
@@ -52,56 +45,93 @@ class ApiService {
     await prefs.remove(_tokenKey);
   }
 
-  // Generic Request Helper
+    // Generic Request Helper
   Future<Map<String, dynamic>> _request(
     String endpoint, {
     String method = 'GET',
     Map<String, dynamic>? body,
   }) async {
-    final url = Uri.parse('$_baseUrl$endpoint');
-    final token = await getToken();
-
-    final headers = {
-      'Content-Type': 'application/json',
-      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
-    };
-
     try {
-      http.Response response;
+      final url = Uri.parse('$_baseUrl$endpoint');
+      final token = await getToken().timeout(
+        const Duration(seconds: 10),
+      );
+
+      final headers = {
+        'Content-Type': 'application/json',
+        if (token != null && token.isNotEmpty)
+          'Authorization': 'Bearer $token',
+      };
+
+      late http.Response response;
+
       if (method == 'POST') {
-        response = await http.post(url,
-            headers: headers, body: jsonEncode(body ?? {}));
+        response = await http
+            .post(url, headers: headers, body: jsonEncode(body ?? {}))
+            .timeout(const Duration(seconds: 15));
       } else if (method == 'PATCH') {
-        response = await http.patch(url,
-            headers: headers, body: jsonEncode(body ?? {}));
+        response = await http
+            .patch(url, headers: headers, body: jsonEncode(body ?? {}))
+            .timeout(const Duration(seconds: 15));
       } else if (method == 'DELETE') {
-        response = await http.delete(url, headers: headers);
+        response = await http
+            .delete(url, headers: headers)
+            .timeout(const Duration(seconds: 15));
       } else {
-        response = await http.get(url, headers: headers);
+        response = await http
+            .get(url, headers: headers)
+            .timeout(const Duration(seconds: 15));
       }
 
-      final data = jsonDecode(response.body);
+      final dynamic data = jsonDecode(response.body);
+
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return data is Map<String, dynamic>
             ? data
             : {'success': true, 'data': data};
-      } else {
-        return {
-          'success': false,
-          'error': data['error'] ??
-              data['message'] ??
-              'Request failed (${response.statusCode})',
-        };
       }
-    } catch (e) {
+
       return {
         'success': false,
-        'error':
-            'Connection error: Could not reach backend server ($endpoint).',
+        'error': data is Map
+            ? data['error'] ??
+                data['message'] ??
+                'Request failed (${response.statusCode})'
+            : 'Request failed (${response.statusCode})',
+      };
+    } on Exception catch (e) {
+      if (e is TimeoutException) {
+        return {
+          'success': false,
+          'error': 'Network error. Check your internet connection.',
+        };
+      }
+
+      if (e is FormatException) {
+        return {
+          'success': false,
+          'error': 'Invalid response from server. Please try again.',
+        };
+      }
+
+      if (e is TimeoutException) {
+        return {
+          'success': false,
+          'error': 'Server response timed out. Please try again.',
+        };
+      }
+
+      return {
+        'success': false,
+        'error': 'Request failed: ',
+      };
+    } catch (_) {
+      return {
+        'success': false,
+        'error': 'Unexpected error. Please try again.',
       };
     }
   }
-
   // ------------------- AUTH -------------------
   Future<Map<String, dynamic>> login(String identifier, String password) async {
     final res = await _request('/auth/login', method: 'POST', body: {

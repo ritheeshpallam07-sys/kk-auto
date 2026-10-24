@@ -701,9 +701,34 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
                     {ride.pickup_address} → {ride.destination_address}
                   </div>
                 </div>
-                <div className="text-right flex-shrink-0">
+                                <div className="text-right flex-shrink-0 space-y-2">
                   <div className="font-black text-[#C6FF3D]">₹{ride.estimated_fare}</div>
-                  <span className="text-[10px] text-emerald-400 font-bold">Completed</span>
+                  <span className="text-[10px] text-emerald-400 font-bold block">Ride Completed</span>
+
+                  {ride.payment_status === 'COMPLETED' ? (
+                    <span className="text-[10px] text-emerald-400 font-bold block">
+                      Payment Confirmed
+                    </span>
+                  ) : (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const result = await api.payments.confirmDriverPayment(ride.id);
+                          if (result.success) {
+                            alert('Payment receipt confirmed.');
+                            await loadDriverData();
+                          } else {
+                            alert(result.error || 'Unable to confirm payment.');
+                          }
+                        } catch {
+                          alert('Unable to confirm payment. Please try again.');
+                        }
+                      }}
+                      className="px-3 py-2 bg-[#C6FF3D] text-[#0B0B0D] rounded-lg font-bold text-[10px]"
+                    >
+                      Payment Received
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

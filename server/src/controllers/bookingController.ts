@@ -283,6 +283,7 @@ const insertResult = await query(
         SELECT b.*,
                u.name as customer_name, u.mobile as customer_mobile,
                d.auto_number, d.auto_model,
+               d.payout_upi AS driver_payout_upi,
                du.name as driver_name, du.mobile as driver_mobile
         FROM bookings b
         LEFT JOIN users u ON b.customer_id = u.id
@@ -328,6 +329,7 @@ const insertResult = await query(
         `SELECT b.*,
                 u.name as customer_name, u.mobile as customer_mobile, u.email as customer_email,
                 d.auto_number, d.auto_model, d.license_number,
+                d.payout_upi AS driver_payout_upi, 
                 du.name as driver_name, du.mobile as driver_mobile
          FROM bookings b
          LEFT JOIN users u ON b.customer_id = u.id

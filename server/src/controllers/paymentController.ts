@@ -165,4 +165,36 @@ try {
       return res.status(400).json({ success: false, error: err.message });
     }
   }
+    /**
+   * Driver manually confirms direct UPI payment for a completed auto ride.
+   */
+  public static async confirmDriverPayment(req: Request, res: Response) {
+    try {
+      const user = req.user!;
+      const bookingId = Number(req.params.bookingId);
+
+      if (!Number.isInteger(bookingId) || bookingId <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Valid booking ID is required.'
+        });
+      }
+
+      const result = await PaymentService.confirmDriverPayment(
+        bookingId,
+        user.id
+      );
+
+      return res.json({
+        success: true,
+        message: 'Driver confirmed payment receipt.',
+        data: result
+      });
+    } catch (err: any) {
+      return res.status(400).json({
+        success: false,
+        error: err.message || 'Unable to confirm payment.'
+      });
+    }
+  }
 }

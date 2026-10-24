@@ -11,6 +11,12 @@ router.post('/webhook', PaymentController.handleWebhook);
 router.post('/create-order', authenticateToken, PaymentController.createOrder);
 router.post('/sandbox-pay', authenticateToken, PaymentController.sandboxPay);
 router.get('/booking/:bookingId', authenticateToken, PaymentController.getBookingPayment);
+router.post(
+  '/driver/confirm-payment/:bookingId',
+  authenticateToken,
+  requireRole(['driver']),
+  PaymentController.confirmDriverPayment
+);
 router.post('/rate-driver', authenticateToken, PaymentController.rateDriver);
 
 // Driver only: earnings & payouts

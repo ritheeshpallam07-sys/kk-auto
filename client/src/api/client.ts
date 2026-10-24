@@ -34,6 +34,8 @@ export interface Booking {
   customer_email?: string;
   driver_name?: string;
   driver_mobile?: string;
+  driver_payout_upi?: string;
+  driver_payment_confirmed_at?: string | null;
   auto_number?: string;
   auto_model?: string;
   license_number?: string;
@@ -328,6 +330,11 @@ export const api = {
       }),
     getBookingPayment: (bookingId: number) =>
       request<{ payment: PaymentRecord | null; rating: RatingRecord | null }>(`/payments/booking/${bookingId}`),
+        confirmDriverPayment: (bookingId: number) =>
+      request<PaymentRecord>(
+        `/payments/driver/confirm-payment/${bookingId}`,
+        { method: 'POST' }
+      ),
     rateDriver: (params: { bookingId: number; rating: number; review?: string }) =>
       request<RatingRecord>('/payments/rate-driver', {
         method: 'POST',
