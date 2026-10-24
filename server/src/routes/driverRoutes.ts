@@ -6,6 +6,8 @@ const router = Router();
 
 router.get('/', authenticateToken, DriverController.getAllDrivers);
 router.get('/me', authenticateToken, requireRole(['driver']), DriverController.getDriverProfile);
+router.put('/me', authenticateToken, requireRole(['driver']), DriverController.updateDriverProfile);
+router.patch('/me', authenticateToken, requireRole(['driver']), DriverController.updateDriverProfile);
 router.patch('/status', authenticateToken, requireRole(['driver']), DriverController.updateAvailability);
 router.post(
   '/push-subscription',

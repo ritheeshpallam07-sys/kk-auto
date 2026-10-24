@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api, DriverProfile, Booking, DriverEarningsSummary } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { StatusBadge } from '../components/StatusBadge';
 import {
   Car,
@@ -18,7 +19,9 @@ import {
   Building2,
   CheckCircle2,
   AlertTriangle,
-  Star
+  Star,
+  User,
+  Edit3
 } from 'lucide-react';
 
 interface DriverDashboardProps {
@@ -26,6 +29,7 @@ interface DriverDashboardProps {
 }
 
 export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) => {
+  const { refreshUser } = useAuth();
   const [profile, setProfile] = useState<DriverProfile | null>(null);
   const [earnings, setEarnings] = useState<DriverEarningsSummary | null>(null);
   const [requests, setRequests] = useState<Booking[]>([]);
@@ -38,6 +42,15 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
     typeof Notification !== 'undefined' ? Notification.permission : 'default'
   );
   const [isNotificationEnabled, setIsNotificationEnabled] = useState(false);
+
+  // Driver profile & payment editing state
+  const [profileName, setProfileName] = useState('');
+  const [profileMobile, setProfileMobile] = useState('');
+  const [profileUpi, setProfileUpi] = useState('');
+  const [isFormInitialized, setIsFormInitialized] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileSuccessMsg, setProfileSuccessMsg] = useState<string | null>(null);
+  const [profileErrorMsg, setProfileErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     loadDriverData();
@@ -82,7 +95,15 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
         api.driver.getEarnings()
       ]);
 
-      if (profRes.success && profRes.data) setProfile(profRes.data);
+      if (profRes.success && profRes.data) {
+        setProfile(profRes.data);
+        if (!isFormInitialized) {
+          setProfileName(profRes.data.name || '');
+          setProfileMobile(profRes.data.mobile || '');
+          setProfileUpi(profRes.data.payout_upi || '');
+          setIsFormInitialized(true);
+        }
+      }
       if (earnRes.success && earnRes.data) setEarnings(earnRes.data);
       if (reqRes.success && reqRes.data) setRequests(reqRes.data);
 
@@ -101,6 +122,83 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
       setIsLoading(false);
     }
   };
+
+  const handleSaveProfile = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setProfileErrorMsg(null);
+    setProfileSuccessMsg(null);
+
+    const name = profileName.trim();
+    const mobile = profileMobile.trim().replace(/[\s\-]/g, '');
+    const upi = profileUpi.trim();
+
+    if (!name || name.length < 2) {
+      setProfileErrorMsg('Please provide a valid display name (at least 2 characters).');
+      return;
+    }
+
+    if (!mobile || !/^\+?[0-9]{10,14}$/.test(mobile)) {
+      setProfileErrorMsg('Please provide a valid 10-digit mobile number.');
+      return;
+    }
+
+    if (!upi) {
+      setProfileErrorMsg('Please enter your UPI ID for receiving ride payments.');
+      return;
+    }
+
+    if (!upi.includes('@')) {
+      setProfileErrorMsg('UPI ID must contain an "@" symbol followed by your bank/PSP handle (e.g. 9876543210@ybl or driver@oksbi). Do not enter only a phone number.');
+      return;
+    }
+
+    const upiRegex = /^[a-zA-Z0-9.\-_]{2,64}@[a-zA-Z]{2,64}$/;
+    if (!upiRegex.test(upi)) {
+      setProfileErrorMsg('Invalid UPI ID format. Please use a standard VPA address like username@bank or mobile@upi.');
+      return;
+    }
+
+    setIsSavingProfile(true);
+    try {
+      const res = await api.driver.updateProfile({
+        name,
+        mobile,
+        payout_upi: upi
+      });
+
+      if (res.success && res.data) {
+        setProfile(res.data);
+        setProfileName(res.data.name || '');
+        setProfileMobile(res.data.mobile || '');
+        setProfileUpi(res.data.payout_upi || '');
+        setProfileSuccessMsg('Profile and UPI payment details updated successfully! Passengers will now pay directly to this UPI address.');
+        await refreshUser();
+      } else {
+        setProfileErrorMsg(res.error || 'Failed to update profile.');
+      }
+    } catch (err: any) {
+      setProfileErrorMsg(err?.message || 'Failed to update profile. Please try again.');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleResetProfile = () => {
+    if (!profile) return;
+    setProfileName(profile.name || '');
+    setProfileMobile(profile.mobile || '');
+    setProfileUpi(profile.payout_upi || '');
+    setProfileErrorMsg(null);
+    setProfileSuccessMsg(null);
+  };
+
+  const isProfileModified = Boolean(
+    profile && (
+      profileName !== (profile.name || '') ||
+      profileMobile !== (profile.mobile || '') ||
+      profileUpi !== (profile.payout_upi || '')
+    )
+  );
 
   const urlBase64ToUint8Array = (base64String: string) => {
     const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -315,6 +413,17 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
 
           {/* Online Toggle & Notifications */}
           <div className="w-full sm:w-auto flex items-center gap-3 flex-wrap">
+            <button
+              onClick={() => {
+                document.getElementById('driver-profile-section')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-bold text-xs bg-[#202023] hover:bg-[#26262A] text-white border border-[#303034] hover:border-[#C6FF3D]/50 transition-all flex items-center justify-center gap-2"
+              title="Edit Profile and Payment Details"
+            >
+              <CreditCard className="w-3.5 h-3.5 text-[#C6FF3D]" />
+              <span>UPI & Profile</span>
+            </button>
+
             {!isNotificationEnabled && (
               <button
                 onClick={handleEnableNotifications}
@@ -469,12 +578,18 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
             </p>
           </div>
 
-          {profile?.payout_upi && (
-            <span className="px-3 py-1 bg-[#202023] text-white border border-[#303034] rounded-xl text-xs font-semibold flex items-center gap-1.5 break-all">
-              <CreditCard className="w-3.5 h-3.5 text-[#C6FF3D] flex-shrink-0" />
-              <span>Payout UPI: {profile.payout_upi}</span>
-            </span>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              document.getElementById('driver-profile-section')?.scrollIntoView({ behavior: 'smooth' });
+            }}
+            className="px-3 py-1.5 bg-[#202023] hover:bg-[#26262A] text-white border border-[#303034] hover:border-[#C6FF3D]/50 rounded-xl text-xs font-semibold flex items-center gap-2 break-all transition-colors cursor-pointer"
+            title="Edit Driver Profile & UPI Details"
+          >
+            <CreditCard className="w-3.5 h-3.5 text-[#C6FF3D] flex-shrink-0" />
+            <span>Payout UPI: {profile?.payout_upi || 'Not configured'}</span>
+            <span className="text-[10px] text-[#C6FF3D] font-bold underline ml-1">Edit</span>
+          </button>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
@@ -498,6 +613,193 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
             <div className="text-xl sm:text-2xl font-black text-white mt-1">₹{earnings?.settledAmount ?? 0}</div>
           </div>
         </div>
+      </div>
+
+      {/* DRIVER PROFILE & UPI PAYMENT DETAILS */}
+      <div id="driver-profile-section" className="bg-[#171719] rounded-3xl p-6 sm:p-8 border border-[#303034] shadow-card space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#303034]">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#202023] border border-[#303034] text-[11px] font-bold text-[#C6FF3D] mb-2">
+              <User className="w-3.5 h-3.5" />
+              <span>Driver Account Settings</span>
+            </div>
+            <h2 className="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-2">
+              <span>Driver Profile & Payment Details</span>
+            </h2>
+            <p className="text-xs text-[#A1A1AA] mt-1">
+              Configure your public display name, contact phone number, and direct UPI address used for auto-ride payments.
+            </p>
+          </div>
+
+          {/* Read-only vehicle badges */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="px-3 py-1.5 rounded-xl bg-[#202023] border border-[#303034] text-xs font-mono font-bold text-white flex items-center gap-1.5">
+              <Car className="w-3.5 h-3.5 text-[#C6FF3D]" />
+              <span>{profile?.auto_number || 'Auto Number'}</span>
+            </span>
+            <span className="px-2.5 py-1.5 rounded-xl bg-[#202023] border border-[#303034] text-[11px] font-bold text-[#A1A1AA]">
+              {profile?.auto_model || 'Bajaj Compact 4S'}
+            </span>
+          </div>
+        </div>
+
+        {/* Success Alert */}
+        {profileSuccessMsg && (
+          <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-800 text-emerald-300 text-xs flex items-start justify-between gap-3 animate-fade-in">
+            <div className="flex items-center gap-2.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              <span className="font-semibold">{profileSuccessMsg}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setProfileSuccessMsg(null)}
+              className="text-emerald-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Error Alert */}
+        {profileErrorMsg && (
+          <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-800 text-rose-300 text-xs flex items-start justify-between gap-3 animate-fade-in">
+            <div className="flex items-center gap-2.5">
+              <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+              <span className="font-semibold">{profileErrorMsg}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setProfileErrorMsg(null)}
+              className="text-rose-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Profile Form */}
+        <form onSubmit={handleSaveProfile} className="space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Field 1: Display Name */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-[#A1A1AA] flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-[#C6FF3D]" />
+                <span>Display Name (Rider Visible)</span>
+              </label>
+              <input
+                type="text"
+                value={profileName}
+                onChange={(e) => setProfileName(e.target.value)}
+                placeholder="e.g. Ramesh Kumar"
+                required
+                className="w-full bg-[#202023] border border-[#303034] focus:border-[#C6FF3D] rounded-xl px-4 py-2.5 text-sm font-semibold text-white placeholder-[#71717A] focus:outline-none transition-colors"
+              />
+              <p className="text-[10px] text-[#A1A1AA]">
+                Shown to passengers on booking cards and ride tracking receipts.
+              </p>
+            </div>
+
+            {/* Field 2: Mobile Number */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-[#A1A1AA] flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-[#C6FF3D]" />
+                <span>Mobile Number</span>
+              </label>
+              <input
+                type="tel"
+                value={profileMobile}
+                onChange={(e) => setProfileMobile(e.target.value)}
+                placeholder="e.g. 9876543210"
+                required
+                className="w-full bg-[#202023] border border-[#303034] focus:border-[#C6FF3D] rounded-xl px-4 py-2.5 text-sm font-semibold text-white placeholder-[#71717A] focus:outline-none transition-colors"
+              />
+              <p className="text-[10px] text-[#A1A1AA]">
+                Used for passenger pickup calls and dispatch notifications. Must be a valid mobile number.
+              </p>
+            </div>
+          </div>
+
+          {/* Field 3: UPI ID (VPA) */}
+          <div className="space-y-1.5 p-4 sm:p-5 rounded-2xl bg-[#202023] border border-[#303034]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-[#C6FF3D] flex items-center gap-1.5">
+                <CreditCard className="w-4 h-4 text-[#C6FF3D]" />
+                <span>Direct UPI Payment ID (VPA)</span>
+              </label>
+              <span className="text-[10px] font-mono text-[#A1A1AA] bg-[#171719] px-2 py-0.5 rounded border border-[#303034]">
+                Auto-Ride Payment Flow
+              </span>
+            </div>
+
+            <div className="relative mt-1">
+              <input
+                type="text"
+                value={profileUpi}
+                onChange={(e) => setProfileUpi(e.target.value)}
+                placeholder="e.g. driver@oksbi or 9876543210@ybl"
+                required
+                className="w-full bg-[#171719] border border-[#303034] focus:border-[#C6FF3D] rounded-xl px-4 py-2.5 text-sm font-semibold text-white placeholder-[#71717A] focus:outline-none transition-colors"
+              />
+            </div>
+
+            <div className="flex items-start gap-2 pt-1 text-[11px] text-[#A1A1AA]">
+              <ShieldCheck className="w-3.5 h-3.5 text-[#C6FF3D] flex-shrink-0 mt-0.5" />
+              <span>
+                <strong>Important:</strong> Enter your full UPI address including bank handle (e.g. <code className="text-[#C6FF3D]">yourname@oksbi</code>, <code className="text-[#C6FF3D]">9876543210@paytm</code>). A phone number alone is <em>not</em> automatically a UPI ID. Riders will scan or launch their UPI app to pay directly to this ID upon ride completion.
+              </span>
+            </div>
+          </div>
+
+          {/* Vehicle & Verification Metadata (Read-only reference) */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-xs">
+            <div className="p-3 rounded-xl bg-[#202023]/60 border border-[#303034]">
+              <span className="text-[10px] uppercase font-bold text-[#A1A1AA] block">License Number</span>
+              <span className="font-mono font-bold text-white text-xs">{profile?.license_number || '—'}</span>
+            </div>
+            <div className="p-3 rounded-xl bg-[#202023]/60 border border-[#303034]">
+              <span className="text-[10px] uppercase font-bold text-[#A1A1AA] block">Verification Status</span>
+              <span className={`font-bold text-xs ${profile?.approval_status === 'APPROVED' || profile?.approval_status === 'ACTIVE' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {profile?.approval_status || 'PENDING'}
+              </span>
+            </div>
+            <div className="p-3 rounded-xl bg-[#202023]/60 border border-[#303034]">
+              <span className="text-[10px] uppercase font-bold text-[#A1A1AA] block">Current Active UPI</span>
+              <span className="font-mono font-bold text-[#C6FF3D] text-xs truncate block">{profile?.payout_upi || 'Not configured'}</span>
+            </div>
+          </div>
+
+          {/* Form Actions */}
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-end gap-3">
+            {isProfileModified && (
+              <button
+                type="button"
+                onClick={handleResetProfile}
+                disabled={isSavingProfile}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#202023] hover:bg-[#26262A] text-[#A1A1AA] hover:text-white font-bold text-xs border border-[#303034] transition-colors cursor-pointer"
+              >
+                Reset to Saved
+              </button>
+            )}
+
+            <button
+              type="submit"
+              disabled={isSavingProfile}
+              className="w-full sm:w-auto px-6 py-2.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs rounded-xl shadow-glow-lime transition-all flex items-center justify-center gap-2 disabled:opacity-50 min-h-[42px] cursor-pointer"
+            >
+              {isSavingProfile ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-[#0B0B0D] border-t-transparent rounded-full animate-spin" />
+                  <span>Saving Details...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4 text-[#0B0B0D]" />
+                  <span>Save Profile & Payment Details</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* ACTIVE ONGOING RIDE CONTROLLER */}

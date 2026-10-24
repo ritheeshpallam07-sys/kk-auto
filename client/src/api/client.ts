@@ -343,6 +343,11 @@ export const api = {
   },
   driver: {
     getProfile: () => request<DriverProfile>('/drivers/me'),
+    updateProfile: (data: { name: string; mobile: string; payout_upi?: string; payoutUpi?: string }) =>
+      request<DriverProfile>('/drivers/me', {
+        method: 'PUT',
+        body: JSON.stringify(data)
+      }),
     getPushPublicKey: () =>
   request<{ publicKey: string }>('/drivers/push-public-key'),
 

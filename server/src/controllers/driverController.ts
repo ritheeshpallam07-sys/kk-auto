@@ -70,6 +70,125 @@ export class DriverController {
   }
 
   /**
+   * Update driver's own profile and payment details (display name, mobile, and payout UPI)
+   */
+  public static async updateDriverProfile(req: Request, res: Response) {
+    try {
+      const user = req.user!;
+      const { name, mobile, payout_upi, payoutUpi } = req.body;
+
+      // 1. Ensure driver record exists for this authenticated user
+      const driverRes = await query(
+        `SELECT id, user_id FROM drivers WHERE user_id = $1 LIMIT 1`,
+        [user.id]
+      );
+      if (driverRes.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Driver profile not found.' });
+      }
+
+      // 2. Validate Display Name
+      const cleanName = typeof name === 'string' ? name.trim() : '';
+      if (!cleanName || cleanName.length < 2) {
+        return res.status(400).json({
+          success: false,
+          error: 'Please provide a valid display name (at least 2 characters).'
+        });
+      }
+      if (cleanName.length > 100) {
+        return res.status(400).json({
+          success: false,
+          error: 'Display name cannot exceed 100 characters.'
+        });
+      }
+
+      // 3. Validate Mobile Number
+      const cleanMobile = typeof mobile === 'string' ? mobile.trim().replace(/[\s\-]/g, '') : '';
+      if (!cleanMobile || !/^\+?[0-9]{10,14}$/.test(cleanMobile)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Please provide a valid 10-digit mobile number.'
+        });
+      }
+
+      // Check if mobile number is already in use by another user
+      const mobileCheck = await query(
+        `SELECT id FROM users WHERE mobile = $1 AND id != $2 LIMIT 1`,
+        [cleanMobile, user.id]
+      );
+      if (mobileCheck.rows.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'An account with this mobile number already exists.'
+        });
+      }
+
+      // 4. Validate UPI ID
+      // Separate field for mobile number and UPI ID.
+      // Must not automatically treat a bare phone number as a UPI ID.
+      const upiRaw = typeof payout_upi === 'string' ? payout_upi : (typeof payoutUpi === 'string' ? payoutUpi : '');
+      const cleanUpi = upiRaw.trim();
+
+      if (!cleanUpi) {
+        return res.status(400).json({
+          success: false,
+          error: 'Please provide a valid UPI ID (e.g. driver@oksbi or 9876543210@ybl).'
+        });
+      }
+
+      // Ensure UPI ID has @ and valid bank handle format
+      const upiRegex = /^[a-zA-Z0-9.\-_]{2,64}@[a-zA-Z]{2,64}$/;
+      if (!upiRegex.test(cleanUpi)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid UPI ID format. A valid UPI ID must include a bank handle (e.g. name@oksbi or mobile@upi). Do not enter only a phone number.'
+        });
+      }
+
+      // 5. Update users table (display name, mobile)
+      await query(
+        `UPDATE users
+         SET name = $1, mobile = $2, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $3`,
+        [cleanName, cleanMobile, user.id]
+      );
+
+      // 6. Update drivers table (payout_upi)
+      await query(
+        `UPDATE drivers
+         SET payout_upi = $1, updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = $2`,
+        [cleanUpi, user.id]
+      );
+
+      // 7. Fetch and return the updated driver profile
+      const fullDriverRes = await query(
+        `SELECT d.*, u.name, u.email, u.mobile
+         FROM drivers d
+         JOIN users u ON d.user_id = u.id
+         WHERE d.user_id = $1 LIMIT 1`,
+        [user.id]
+      );
+
+      const updatedDriver = fullDriverRes.rows[0];
+      const earnings = await PaymentService.getDriverEarnings(user.id);
+
+      return res.json({
+        success: true,
+        message: 'Driver profile and payment details updated successfully.',
+        data: {
+          ...updatedDriver,
+          earnings
+        }
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        error: err.message || 'Failed to update profile.'
+      });
+    }
+  }
+
+  /**
    * Get available ride requests (Searching for Auto)
    */
   public static async getIncomingRequests(req: Request, res: Response) {
