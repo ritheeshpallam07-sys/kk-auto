@@ -221,7 +221,8 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
       pn: booking.driver_name || 'Clik2Go Driver',
       am: Number(booking.estimated_fare).toFixed(2),
       cu: 'INR',
-      tn: `Clik2Go ${booking.booking_reference}`,
+      tr: booking.booking_reference,
+      tn: `Ride ${booking.booking_reference}`,
     });
 
     const upiUrl = `upi://pay?${params.toString()}`;
@@ -776,7 +777,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                 <span>Processing Payment...</span>
               ) : (
                 <>
-                  <span>Pay using UPI app · ₹{booking.estimated_fare}</span>
+                  <span>Pay using UPI app · ₹{booking.estimated_fare}</span>  
                   <CheckCircle2 className="w-4 h-4 text-[#0B0B0D]" />
                 </>
               )}
@@ -860,3 +861,4 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
     </div>
   );
 };
+
