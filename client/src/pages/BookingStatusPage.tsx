@@ -21,7 +21,10 @@ import {
   Star,
   Send,
   Sparkles,
-  MessageCircle
+  MessageCircle,
+  Copy,
+  Check,
+  Smartphone
 } from 'lucide-react';
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
 
@@ -43,6 +46,8 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [payMode, setPayMode] = useState<'mobile' | 'upi'>('mobile');
+  const [copiedField, setCopiedField] = useState<'mobile' | 'amount' | 'upi' | null>(null);
 
   // Rating state
   const [selectedStars, setSelectedStars] = useState<number>(5);
@@ -206,22 +211,48 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   };
 
   
+  const handleCopy = (text: string, field: 'mobile' | 'amount' | 'upi') => {
+    if (!text) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2500);
+    } catch (err) {
+      console.error('Failed to copy text:', err);
+    }
+  };
+
+  const handleLaunchApp = (scheme: string) => {
+    window.location.href = scheme;
+  };
+
   const handleProcessPayment = async () => {
     if (!booking) return;
 
     const upiId = booking.driver_payout_upi?.trim();
 
     if (!upiId) {
-      setError('Driver UPI ID available ledu. Please contact the driver.');
+      setError('Driver UPI ID is not available. Please use the mobile number payment option.');
       return;
     }
 
+    // Notice: tr is omitted for P2P transfers as PhonePe/Paytm decline personal payments when tr is set.
     const params = new URLSearchParams({
       pa: upiId,
       pn: booking.driver_name || 'Clik2Go Driver',
       am: Number(booking.estimated_fare).toFixed(2),
       cu: 'INR',
-      tr: booking.booking_reference,
       tn: `Ride ${booking.booking_reference}`,
     });
 
@@ -735,53 +766,213 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
       {/* PAY ONLINE MODAL */}
       {isPayModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#171719] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-[#303034] space-y-6">
+          <div className="bg-[#171719] rounded-3xl p-6 sm:p-7 max-w-md w-full max-h-[92dvh] overflow-y-auto shadow-2xl border border-[#303034] space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-[#303034]">
               <div className="flex items-center gap-2">
                 <CreditCard className="w-5 h-5 text-[#C6FF3D]" />
-                <h3 className="text-base font-black text-white">Pay Online</h3>
+                <h3 className="text-base font-black text-white">Pay Driver Directly</h3>
               </div>
-              <button onClick={() => setIsPayModalOpen(false)} className="text-[#A1A1AA] hover:text-white">✕</button>
+              <button onClick={() => setIsPayModalOpen(false)} className="text-[#A1A1AA] hover:text-white text-base">✕</button>
             </div>
 
-            <div className="p-4 bg-[#202023] rounded-2xl border border-[#303034] space-y-2 text-xs">
-              <div className="flex justify-between font-bold text-white">
-                <span>Trip: {booking.pickup_address} → {booking.destination_address}</span>
+            {/* Fare Summary */}
+            <div className="p-3.5 bg-[#202023] rounded-2xl border border-[#303034] space-y-1.5 text-xs">
+              <div className="flex justify-between font-bold text-white truncate">
+                <span className="truncate">{booking.pickup_address} → {booking.destination_address}</span>
               </div>
-              <div className="flex justify-between text-base font-black text-white">
-                <span>Total Amount:</span>
-                <span className="text-[#C6FF3D]">₹{booking.estimated_fare}</span>
+              <div className="flex justify-between items-baseline text-base font-black text-white">
+                <span className="text-xs text-[#A1A1AA] font-semibold">Total Amount to Pay:</span>
+                <span className="text-[#C6FF3D] text-lg font-black">₹{booking.estimated_fare}</span>
               </div>
             </div>
 
-            <div className="space-y-2">
-  <label className="block text-xs font-bold uppercase text-[#A1A1AA]">
-    Driver UPI ID
-  </label>
+            {/* Payment Method Switcher Tabs */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-[#202023] rounded-2xl border border-[#303034]">
+              <button
+                type="button"
+                onClick={() => setPayMode('mobile')}
+                className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  payMode === 'mobile'
+                    ? 'bg-[#C6FF3D] text-[#0B0B0D] shadow-glow-lime-sm'
+                    : 'text-[#A1A1AA] hover:text-white'
+                }`}
+              >
+                <Smartphone className="w-3.5 h-3.5" />
+                <span>Pay to Mobile</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPayMode('upi')}
+                className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  payMode === 'upi'
+                    ? 'bg-[#C6FF3D] text-[#0B0B0D] shadow-glow-lime-sm'
+                    : 'text-[#A1A1AA] hover:text-white'
+                }`}
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                <span>Pay via UPI ID</span>
+              </button>
+            </div>
 
-  <div className="p-3 rounded-xl bg-[#202023] border border-[#303034] text-white text-sm break-all">
-    {booking.driver_payout_upi || 'Driver UPI ID not available'}
-  </div>
-</div>
+            {/* OPTION 1: Pay to Mobile Number */}
+            {payMode === 'mobile' && (
+              <div className="space-y-4 animate-fade-in">
+                {/* Driver Registered Phone Card */}
+                <div className="p-3.5 bg-[#202023] rounded-2xl border border-[#303034] space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA]">
+                      Driver Registered Mobile
+                    </span>
+                    <span className="text-[10px] text-[#C6FF3D] font-bold">
+                      {booking.driver_name || 'Driver'}
+                    </span>
+                  </div>
 
-<div className="text-[11px] text-[#A1A1AA] bg-[#202023] p-3 rounded-xl border border-[#303034]">
-  UPI app lo payment complete cheyyi. Driver payment receive chesi confirm chesina tarvata status update avuthundi.
-</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-base font-black text-white font-mono tracking-wide">
+                      {booking.driver_mobile?.replace(/\D/g, '').slice(-10) || booking.driver_mobile || 'Not available'}
+                    </span>
+                    {booking.driver_mobile && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(booking.driver_mobile?.replace(/\D/g, '').slice(-10) || '', 'mobile')}
+                        className="px-3 py-1.5 bg-[#171719] hover:bg-[#303034] text-[#C6FF3D] text-xs font-bold rounded-xl border border-[#303034] flex items-center gap-1.5 transition-colors"
+                      >
+                        {copiedField === 'mobile' ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span className="text-emerald-400">Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copy Number</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-            <button
-              onClick={handleProcessPayment}
-              disabled={isPaying}
-              className="w-full py-3.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-sm rounded-xl shadow-glow-lime transition-transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {isPaying ? (
-                <span>Processing Payment...</span>
-              ) : (
-                <>
-                  <span>Pay using UPI app · ₹{booking.estimated_fare}</span>  
+                {/* Ride Amount Card with Copy */}
+                <div className="p-3 bg-[#202023] rounded-2xl border border-[#303034] flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-[#A1A1AA] block">Exact Fare</span>
+                    <span className="text-base font-black text-[#C6FF3D]">₹{booking.estimated_fare}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(String(booking.estimated_fare), 'amount')}
+                    className="px-3 py-1.5 bg-[#171719] hover:bg-[#303034] text-white text-xs font-bold rounded-xl border border-[#303034] flex items-center gap-1.5 transition-colors"
+                  >
+                    {copiedField === 'amount' ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-400">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Amount</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Quick App Launchers */}
+                <div className="space-y-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA] block">
+                    1. Tap to Open your UPI app:
+                  </span>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleLaunchApp('phonepe://')}
+                      className="py-2.5 px-2 bg-[#202023] hover:bg-[#2a2a2e] text-white rounded-xl border border-[#303034] hover:border-[#C6FF3D]/50 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all"
+                    >
+                      <span>PhonePe</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleLaunchApp('paytmmp://')}
+                      className="py-2.5 px-2 bg-[#202023] hover:bg-[#2a2a2e] text-white rounded-xl border border-[#303034] hover:border-[#C6FF3D]/50 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all"
+                    >
+                      <span>Paytm</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleLaunchApp('tez://upi/pay')}
+                      className="py-2.5 px-2 bg-[#202023] hover:bg-[#2a2a2e] text-white rounded-xl border border-[#303034] hover:border-[#C6FF3D]/50 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all"
+                    >
+                      <span>GPay</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Step-by-Step Instructions */}
+                <div className="p-3 bg-[#202023] rounded-2xl border border-[#303034] text-[11px] text-[#A1A1AA] space-y-1.5 leading-relaxed">
+                  <div className="font-bold text-white flex items-center gap-1.5">
+                    <span className="text-[#C6FF3D]">2.</span> How to complete payment:
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1 pl-1">
+                    <li>Copy driver's number <strong className="text-white">{booking.driver_mobile?.replace(/\D/g, '').slice(-10)}</strong></li>
+                    <li>Open PhonePe, Paytm, or Google Pay above</li>
+                    <li>Select <strong className="text-white">"To Mobile Number" / "To Contact"</strong> and paste number</li>
+                    <li>Pay <strong className="text-[#C6FF3D]">₹{booking.estimated_fare}</strong> to complete the ride</li>
+                  </ol>
+                </div>
+              </div>
+            )}
+
+            {/* OPTION 2: Pay via Driver UPI ID (Fallback) */}
+            {payMode === 'upi' && (
+              <div className="space-y-4 animate-fade-in">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA]">
+                      Driver UPI ID (VPA)
+                    </label>
+                    {booking.driver_payout_upi && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(booking.driver_payout_upi || '', 'upi')}
+                        className="text-[10px] font-bold text-[#C6FF3D] hover:underline flex items-center gap-1"
+                      >
+                        {copiedField === 'upi' ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span className="text-emerald-400">Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy UPI ID</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-[#202023] border border-[#303034] text-white text-sm font-mono break-all">
+                    {booking.driver_payout_upi || 'Driver UPI ID not available'}
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-[#A1A1AA] bg-[#202023] p-3 rounded-xl border border-[#303034] leading-relaxed">
+                  Direct UPI app intent launches installed apps. If PhonePe or Paytm decline direct intents on your device, switch to the <strong className="text-white">"Pay to Mobile"</strong> tab above.
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleProcessPayment}
+                  disabled={isPaying || !booking.driver_payout_upi}
+                  className="w-full py-3.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-sm rounded-xl shadow-glow-lime transition-transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <span>Pay using UPI app · ₹{booking.estimated_fare}</span>
                   <CheckCircle2 className="w-4 h-4 text-[#0B0B0D]" />
-                </>
-              )}
-            </button>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
