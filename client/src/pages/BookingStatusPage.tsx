@@ -253,7 +253,6 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
       pn: booking.driver_name || 'Clik2Go Driver',
       am: Number(booking.estimated_fare).toFixed(2),
       cu: 'INR',
-      tn: `Ride ${booking.booking_reference}`,
     });
 
     const upiUrl = `upi://pay?${params.toString()}`;
