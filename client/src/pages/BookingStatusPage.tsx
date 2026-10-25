@@ -257,6 +257,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
     });
 
     const upiUrl = `upi://pay?${params.toString()}`;
+    console.log('Clik2Go UPI URL:', upiUrl);
 
     setIsPayModalOpen(false);
     window.location.href = upiUrl;
