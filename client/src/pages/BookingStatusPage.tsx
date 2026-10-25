@@ -240,7 +240,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   const handleProcessPayment = async () => {
     if (!booking) return;
 
-    const upiId = booking.driver_payout_upi?.trim();
+    const upiId = booking.driver_mobile?.replace(/\D/g, '').slice(-10);
 
     if (!upiId) {
       setError('Driver UPI ID is not available. Please use the mobile number payment option.');
