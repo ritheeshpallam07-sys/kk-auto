@@ -1014,6 +1014,11 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
                   ) : (
                     <button
                       onClick={async () => {
+                        const verified = window.confirm(
+                          `Please verify: Have you checked your bank account or UPI app and confirmed that ₹${ride.estimated_fare} was credited?`
+                        );
+                        if (!verified) return;
+
                         try {
                           const result = await api.payments.confirmDriverPayment(ride.id);
                           if (result.success) {
