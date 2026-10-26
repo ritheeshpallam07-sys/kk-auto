@@ -46,7 +46,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
-  const [payMode, setPayMode] = useState<'mobile' | 'upi'>('mobile');
+  const [payMode, setPayMode] = useState<'upi' | 'mobile'>('upi');
   const [copiedField, setCopiedField] = useState<'mobile' | 'amount' | 'upi' | null>(null);
 
   // Rating state
@@ -240,23 +240,35 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   const handleProcessPayment = async () => {
     if (!booking) return;
 
-    const upiId = booking.driver_payout_upi?.trim();
+    const rawUpi = booking.driver_payout_upi?.trim();
 
-    if (!upiId) {
+    if (!rawUpi) {
       setError('Driver UPI ID is not available. Please use the mobile number payment option.');
       return;
     }
 
-    // Notice: tr is omitted for P2P transfers as PhonePe/Paytm decline personal payments when tr is set.
-    const params = new URLSearchParams({
-      pa: upiId,
-      pn: booking.driver_name || 'Clik2Go Driver',
-      am: Number(booking.estimated_fare).toFixed(2),
-      cu: 'INR',
-    });
+    // 1. Clean and validate UPI ID (strip internal whitespace, preserve literal '@')
+    const cleanUpi = rawUpi.replace(/\s+/g, '');
+    if (!cleanUpi.includes('@')) {
+      setError('Driver UPI ID is invalid. Please check the driver profile.');
+      return;
+    }
 
-    const upiUrl = `upi://pay?${params.toString()}`;
-    console.log('Clik2Go UPI URL:', upiUrl);
+    // 2. Sanitize Payee Name:
+    // UPI apps and bank switches (NPCI B6 validation) expect standard alphanumeric names.
+    // Replace non-alphanumeric chars (avoiding +, &, etc.) and encode spaces as '%20'.
+    const rawName = booking.driver_name?.trim() || 'Driver';
+    const cleanName = rawName.replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 50) || 'Driver';
+    const encodedName = encodeURIComponent(cleanName);
+
+    // 3. Format amount to strict 2-decimal string
+    const fare = Number(booking.estimated_fare).toFixed(2);
+
+    // 4. Construct RFC 3986 compliant URI:
+    // - Keeps literal '@' in pa (URLSearchParams converts '@' to '%40' which breaks VPA regex/switch routing in banking apps)
+    // - Uses standard '%20' instead of '+' for spaces in pn
+    // - Omits 'tr' and 'tn' to avoid flagging P2P personal accounts as unverified merchant orders
+    const upiUrl = `upi://pay?pa=${cleanUpi}&pn=${encodedName}&am=${fare}&cu=INR`;
 
     setIsPayModalOpen(false);
     window.location.href = upiUrl;
@@ -790,6 +802,18 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
             <div className="grid grid-cols-2 gap-1.5 p-1 bg-[#202023] rounded-2xl border border-[#303034]">
               <button
                 type="button"
+                onClick={() => setPayMode('upi')}
+                className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  payMode === 'upi'
+                    ? 'bg-[#C6FF3D] text-[#0B0B0D] shadow-glow-lime-sm'
+                    : 'text-[#A1A1AA] hover:text-white'
+                }`}
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                <span>Pay via UPI App</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setPayMode('mobile')}
                 className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                   payMode === 'mobile'
@@ -799,18 +823,6 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
               >
                 <Smartphone className="w-3.5 h-3.5" />
                 <span>Pay to Mobile</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setPayMode('upi')}
-                className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                  payMode === 'upi'
-                    ? 'bg-[#C6FF3D] text-[#0B0B0D] shadow-glow-lime-sm'
-                    : 'text-[#A1A1AA] hover:text-white'
-                }`}
-              >
-                <CreditCard className="w-3.5 h-3.5" />
-                <span>Pay via UPI ID</span>
               </button>
             </div>
 
