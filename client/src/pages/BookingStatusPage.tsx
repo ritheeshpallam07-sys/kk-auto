@@ -21,11 +21,8 @@ import {
   Star,
   Send,
   Sparkles,
-  MessageCircle,
-  QrCode,
-  Download
+  MessageCircle
 } from 'lucide-react';
-import QRCode from 'qrcode';
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
 
 interface BookingStatusPageProps {
@@ -44,12 +41,8 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
+  const [paymentTab, setPaymentTab] = useState<'online' | 'cash'>('online');
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
-
-  // UPI QR Code payment state
-  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
-  const [qrError, setQrError] = useState<string | null>(null);
-  const [isGeneratingQr, setIsGeneratingQr] = useState<boolean>(false);
 
   // Rating state
   const [selectedStars, setSelectedStars] = useState<number>(5);
@@ -213,85 +206,15 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   };
 
   
-  // Generate valid UPI payment QR code for the driver when payment modal is open
-  useEffect(() => {
-    if (!isPayModalOpen || !booking) return;
+  const upiApps = [
+    { name: 'PhonePe', scheme: 'phonepe://' },
+    { name: 'Google Pay', scheme: 'tez://upi/pay' },
+    { name: 'Paytm', scheme: 'paytmmp://' },
+    { name: 'BHIM', scheme: 'bhim://' }
+  ];
 
-    const rawUpi = booking.driver_payout_upi?.trim();
-    const rawFare = Number(booking.estimated_fare);
-
-    if (!rawUpi) {
-      setQrError('Driver UPI ID is not available in the driver profile. Please pay your driver directly in cash.');
-      setQrCodeUrl(null);
-      return;
-    }
-
-    const cleanUpi = rawUpi.replace(/\s+/g, '');
-    if (!cleanUpi.includes('@') || !/^[a-zA-Z0-9.\-_]{2,64}@[a-zA-Z]{2,64}$/.test(cleanUpi)) {
-      setQrError('Driver UPI ID format is invalid. Please pay your driver directly in cash.');
-      setQrCodeUrl(null);
-      return;
-    }
-
-    if (!Number.isFinite(rawFare) || rawFare <= 0) {
-      setQrError('Invalid ride fare amount.');
-      setQrCodeUrl(null);
-      return;
-    }
-
-    const fare = rawFare.toFixed(2);
-    const rawName = booking.driver_name?.trim() || 'Driver';
-    const cleanName = rawName.replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 50) || 'Driver';
-    const encodedName = encodeURIComponent(cleanName);
-
-    // Standard NPCI UPI URI payload for QR
-    const upiUri = `upi://pay?pa=${cleanUpi}&pn=${encodedName}&am=${fare}&cu=INR`;
-
-    let isMounted = true;
-    setIsGeneratingQr(true);
-
-    QRCode.toDataURL(upiUri, {
-      width: 320,
-      margin: 2,
-      color: {
-        dark: '#000000',
-        light: '#FFFFFF'
-      },
-      errorCorrectionLevel: 'M'
-    })
-      .then((url) => {
-        if (isMounted) {
-          setQrCodeUrl(url);
-          setQrError(null);
-        }
-      })
-      .catch((err) => {
-        if (isMounted) {
-          console.error('Failed to generate UPI QR code:', err);
-          setQrError('Unable to generate UPI QR code. Please settle the ride directly in cash.');
-          setQrCodeUrl(null);
-        }
-      })
-      .finally(() => {
-        if (isMounted) {
-          setIsGeneratingQr(false);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [isPayModalOpen, booking?.driver_payout_upi, booking?.estimated_fare, booking?.driver_name]);
-
-  const handleDownloadQr = () => {
-    if (!qrCodeUrl || !booking) return;
-    const ref = booking.booking_reference || `ride-${booking.id}`;
-    const link = document.createElement('a');
-    link.href = qrCodeUrl;
-    link.download = `clik2go-upi-${ref}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleLaunchUpiApp = (scheme: string) => {
+    window.location.href = scheme;
   };
 
 
@@ -764,13 +687,28 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                   <span>Paid ({payment?.payment_method || 'UPI'})</span>
                 </span>
               ) : isCompleted && !isCancelled ? (
-                <button
-                  onClick={() => setIsPayModalOpen(true)}
-                  className="px-3.5 py-1.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black rounded-lg text-xs shadow-glow-lime flex items-center gap-1.5"
-                >
-                  <QrCode className="w-3.5 h-3.5" />
-                  <span>Pay via UPI QR</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setPaymentTab('online');
+                      setIsPayModalOpen(true);
+                    }}
+                    className="px-3.5 py-1.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black rounded-lg text-xs shadow-glow-lime flex items-center gap-1.5"
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>Pay Online</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setPaymentTab('cash');
+                      setIsPayModalOpen(true);
+                    }}
+                    className="px-3.5 py-1.5 bg-[#171719] hover:bg-[#202023] text-white border border-[#303034] font-bold rounded-lg text-xs flex items-center gap-1.5"
+                  >
+                    <IndianRupee className="w-3.5 h-3.5 text-[#C6FF3D]" />
+                    <span>Cash</span>
+                  </button>
+                </div>
               ) : (
                 <span className="font-semibold text-[#A1A1AA]">
                   Payment after ride
@@ -796,14 +734,14 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
         </div>
       </div>
 
-      {/* PAY VIA UPI QR MODAL */}
+      {/* PAY ONLINE & CASH MODAL */}
       {isPayModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-[#171719] rounded-3xl p-6 sm:p-7 max-w-md w-full max-h-[92dvh] overflow-y-auto shadow-2xl border border-[#303034] space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-[#303034]">
               <div className="flex items-center gap-2">
-                <QrCode className="w-5 h-5 text-[#C6FF3D]" />
-                <h3 className="text-base font-black text-white">Scan & Pay Driver</h3>
+                <CreditCard className="w-5 h-5 text-[#C6FF3D]" />
+                <h3 className="text-base font-black text-white">Ride Payment</h3>
               </div>
               <button
                 onClick={() => setIsPayModalOpen(false)}
@@ -820,80 +758,116 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                 <span className="truncate">{booking.pickup_address} → {booking.destination_address}</span>
               </div>
               <div className="flex justify-between items-baseline text-base font-black text-white">
-                <span className="text-xs text-[#A1A1AA] font-semibold">Total Fare to Pay:</span>
+                <span className="text-xs text-[#A1A1AA] font-semibold">Total Fare:</span>
                 <span className="text-[#C6FF3D] text-xl font-black">₹{booking.estimated_fare}</span>
               </div>
             </div>
 
-            {/* QR Code Container */}
-            <div className="flex flex-col items-center justify-center p-4 bg-[#202023] rounded-2xl border border-[#303034] space-y-3">
-              {isGeneratingQr ? (
-                <div className="w-60 h-60 flex flex-col items-center justify-center gap-3">
-                  <div className="w-10 h-10 border-4 border-[#C6FF3D] border-t-transparent rounded-full animate-spin" />
-                  <span className="text-xs text-[#A1A1AA] font-semibold">Generating UPI QR...</span>
-                </div>
-              ) : qrError ? (
-                <div className="py-8 px-4 text-center space-y-2">
-                  <AlertCircle className="w-8 h-8 text-rose-400 mx-auto" />
-                  <p className="text-xs text-rose-400 font-semibold">{qrError}</p>
-                  <p className="text-[11px] text-[#A1A1AA]">Please settle the ride directly in cash with your driver.</p>
-                </div>
-              ) : qrCodeUrl ? (
-                <>
-                  <div className="p-3 bg-white rounded-2xl shadow-lg flex items-center justify-center">
-                    <img
-                      src={qrCodeUrl}
-                      alt={`UPI Payment QR Code for ₹${booking.estimated_fare}`}
-                      className="w-56 h-56 sm:w-60 sm:h-60 object-contain rounded-lg"
-                    />
-                  </div>
-
-                  {/* Driver Payee Info */}
-                  <div className="w-full text-center space-y-0.5">
-                    <div className="text-xs font-bold text-white">
-                      Payee: {booking.driver_name || 'Driver'}
-                    </div>
-                    <div className="text-[11px] font-mono text-[#A1A1AA] break-all">
-                      UPI ID: {booking.driver_payout_upi}
-                    </div>
-                  </div>
-
-                  {/* Download QR Button */}
-                  <button
-                    type="button"
-                    onClick={handleDownloadQr}
-                    className="w-full py-2.5 px-4 bg-[#171719] hover:bg-[#2a2a2e] text-[#C6FF3D] border border-[#303034] hover:border-[#C6FF3D]/50 text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95"
-                  >
-                    <Download className="w-4 h-4 text-[#C6FF3D]" />
-                    <span>Download QR Code</span>
-                  </button>
-                </>
-              ) : null}
+            {/* Payment Method Switcher Tabs */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-[#202023] rounded-2xl border border-[#303034]">
+              <button
+                type="button"
+                onClick={() => setPaymentTab('online')}
+                className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  paymentTab === 'online'
+                    ? 'bg-[#C6FF3D] text-[#0B0B0D] shadow-glow-lime-sm'
+                    : 'text-[#A1A1AA] hover:text-white'
+                }`}
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                <span>Pay Online (UPI)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentTab('cash')}
+                className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  paymentTab === 'cash'
+                    ? 'bg-[#C6FF3D] text-[#0B0B0D] shadow-glow-lime-sm'
+                    : 'text-[#A1A1AA] hover:text-white'
+                }`}
+              >
+                <IndianRupee className="w-3.5 h-3.5" />
+                <span>Pay Cash</span>
+              </button>
             </div>
 
-            {/* Clear Scanning Instructions */}
-            <div className="p-3.5 bg-[#202023] rounded-2xl border border-[#303034] text-xs text-[#A1A1AA] space-y-2 leading-relaxed">
-              <div className="font-bold text-white flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-[#C6FF3D]" />
-                <span>Instructions to Pay:</span>
+            {/* TAB 1: Pay Online (UPI Apps) */}
+            {paymentTab === 'online' && (
+              <div className="space-y-4 animate-fade-in">
+                {/* Instructions */}
+                <div className="p-3.5 bg-[#202023] rounded-2xl border border-[#303034] text-xs text-[#A1A1AA] space-y-2 leading-relaxed">
+                  <div className="font-bold text-white flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-[#C6FF3D]" />
+                    <span>How to Pay via UPI:</span>
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1.5 pl-1 text-[11px]">
+                    <li>Tap a supported UPI app below to open it on your phone.</li>
+                    <li>Use the app's <strong className="text-white">Scan QR</strong> button to scan the QR code displayed on your driver's phone.</li>
+                    <li>The exact fare of <strong className="text-[#C6FF3D]">₹{booking.estimated_fare}</strong> will prefill automatically.</li>
+                    <li>Authorize payment. Your driver will confirm receipt on their device.</li>
+                  </ol>
+                </div>
+
+                {/* Available UPI Apps Grid */}
+                <div className="space-y-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA] block">
+                    Choose UPI App to Open:
+                  </span>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {upiApps.map((app) => (
+                      <button
+                        key={app.name}
+                        type="button"
+                        onClick={() => handleLaunchUpiApp(app.scheme)}
+                        className="p-3 bg-[#202023] hover:bg-[#26262A] text-white rounded-2xl border border-[#303034] hover:border-[#C6FF3D]/50 text-xs font-bold flex items-center justify-between gap-2 transition-all active:scale-95"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-[#C6FF3D]" />
+                          <span>{app.name}</span>
+                        </div>
+                        <span className="text-[10px] text-[#A1A1AA]">Open ↗</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Driver Info Pill */}
+                <div className="p-3 rounded-xl bg-[#202023] border border-[#303034] text-center text-xs space-y-0.5">
+                  <div className="text-[#A1A1AA]">Driver: <strong className="text-white">{booking.driver_name || 'Driver'}</strong></div>
+                  <div className="text-[11px] text-[#71717A] font-mono">UPI: {booking.driver_payout_upi || 'Configured with Driver'}</div>
+                </div>
               </div>
-              <ol className="list-decimal list-inside space-y-1.5 pl-1 text-[11px]">
-                <li>
-                  <strong className="text-white">Scan with another phone:</strong> Open Google Pay, PhonePe, Paytm, or BHIM on another phone and point the camera at the QR code above.
-                </li>
-                <li>
-                  <strong className="text-white">Or pay on this phone:</strong> Tap <strong className="text-[#C6FF3D]">"Download QR Code"</strong> above, then open your UPI app and select <strong className="text-white">"Scan from Gallery / Upload QR"</strong>.
-                </li>
-                <li>
-                  <strong className="text-white">Driver verification:</strong> After you authorize payment, your driver will verify incoming bank credit on their device and confirm payment receipt.
-                </li>
-              </ol>
-            </div>
+            )}
+
+            {/* TAB 2: Pay Cash */}
+            {paymentTab === 'cash' && (
+              <div className="space-y-4 animate-fade-in">
+                <div className="p-4 bg-[#202023] rounded-2xl border border-[#303034] text-center space-y-2">
+                  <div className="w-10 h-10 rounded-2xl bg-[#171719] border border-[#303034] text-[#C6FF3D] font-black text-xl flex items-center justify-center mx-auto">
+                    ₹
+                  </div>
+                  <div className="text-xs text-[#A1A1AA]">Cash Amount to Hand Over:</div>
+                  <div className="text-2xl font-black text-[#C6FF3D]">₹{booking.estimated_fare}</div>
+                </div>
+
+                <div className="p-3.5 bg-[#202023] rounded-2xl border border-[#303034] text-xs text-[#A1A1AA] space-y-2 leading-relaxed">
+                  <div className="font-bold text-white flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-[#C6FF3D]" />
+                    <span>Cash Payment Steps:</span>
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1.5 pl-1 text-[11px]">
+                    <li>Hand <strong className="text-[#C6FF3D]">₹{booking.estimated_fare}</strong> directly to your driver.</li>
+                    <li>Your driver will tap "Payment Received" on their phone to confirm.</li>
+                    <li>Your ride receipt will be automatically unlocked here.</li>
+                  </ol>
+                </div>
+              </div>
+            )}
 
             {/* Verification Status Banner */}
             <div className="p-2.5 bg-[#202023]/60 rounded-xl border border-[#303034] flex items-center justify-center gap-2 text-[11px] text-[#A1A1AA]">
               <span className="w-2 h-2 rounded-full bg-[#C6FF3D] animate-ping flex-shrink-0" />
-              <span>Awaiting driver confirmation upon credit</span>
+              <span>Awaiting driver confirmation upon payment</span>
             </div>
           </div>
         </div>

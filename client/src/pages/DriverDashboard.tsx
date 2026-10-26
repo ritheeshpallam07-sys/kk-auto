@@ -21,8 +21,107 @@ import {
   AlertTriangle,
   Star,
   User,
-  Edit3
+  Edit3,
+  QrCode
 } from 'lucide-react';
+import QRCode from 'qrcode';
+
+interface DriverRideQrProps {
+  ride: Booking;
+  payoutUpi: string;
+  driverName: string;
+}
+
+const DriverPaymentQr: React.FC<DriverRideQrProps> = ({ ride, payoutUpi, driverName }) => {
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const [qrError, setQrError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const rawUpi = (ride.driver_payout_upi || payoutUpi || '').trim();
+    const fareNum = Number(ride.estimated_fare);
+
+    if (!rawUpi || !rawUpi.includes('@')) {
+      setQrError('Driver UPI ID is not configured. Please add your UPI ID in Profile Settings to generate payment QR.');
+      setQrUrl(null);
+      return;
+    }
+
+    if (!Number.isFinite(fareNum) || fareNum <= 0) {
+      setQrError('Invalid ride fare amount.');
+      setQrUrl(null);
+      return;
+    }
+
+    const cleanUpi = rawUpi.replace(/\s+/g, '');
+    const cleanName = (driverName || 'Driver').replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 50) || 'Driver';
+    const encodedName = encodeURIComponent(cleanName);
+    const fare = fareNum.toFixed(2);
+
+    // Standard NPCI UPI URI with exact fare prefilled
+    const upiUri = `upi://pay?pa=${cleanUpi}&pn=${encodedName}&am=${fare}&cu=INR`;
+
+    let isMounted = true;
+    QRCode.toDataURL(upiUri, {
+      width: 280,
+      margin: 2,
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF'
+      },
+      errorCorrectionLevel: 'M'
+    })
+      .then((url) => {
+        if (isMounted) {
+          setQrUrl(url);
+          setQrError(null);
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          console.error('Failed to generate driver QR:', err);
+          setQrError('Unable to generate payment QR.');
+          setQrUrl(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [ride.id, ride.estimated_fare, ride.driver_payout_upi, payoutUpi, driverName]);
+
+  if (qrError) {
+    return (
+      <div className="p-3 bg-rose-950/30 border border-rose-800/50 rounded-xl text-rose-300 text-xs text-center max-w-sm">
+        {qrError}
+      </div>
+    );
+  }
+
+  if (!qrUrl) {
+    return (
+      <div className="w-52 h-52 flex flex-col items-center justify-center bg-[#202023] rounded-2xl border border-[#303034] text-xs text-[#A1A1AA]">
+        <div className="w-8 h-8 border-3 border-[#C6FF3D] border-t-transparent rounded-full animate-spin mb-2" />
+        Generating QR...
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center p-3.5 bg-white rounded-2xl shadow-lg border border-gray-200">
+      <img
+        src={qrUrl}
+        alt={`UPI Payment QR for ₹${ride.estimated_fare}`}
+        className="w-52 h-52 sm:w-56 sm:h-56 object-contain rounded-lg"
+      />
+      <div className="mt-2 text-center text-[#0B0B0D]">
+        <div className="text-xs font-black">Scan to Pay ₹{Number(ride.estimated_fare).toFixed(2)}</div>
+        <div className="text-[10px] font-mono font-medium text-gray-600 truncate max-w-[220px]">
+          {ride.driver_payout_upi || payoutUpi}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 interface DriverDashboardProps {
   navigate: (path: string) => void;
@@ -35,6 +134,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
   const [requests, setRequests] = useState<Booking[]>([]);
   const [activeRide, setActiveRide] = useState<Booking | null>(null);
   const [completedRides, setCompletedRides] = useState<Booking[]>([]);
+  const [completedRideForPayment, setCompletedRideForPayment] = useState<Booking | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -115,6 +215,12 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
 
         const finished = myRidesRes.data.filter(b => b.status === 'Ride Completed');
         setCompletedRides(finished);
+
+        // Auto-select pending payment ride if not already set
+        const pending = finished.find(b => b.payment_status === 'PENDING');
+        if (pending) {
+          setCompletedRideForPayment(curr => curr || pending);
+        }
       }
     } catch (err: any) {
       console.error('Driver dashboard fetch error:', err);
@@ -362,6 +468,9 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
     const res = await api.driver.updateRideStatus(activeRide.id, nextStatus);
     if (res.success && res.data) {
       if (nextStatus === 'Ride Completed' || nextStatus === 'Cancelled') {
+        if (nextStatus === 'Ride Completed') {
+          setCompletedRideForPayment(res.data);
+        }
         setActiveRide(null);
       } else {
         setActiveRide(res.data);
@@ -908,6 +1017,86 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
         </div>
       )}
 
+      {/* RIDE COMPLETED — COLLECT PAYMENT (UPI QR DISPLAY) */}
+      {completedRideForPayment && completedRideForPayment.payment_status !== 'COMPLETED' && (
+        <div className="bg-[#171719] rounded-3xl p-6 sm:p-8 border-2 border-[#C6FF3D]/50 shadow-glow-lime-sm space-y-5 animate-fade-in">
+          <div className="flex items-center justify-between pb-3 border-b border-[#303034]">
+            <div className="flex items-center gap-2">
+              <QrCode className="w-5 h-5 text-[#C6FF3D]" />
+              <div>
+                <h2 className="text-base sm:text-lg font-black text-white">Ride Completed — Collect Payment</h2>
+                <p className="text-xs text-[#A1A1AA]">Show this QR code to the passenger to scan with their UPI app</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setCompletedRideForPayment(null)}
+              className="text-[#A1A1AA] hover:text-white text-xs px-2.5 py-1 rounded-lg bg-[#202023] border border-[#303034] transition-colors"
+            >
+              Hide
+            </button>
+          </div>
+
+          <div className="p-4 bg-[#202023] rounded-2xl border border-[#303034] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <span className="text-[10px] font-bold text-[#A1A1AA] uppercase tracking-wider block">
+                Booking: {completedRideForPayment.booking_reference}
+              </span>
+              <div className="text-xs font-semibold text-white mt-0.5">
+                {completedRideForPayment.pickup_address} → {completedRideForPayment.destination_address}
+              </div>
+            </div>
+            <div className="text-right flex-shrink-0">
+              <span className="text-[10px] text-[#A1A1AA] block">Exact Fare to Collect:</span>
+              <span className="text-2xl font-black text-[#C6FF3D]">₹{completedRideForPayment.estimated_fare}</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-center justify-center p-4 bg-[#202023] rounded-2xl border border-[#303034] space-y-3">
+            <DriverPaymentQr
+              ride={completedRideForPayment}
+              payoutUpi={profile?.payout_upi || ''}
+              driverName={profile?.name || 'Driver'}
+            />
+            <div className="text-center text-xs text-[#A1A1AA] max-w-sm space-y-1">
+              <p className="font-semibold text-white">
+                The exact fare of ₹{completedRideForPayment.estimated_fare} is prefilled automatically in this QR.
+              </p>
+              <p className="text-[11px] text-[#71717A]">
+                Customer opens PhonePe, Google Pay, Paytm, or BHIM and scans this screen.
+              </p>
+            </div>
+          </div>
+
+          <div className="pt-1 flex flex-col sm:flex-row items-center gap-3">
+            <button
+              onClick={async () => {
+                const verified = window.confirm(
+                  `Please verify: Have you checked your bank account or UPI app and confirmed that ₹${completedRideForPayment.estimated_fare} was credited?`
+                );
+                if (!verified) return;
+
+                try {
+                  const result = await api.payments.confirmDriverPayment(completedRideForPayment.id);
+                  if (result.success) {
+                    alert('Payment receipt confirmed.');
+                    setCompletedRideForPayment(null);
+                    await loadDriverData();
+                  } else {
+                    alert(result.error || 'Unable to confirm payment.');
+                  }
+                } catch {
+                  alert('Unable to confirm payment. Please try again.');
+                }
+              }}
+              className="w-full sm:flex-1 py-3 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs rounded-xl shadow-glow-lime transition-all flex items-center justify-center gap-2"
+            >
+              <CheckCircle2 className="w-4 h-4 text-[#0B0B0D]" />
+              <span>Confirm Payment Received (₹{completedRideForPayment.estimated_fare})</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* INCOMING RIDE REQUESTS QUEUE */}
       <div id="incoming-requests-section" className="bg-[#171719] rounded-3xl p-6 sm:p-8 border border-[#303034] shadow-card space-y-6">
         <div className="flex items-center justify-between pb-4 border-b border-[#303034]">
@@ -1012,29 +1201,44 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
                       Payment Confirmed
                     </span>
                   ) : (
-                    <button
-                      onClick={async () => {
-                        const verified = window.confirm(
-                          `Please verify: Have you checked your bank account or UPI app and confirmed that ₹${ride.estimated_fare} was credited?`
-                        );
-                        if (!verified) return;
+                    <div className="flex items-center gap-2 justify-end">
+                      <button
+                        onClick={() => {
+                          setCompletedRideForPayment(ride);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="px-2.5 py-1.5 bg-[#202023] hover:bg-[#26262A] text-[#C6FF3D] border border-[#303034] rounded-lg font-bold text-[10px] flex items-center gap-1 transition-colors"
+                      >
+                        <QrCode className="w-3 h-3" />
+                        <span>Show QR</span>
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const verified = window.confirm(
+                            `Please verify: Have you checked your bank account or UPI app and confirmed that ₹${ride.estimated_fare} was credited?`
+                          );
+                          if (!verified) return;
 
-                        try {
-                          const result = await api.payments.confirmDriverPayment(ride.id);
-                          if (result.success) {
-                            alert('Payment receipt confirmed.');
-                            await loadDriverData();
-                          } else {
-                            alert(result.error || 'Unable to confirm payment.');
+                          try {
+                            const result = await api.payments.confirmDriverPayment(ride.id);
+                            if (result.success) {
+                              alert('Payment receipt confirmed.');
+                              if (completedRideForPayment?.id === ride.id) {
+                                setCompletedRideForPayment(null);
+                              }
+                              await loadDriverData();
+                            } else {
+                              alert(result.error || 'Unable to confirm payment.');
+                            }
+                          } catch {
+                            alert('Unable to confirm payment. Please try again.');
                           }
-                        } catch {
-                          alert('Unable to confirm payment. Please try again.');
-                        }
-                      }}
-                      className="px-3 py-2 bg-[#C6FF3D] text-[#0B0B0D] rounded-lg font-bold text-[10px]"
-                    >
-                      Payment Received
-                    </button>
+                        }}
+                        className="px-3 py-1.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] rounded-lg font-bold text-[10px] transition-colors"
+                      >
+                        Payment Received
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
