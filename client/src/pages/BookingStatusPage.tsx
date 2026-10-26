@@ -21,8 +21,11 @@ import {
   Star,
   Send,
   Sparkles,
-  MessageCircle
+  MessageCircle,
+  QrCode,
+  Download
 } from 'lucide-react';
+import QRCode from 'qrcode';
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
 
 interface BookingStatusPageProps {
@@ -41,8 +44,12 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
-  const [isPaying, setIsPaying] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+
+  // UPI QR Code payment state
+  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  const [qrError, setQrError] = useState<string | null>(null);
+  const [isGeneratingQr, setIsGeneratingQr] = useState<boolean>(false);
 
   // Rating state
   const [selectedStars, setSelectedStars] = useState<number>(5);
@@ -206,46 +213,85 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   };
 
   
-  const handleProcessPayment = async () => {
-    if (!booking) return;
+  // Generate valid UPI payment QR code for the driver when payment modal is open
+  useEffect(() => {
+    if (!isPayModalOpen || !booking) return;
 
     const rawUpi = booking.driver_payout_upi?.trim();
+    const rawFare = Number(booking.estimated_fare);
 
     if (!rawUpi) {
-      setError('Driver UPI ID is not available in driver profile. Please pay driver directly via cash or QR scan.');
+      setQrError('Driver UPI ID is not available in the driver profile. Please pay your driver directly in cash.');
+      setQrCodeUrl(null);
       return;
     }
 
-    // 1. Clean and validate UPI ID (strip internal whitespace, preserve literal '@')
     const cleanUpi = rawUpi.replace(/\s+/g, '');
-    if (!cleanUpi.includes('@')) {
-      setError('Driver UPI ID is invalid. Please check the driver profile.');
+    if (!cleanUpi.includes('@') || !/^[a-zA-Z0-9.\-_]{2,64}@[a-zA-Z]{2,64}$/.test(cleanUpi)) {
+      setQrError('Driver UPI ID format is invalid. Please pay your driver directly in cash.');
+      setQrCodeUrl(null);
       return;
     }
 
-    // 2. Validate Fare:
-    const fareNum = Number(booking.estimated_fare);
-    if (!Number.isFinite(fareNum) || fareNum <= 0) {
-      setError('Invalid ride fare. Unable to initiate UPI payment.');
+    if (!Number.isFinite(rawFare) || rawFare <= 0) {
+      setQrError('Invalid ride fare amount.');
+      setQrCodeUrl(null);
       return;
     }
-    const fare = fareNum.toFixed(2);
 
-    // 3. Sanitize Payee Name:
-    // UPI apps and bank switches (NPCI B6 validation) expect standard alphanumeric names.
-    // Replace non-alphanumeric chars (avoiding +, &, etc.) and encode spaces as '%20'.
+    const fare = rawFare.toFixed(2);
     const rawName = booking.driver_name?.trim() || 'Driver';
     const cleanName = rawName.replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 50) || 'Driver';
     const encodedName = encodeURIComponent(cleanName);
 
-    // 4. Construct RFC 3986 compliant URI:
-    // - Keeps literal '@' in pa (URLSearchParams converts '@' to '%40' which breaks VPA regex/switch routing in banking apps)
-    // - Uses standard '%20' instead of '+' for spaces in pn
-    // - Omits 'tr' and 'tn' to avoid flagging P2P personal accounts as unverified merchant orders
-    const upiUrl = `upi://pay?pa=${cleanUpi}&pn=${encodedName}&am=${fare}&cu=INR`;
+    // Standard NPCI UPI URI payload for QR
+    const upiUri = `upi://pay?pa=${cleanUpi}&pn=${encodedName}&am=${fare}&cu=INR`;
 
-    setIsPayModalOpen(false);
-    window.location.href = upiUrl;
+    let isMounted = true;
+    setIsGeneratingQr(true);
+
+    QRCode.toDataURL(upiUri, {
+      width: 320,
+      margin: 2,
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF'
+      },
+      errorCorrectionLevel: 'M'
+    })
+      .then((url) => {
+        if (isMounted) {
+          setQrCodeUrl(url);
+          setQrError(null);
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          console.error('Failed to generate UPI QR code:', err);
+          setQrError('Unable to generate UPI QR code. Please settle the ride directly in cash.');
+          setQrCodeUrl(null);
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsGeneratingQr(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isPayModalOpen, booking?.driver_payout_upi, booking?.estimated_fare, booking?.driver_name]);
+
+  const handleDownloadQr = () => {
+    if (!qrCodeUrl || !booking) return;
+    const ref = booking.booking_reference || `ride-${booking.id}`;
+    const link = document.createElement('a');
+    link.href = qrCodeUrl;
+    link.download = `clik2go-upi-${ref}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
 
@@ -720,9 +766,10 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
               ) : isCompleted && !isCancelled ? (
                 <button
                   onClick={() => setIsPayModalOpen(true)}
-                  className="px-3.5 py-1.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black rounded-lg text-xs shadow-glow-lime"
+                  className="px-3.5 py-1.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black rounded-lg text-xs shadow-glow-lime flex items-center gap-1.5"
                 >
-                  Pay Online
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>Pay via UPI QR</span>
                 </button>
               ) : (
                 <span className="font-semibold text-[#A1A1AA]">
@@ -749,16 +796,22 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
         </div>
       </div>
 
-      {/* PAY ONLINE / DIRECT MODAL */}
+      {/* PAY VIA UPI QR MODAL */}
       {isPayModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#171719] rounded-3xl p-6 sm:p-7 max-w-md w-full max-h-[92dvh] overflow-y-auto shadow-2xl border border-[#303034] space-y-5">
+          <div className="bg-[#171719] rounded-3xl p-6 sm:p-7 max-w-md w-full max-h-[92dvh] overflow-y-auto shadow-2xl border border-[#303034] space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-[#303034]">
               <div className="flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-[#C6FF3D]" />
-                <h3 className="text-base font-black text-white">Direct Driver Payment</h3>
+                <QrCode className="w-5 h-5 text-[#C6FF3D]" />
+                <h3 className="text-base font-black text-white">Scan & Pay Driver</h3>
               </div>
-              <button onClick={() => setIsPayModalOpen(false)} className="text-[#A1A1AA] hover:text-white text-base">✕</button>
+              <button
+                onClick={() => setIsPayModalOpen(false)}
+                className="text-[#A1A1AA] hover:text-white text-base p-1"
+                aria-label="Close"
+              >
+                ✕
+              </button>
             </div>
 
             {/* Fare Summary */}
@@ -768,60 +821,80 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
               </div>
               <div className="flex justify-between items-baseline text-base font-black text-white">
                 <span className="text-xs text-[#A1A1AA] font-semibold">Total Fare to Pay:</span>
-                <span className="text-[#C6FF3D] text-lg font-black">₹{booking.estimated_fare}</span>
+                <span className="text-[#C6FF3D] text-xl font-black">₹{booking.estimated_fare}</span>
               </div>
             </div>
 
-            {/* Driver Profile Summary */}
-            <div className="p-3.5 bg-[#202023] rounded-2xl border border-[#303034] space-y-2 text-xs">
-              <div className="flex justify-between items-center">
-                <span className="text-[#A1A1AA] font-semibold">Assigned Driver:</span>
-                <span className="font-bold text-white">{booking.driver_name || 'Driver'}</span>
-              </div>
-              {booking.driver_payout_upi && (
-                <div className="flex justify-between items-center">
-                  <span className="text-[#A1A1AA] font-semibold">Driver UPI ID:</span>
-                  <span className="font-mono font-bold text-[#C6FF3D] break-all">{booking.driver_payout_upi}</span>
+            {/* QR Code Container */}
+            <div className="flex flex-col items-center justify-center p-4 bg-[#202023] rounded-2xl border border-[#303034] space-y-3">
+              {isGeneratingQr ? (
+                <div className="w-60 h-60 flex flex-col items-center justify-center gap-3">
+                  <div className="w-10 h-10 border-4 border-[#C6FF3D] border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs text-[#A1A1AA] font-semibold">Generating UPI QR...</span>
                 </div>
-              )}
-              {booking.driver_mobile && (
-                <div className="flex justify-between items-center">
-                  <span className="text-[#A1A1AA] font-semibold">Driver Phone:</span>
-                  <span className="font-mono text-white">{booking.driver_mobile}</span>
+              ) : qrError ? (
+                <div className="py-8 px-4 text-center space-y-2">
+                  <AlertCircle className="w-8 h-8 text-rose-400 mx-auto" />
+                  <p className="text-xs text-rose-400 font-semibold">{qrError}</p>
+                  <p className="text-[11px] text-[#A1A1AA]">Please settle the ride directly in cash with your driver.</p>
                 </div>
-              )}
+              ) : qrCodeUrl ? (
+                <>
+                  <div className="p-3 bg-white rounded-2xl shadow-lg flex items-center justify-center">
+                    <img
+                      src={qrCodeUrl}
+                      alt={`UPI Payment QR Code for ₹${booking.estimated_fare}`}
+                      className="w-56 h-56 sm:w-60 sm:h-60 object-contain rounded-lg"
+                    />
+                  </div>
+
+                  {/* Driver Payee Info */}
+                  <div className="w-full text-center space-y-0.5">
+                    <div className="text-xs font-bold text-white">
+                      Payee: {booking.driver_name || 'Driver'}
+                    </div>
+                    <div className="text-[11px] font-mono text-[#A1A1AA] break-all">
+                      UPI ID: {booking.driver_payout_upi}
+                    </div>
+                  </div>
+
+                  {/* Download QR Button */}
+                  <button
+                    type="button"
+                    onClick={handleDownloadQr}
+                    className="w-full py-2.5 px-4 bg-[#171719] hover:bg-[#2a2a2e] text-[#C6FF3D] border border-[#303034] hover:border-[#C6FF3D]/50 text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95"
+                  >
+                    <Download className="w-4 h-4 text-[#C6FF3D]" />
+                    <span>Download QR Code</span>
+                  </button>
+                </>
+              ) : null}
             </div>
 
-            {/* Payment Instructions */}
+            {/* Clear Scanning Instructions */}
             <div className="p-3.5 bg-[#202023] rounded-2xl border border-[#303034] text-xs text-[#A1A1AA] space-y-2 leading-relaxed">
               <div className="font-bold text-white flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-[#C6FF3D]" />
-                <span>How to Complete Payment:</span>
+                <span>Instructions to Pay:</span>
               </div>
               <ol className="list-decimal list-inside space-y-1.5 pl-1 text-[11px]">
-                <li>Pay <strong className="text-[#C6FF3D]">₹{booking.estimated_fare}</strong> directly to your driver in <strong className="text-white">Cash</strong> or by scanning their <strong className="text-white">UPI QR code</strong>.</li>
-                <li>Your driver will verify the bank credit and confirm payment on their device.</li>
-                <li>Once confirmed, your ride receipt will be automatically generated.</li>
+                <li>
+                  <strong className="text-white">Scan with another phone:</strong> Open Google Pay, PhonePe, Paytm, or BHIM on another phone and point the camera at the QR code above.
+                </li>
+                <li>
+                  <strong className="text-white">Or pay on this phone:</strong> Tap <strong className="text-[#C6FF3D]">"Download QR Code"</strong> above, then open your UPI app and select <strong className="text-white">"Scan from Gallery / Upload QR"</strong>.
+                </li>
+                <li>
+                  <strong className="text-white">Driver verification:</strong> After you authorize payment, your driver will verify incoming bank credit on their device and confirm payment receipt.
+                </li>
               </ol>
             </div>
 
-            {/* Direct UPI App Intent Launcher (with Regulatory Advisory) */}
-            {booking.driver_payout_upi && (
-              <div className="space-y-2 pt-1">
-                <button
-                  type="button"
-                  onClick={handleProcessPayment}
-                  disabled={isPaying}
-                  className="w-full py-3.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs rounded-xl shadow-glow-lime transition-transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <CreditCard className="w-4 h-4 text-[#0B0B0D]" />
-                  <span>Launch UPI App · ₹{booking.estimated_fare}</span>
-                </button>
-                <p className="text-[10px] text-[#71717A] text-center leading-tight">
-                  Direct browser launch opens installed UPI apps. Under NPCI regulations, some UPI apps may restrict web links to personal accounts; if so, scan the driver's QR code or pay in cash.
-                </p>
-              </div>
-            )}
+            {/* Verification Status Banner */}
+            <div className="p-2.5 bg-[#202023]/60 rounded-xl border border-[#303034] flex items-center justify-center gap-2 text-[11px] text-[#A1A1AA]">
+              <span className="w-2 h-2 rounded-full bg-[#C6FF3D] animate-ping flex-shrink-0" />
+              <span>Awaiting driver confirmation upon credit</span>
+            </div>
           </div>
         </div>
       )}
