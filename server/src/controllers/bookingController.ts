@@ -284,11 +284,18 @@ const insertResult = await query(
                u.name as customer_name, u.mobile as customer_mobile,
                d.auto_number, d.auto_model,
                d.payout_upi AS driver_payout_upi,
-               du.name as driver_name, du.mobile as driver_mobile
+               du.name as driver_name, du.mobile as driver_mobile,
+               p.payment_status,
+               p.driver_payment_confirmed_at
         FROM bookings b
         LEFT JOIN users u ON b.customer_id = u.id
         LEFT JOIN drivers d ON b.driver_id = d.id
         LEFT JOIN users du ON d.user_id = du.id
+        LEFT JOIN (
+          SELECT booking_id, payment_status, driver_payment_confirmed_at,
+                 ROW_NUMBER() OVER (PARTITION BY booking_id ORDER BY id DESC) as rn
+          FROM payments
+        ) p ON p.booking_id = b.id AND p.rn = 1
       `;
       const params: any[] = [];
 
@@ -330,11 +337,18 @@ const insertResult = await query(
                 u.name as customer_name, u.mobile as customer_mobile, u.email as customer_email,
                 d.auto_number, d.auto_model, d.license_number,
                 d.payout_upi AS driver_payout_upi, 
-                du.name as driver_name, du.mobile as driver_mobile
+                du.name as driver_name, du.mobile as driver_mobile,
+                p.payment_status,
+                p.driver_payment_confirmed_at
          FROM bookings b
          LEFT JOIN users u ON b.customer_id = u.id
          LEFT JOIN drivers d ON b.driver_id = d.id
          LEFT JOIN users du ON d.user_id = du.id
+         LEFT JOIN (
+           SELECT booking_id, payment_status, driver_payment_confirmed_at,
+                  ROW_NUMBER() OVER (PARTITION BY booking_id ORDER BY id DESC) as rn
+           FROM payments
+         ) p ON p.booking_id = b.id AND p.rn = 1
          WHERE ${lookupField} = $1 LIMIT 1`,
         [isNumeric ? Number(id) : id]
       );

@@ -367,8 +367,8 @@ export class DriverController {
       }
       const booking = bookingRes.rows[0];
 
-      const updateRes = await query(
-        `UPDATE bookings SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+      await query(
+        `UPDATE bookings SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
         [status, id]
       );
 
@@ -377,10 +377,24 @@ export class DriverController {
         await query(`UPDATE drivers SET availability_status = 'available' WHERE id = $1`, [driverId]);
       }
 
+      const fullRes = await query(
+        `SELECT b.*,
+                u.name as customer_name, u.mobile as customer_mobile,
+                d.auto_number, d.auto_model,
+                d.payout_upi AS driver_payout_upi,
+                du.name as driver_name, du.mobile as driver_mobile
+         FROM bookings b
+         LEFT JOIN users u ON b.customer_id = u.id
+         LEFT JOIN drivers d ON b.driver_id = d.id
+         LEFT JOIN users du ON d.user_id = du.id
+         WHERE b.id = $1 LIMIT 1`,
+        [id]
+      );
+
       return res.json({
         success: true,
         message: `Ride status updated to "${status}"`,
-        data: updateRes.rows[0]
+        data: fullRes.rows[0]
       });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message });

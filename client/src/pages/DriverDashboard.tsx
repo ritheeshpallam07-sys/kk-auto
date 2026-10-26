@@ -34,26 +34,56 @@ interface DriverRideQrProps {
 
 const DriverPaymentQr: React.FC<DriverRideQrProps> = ({ ride, payoutUpi, driverName }) => {
   const [qrUrl, setQrUrl] = useState<string | null>(null);
-  const [qrError, setQrError] = useState<string | null>(null);
+  const [qrError, setQrError] = useState<{ field: string; message: string; action?: 'profile' } | null>(null);
 
   useEffect(() => {
     const rawUpi = (ride.driver_payout_upi || payoutUpi || '').trim();
     const fareNum = Number(ride.estimated_fare);
 
-    if (!rawUpi || !rawUpi.includes('@')) {
-      setQrError('Driver UPI ID is not configured. Please add your UPI ID in Profile Settings to generate payment QR.');
+    if (!ride.booking_reference) {
+      setQrError({
+        field: 'Booking Reference',
+        message: 'Booking reference is missing from this ride.'
+      });
+      setQrUrl(null);
+      return;
+    }
+
+    if (!rawUpi) {
+      setQrError({
+        field: 'Driver UPI ID',
+        message: 'Driver UPI ID is not configured. Please add your UPI ID in Profile Settings below to generate your payment QR.',
+        action: 'profile'
+      });
+      setQrUrl(null);
+      return;
+    }
+
+    if (!rawUpi.includes('@')) {
+      setQrError({
+        field: 'Driver UPI ID',
+        message: `Driver UPI ID "${rawUpi}" is invalid. It must contain "@" followed by your bank or app handle (e.g. 9876543210@ybl).`,
+        action: 'profile'
+      });
       setQrUrl(null);
       return;
     }
 
     if (!Number.isFinite(fareNum) || fareNum <= 0) {
-      setQrError('Invalid ride fare amount.');
+      setQrError({
+        field: 'Estimated Fare',
+        message: `Ride fare amount is invalid (received: "${ride.estimated_fare}"). Fare must be a positive number.`
+      });
       setQrUrl(null);
       return;
     }
 
     const cleanUpi = rawUpi.replace(/\s+/g, '');
-    const cleanName = (driverName || 'Driver').replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 50) || 'Driver';
+    const cleanName = (driverName || ride.driver_name || 'Driver')
+      .replace(/[^a-zA-Z0-9 ]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 50) || 'Driver';
     const encodedName = encodeURIComponent(cleanName);
     const fare = fareNum.toFixed(2);
 
@@ -79,7 +109,10 @@ const DriverPaymentQr: React.FC<DriverRideQrProps> = ({ ride, payoutUpi, driverN
       .catch((err) => {
         if (isMounted) {
           console.error('Failed to generate driver QR:', err);
-          setQrError('Unable to generate payment QR.');
+          setQrError({
+            field: 'QR Generator',
+            message: 'Unable to render payment QR code: ' + (err?.message || 'Unknown error')
+          });
           setQrUrl(null);
         }
       });
@@ -87,36 +120,60 @@ const DriverPaymentQr: React.FC<DriverRideQrProps> = ({ ride, payoutUpi, driverN
     return () => {
       isMounted = false;
     };
-  }, [ride.id, ride.estimated_fare, ride.driver_payout_upi, payoutUpi, driverName]);
+  }, [ride.id, ride.booking_reference, ride.estimated_fare, ride.driver_payout_upi, payoutUpi, driverName, ride.driver_name]);
 
   if (qrError) {
     return (
-      <div className="p-3 bg-rose-950/30 border border-rose-800/50 rounded-xl text-rose-300 text-xs text-center max-w-sm">
-        {qrError}
+      <div className="p-4 bg-rose-950/30 border border-rose-800/60 rounded-2xl text-rose-300 text-xs text-center max-w-sm space-y-2">
+        <div className="font-bold flex items-center justify-center gap-1.5 text-rose-200">
+          <AlertCircle className="w-4 h-4 text-rose-400" />
+          <span>Cannot Generate QR ({qrError.field})</span>
+        </div>
+        <p className="text-[11px] leading-relaxed text-rose-300">{qrError.message}</p>
+        {qrError.action === 'profile' && (
+          <button
+            type="button"
+            onClick={() => {
+              const el = document.getElementById('driver-profile-section');
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth' });
+                const upiInput = document.getElementById('driver-payout-upi-input');
+                if (upiInput) upiInput.focus();
+              }
+            }}
+            className="mt-1 px-3 py-1.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black rounded-lg text-[11px] shadow-glow-lime-sm transition-all"
+          >
+            Configure UPI ID in Profile Settings →
+          </button>
+        )}
       </div>
     );
   }
 
   if (!qrUrl) {
     return (
-      <div className="w-52 h-52 flex flex-col items-center justify-center bg-[#202023] rounded-2xl border border-[#303034] text-xs text-[#A1A1AA]">
+      <div className="w-56 h-56 flex flex-col items-center justify-center bg-[#202023] rounded-2xl border border-[#303034] text-xs text-[#A1A1AA]">
         <div className="w-8 h-8 border-3 border-[#C6FF3D] border-t-transparent rounded-full animate-spin mb-2" />
-        Generating QR...
+        Generating payment QR...
       </div>
     );
   }
 
+  const cleanUpi = (ride.driver_payout_upi || payoutUpi || '').trim();
+  const displayName = driverName || ride.driver_name || 'Driver';
+
   return (
-    <div className="flex flex-col items-center p-3.5 bg-white rounded-2xl shadow-lg border border-gray-200">
+    <div className="flex flex-col items-center p-4 bg-white rounded-2xl shadow-xl border border-gray-200">
       <img
         src={qrUrl}
-        alt={`UPI Payment QR for ₹${ride.estimated_fare}`}
-        className="w-52 h-52 sm:w-56 sm:h-56 object-contain rounded-lg"
+        alt={`UPI Payment QR for ₹${Number(ride.estimated_fare).toFixed(2)}`}
+        className="w-52 h-52 sm:w-60 sm:h-60 object-contain rounded-lg"
       />
-      <div className="mt-2 text-center text-[#0B0B0D]">
-        <div className="text-xs font-black">Scan to Pay ₹{Number(ride.estimated_fare).toFixed(2)}</div>
-        <div className="text-[10px] font-mono font-medium text-gray-600 truncate max-w-[220px]">
-          {ride.driver_payout_upi || payoutUpi}
+      <div className="mt-2.5 text-center text-[#0B0B0D] space-y-0.5">
+        <div className="text-sm font-black tracking-tight">Scan to Pay ₹{Number(ride.estimated_fare).toFixed(2)}</div>
+        <div className="text-[11px] font-bold text-gray-700">{displayName}</div>
+        <div className="text-[10px] font-mono font-medium text-gray-500 truncate max-w-[240px]">
+          {cleanUpi}
         </div>
       </div>
     </div>
@@ -217,7 +274,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
         setCompletedRides(finished);
 
         // Auto-select pending payment ride if not already set
-        const pending = finished.find(b => b.payment_status === 'PENDING');
+        const pending = finished.find(b => b.payment_status !== 'COMPLETED');
         if (pending) {
           setCompletedRideForPayment(curr => curr || pending);
         }
@@ -469,7 +526,16 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
     if (res.success && res.data) {
       if (nextStatus === 'Ride Completed' || nextStatus === 'Cancelled') {
         if (nextStatus === 'Ride Completed') {
-          setCompletedRideForPayment(res.data);
+          const completedBooking: Booking = {
+            ...activeRide,
+            ...res.data,
+            driver_payout_upi: res.data.driver_payout_upi || activeRide.driver_payout_upi || profile?.payout_upi || '',
+            driver_name: res.data.driver_name || activeRide.driver_name || profile?.name || 'Driver'
+          };
+          setCompletedRideForPayment(completedBooking);
+          setTimeout(() => {
+            document.getElementById('ride-payment-qr-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 100);
         }
         setActiveRide(null);
       } else {
@@ -842,6 +908,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
 
             <div className="relative mt-1">
               <input
+                id="driver-payout-upi-input"
                 type="text"
                 value={profileUpi}
                 onChange={(e) => setProfileUpi(e.target.value)}
@@ -1018,8 +1085,8 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
       )}
 
       {/* RIDE COMPLETED — COLLECT PAYMENT (UPI QR DISPLAY) */}
-      {completedRideForPayment && completedRideForPayment.payment_status !== 'COMPLETED' && (
-        <div className="bg-[#171719] rounded-3xl p-6 sm:p-8 border-2 border-[#C6FF3D]/50 shadow-glow-lime-sm space-y-5 animate-fade-in">
+      {completedRideForPayment && (
+        <div id="ride-payment-qr-section" className="bg-[#171719] rounded-3xl p-6 sm:p-8 border-2 border-[#C6FF3D]/50 shadow-glow-lime-sm space-y-5 animate-fade-in">
           <div className="flex items-center justify-between pb-3 border-b border-[#303034]">
             <div className="flex items-center gap-2">
               <QrCode className="w-5 h-5 text-[#C6FF3D]" />
@@ -1068,31 +1135,38 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
           </div>
 
           <div className="pt-1 flex flex-col sm:flex-row items-center gap-3">
-            <button
-              onClick={async () => {
-                const verified = window.confirm(
-                  `Please verify: Have you checked your bank account or UPI app and confirmed that ₹${completedRideForPayment.estimated_fare} was credited?`
-                );
-                if (!verified) return;
+            {completedRideForPayment.payment_status === 'COMPLETED' ? (
+              <div className="w-full py-3 bg-emerald-950/40 border border-emerald-800 text-emerald-300 font-bold text-xs rounded-xl flex items-center justify-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>Payment Confirmed (₹{completedRideForPayment.estimated_fare} Received)</span>
+              </div>
+            ) : (
+              <button
+                onClick={async () => {
+                  const verified = window.confirm(
+                    `Please verify: Have you checked your bank account or UPI app and confirmed that ₹${completedRideForPayment.estimated_fare} was credited?`
+                  );
+                  if (!verified) return;
 
-                try {
-                  const result = await api.payments.confirmDriverPayment(completedRideForPayment.id);
-                  if (result.success) {
-                    alert('Payment receipt confirmed.');
-                    setCompletedRideForPayment(null);
-                    await loadDriverData();
-                  } else {
-                    alert(result.error || 'Unable to confirm payment.');
+                  try {
+                    const result = await api.payments.confirmDriverPayment(completedRideForPayment.id);
+                    if (result.success) {
+                      alert('Payment receipt confirmed.');
+                      setCompletedRideForPayment(null);
+                      await loadDriverData();
+                    } else {
+                      alert(result.error || 'Unable to confirm payment.');
+                    }
+                  } catch {
+                    alert('Unable to confirm payment. Please try again.');
                   }
-                } catch {
-                  alert('Unable to confirm payment. Please try again.');
-                }
-              }}
-              className="w-full sm:flex-1 py-3 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs rounded-xl shadow-glow-lime transition-all flex items-center justify-center gap-2"
-            >
-              <CheckCircle2 className="w-4 h-4 text-[#0B0B0D]" />
-              <span>Confirm Payment Received (₹{completedRideForPayment.estimated_fare})</span>
-            </button>
+                }}
+                className="w-full sm:flex-1 py-3 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs rounded-xl shadow-glow-lime transition-all flex items-center justify-center gap-2"
+              >
+                <CheckCircle2 className="w-4 h-4 text-[#0B0B0D]" />
+                <span>Confirm Payment Received (₹{completedRideForPayment.estimated_fare})</span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -1196,22 +1270,31 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
                   <div className="font-black text-[#C6FF3D]">₹{ride.estimated_fare}</div>
                   <span className="text-[10px] text-emerald-400 font-bold block">Ride Completed</span>
 
-                  {ride.payment_status === 'COMPLETED' ? (
-                    <span className="text-[10px] text-emerald-400 font-bold block">
-                      Payment Confirmed
-                    </span>
-                  ) : (
-                    <div className="flex items-center gap-2 justify-end">
-                      <button
-                        onClick={() => {
-                          setCompletedRideForPayment(ride);
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }}
-                        className="px-2.5 py-1.5 bg-[#202023] hover:bg-[#26262A] text-[#C6FF3D] border border-[#303034] rounded-lg font-bold text-[10px] flex items-center gap-1 transition-colors"
-                      >
-                        <QrCode className="w-3 h-3" />
-                        <span>Show QR</span>
-                      </button>
+                  <div className="flex items-center gap-2 justify-end">
+                    <button
+                      onClick={() => {
+                        const fullRide: Booking = {
+                          ...ride,
+                          driver_payout_upi: ride.driver_payout_upi || profile?.payout_upi || '',
+                          driver_name: ride.driver_name || profile?.name || 'Driver'
+                        };
+                        setCompletedRideForPayment(fullRide);
+                        setTimeout(() => {
+                          document.getElementById('ride-payment-qr-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }, 50);
+                      }}
+                      className="px-2.5 py-1.5 bg-[#202023] hover:bg-[#26262A] text-[#C6FF3D] border border-[#303034] rounded-lg font-bold text-[10px] flex items-center gap-1 transition-colors"
+                      title="Show Payment QR"
+                    >
+                      <QrCode className="w-3 h-3" />
+                      <span>Show QR</span>
+                    </button>
+
+                    {ride.payment_status === 'COMPLETED' ? (
+                      <span className="text-[10px] text-emerald-400 font-bold px-2 py-1 bg-emerald-950/30 border border-emerald-800/40 rounded-lg">
+                        Paid ✓
+                      </span>
+                    ) : (
                       <button
                         onClick={async () => {
                           const verified = window.confirm(
@@ -1238,8 +1321,8 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
                       >
                         Payment Received
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
