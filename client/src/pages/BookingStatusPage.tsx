@@ -209,17 +209,20 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   // UPI app launching state
   const [launchedApp, setLaunchedApp] = useState<string | null>(null);
 
+  const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
+
   const upiApps = [
-    { name: 'PhonePe', scheme: 'phonepe://' },
+    {
+      name: 'PhonePe',
+      // Supported Android Chrome Intent URI targeting PhonePe package without payment parameters to avoid blank white screen; phonepe:// on iOS
+      scheme: isAndroid
+        ? 'intent://pay#Intent;scheme=upi;package=com.phonepe.app;end'
+        : 'phonepe://'
+    },
     { name: 'Google Pay', scheme: 'tez://upi/pay' },
     { name: 'Paytm', scheme: 'paytmmp://' },
     { name: 'BHIM', scheme: 'bhim://' }
   ];
-
-  const handleLaunchUpiApp = (app: { name: string; scheme: string }) => {
-    setLaunchedApp(app.name);
-    window.location.href = app.scheme;
-  };
 
 
   const handleSubmitRating = async (e: React.FormEvent) => {
@@ -829,34 +832,36 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                         ✕
                       </button>
                     </div>
-                    <div className="text-[#E4E4E7] text-[11px] leading-relaxed space-y-1">
+                    <div className="text-[#E4E4E7] text-[11px] leading-relaxed space-y-1.5">
                       <p>
-                        1. Tap the <strong className="text-white">QR Scanner icon (📷)</strong> in the top-right corner of {launchedApp}.
+                        1. In <strong className="text-white">{launchedApp}</strong>, tap the <strong className="text-white">QR Scanner icon (📷)</strong> at the top right of the home screen.
                       </p>
                       <p>
-                        2. Point your camera at the QR code displayed on the driver's phone.
+                        2. Point your camera at the QR code displayed on your driver's phone.
                       </p>
                       <p>
-                        3. Confirm the prefilled amount of <strong className="text-[#C6FF3D]">₹{booking.estimated_fare}</strong> and enter your UPI PIN.
+                        3. Confirm the prefilled fare of <strong className="text-[#C6FF3D]">₹{booking.estimated_fare}</strong> and enter your UPI PIN.
                       </p>
                     </div>
-                    <div className="pt-2 border-t border-[#303034] flex flex-col gap-1 text-[11px] text-[#A1A1AA]">
+
+                    <div className="pt-2 border-t border-[#303034] space-y-2 text-[11px]">
                       <div className="flex items-center justify-between">
-                        <span>App did not open?</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const appObj = upiApps.find(a => a.name === launchedApp);
-                            if (appObj) handleLaunchUpiApp(appObj);
-                          }}
+                        <span className="text-[#A1A1AA]">App did not open?</span>
+                        <a
+                          href={upiApps.find(a => a.name === launchedApp)?.scheme || '#'}
                           className="text-[#C6FF3D] font-bold underline hover:text-[#B5F028]"
                         >
                           Relaunch {launchedApp} ↗
-                        </button>
+                        </a>
                       </div>
-                      <span className="text-[10px] text-[#71717A]">
-                        Fallback: Open {launchedApp} manually from your phone's home screen, tap the QR Scanner icon, and scan the driver's screen.
-                      </span>
+                      <div className="p-2.5 rounded-xl bg-[#171719] border border-[#303034] text-[11px] text-[#A1A1AA] space-y-1">
+                        <div className="font-bold text-white flex items-center gap-1">
+                          <span>📱 Manual Fallback:</span>
+                        </div>
+                        <p className="text-[10px] text-[#A1A1AA] leading-relaxed">
+                          Open <strong className="text-white">{launchedApp}</strong> directly from your phone's home screen, tap the <strong className="text-white">Scan QR (📷)</strong> icon at the top right, and scan the QR code on your driver's phone.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -868,10 +873,10 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                   </span>
                   <div className="grid grid-cols-2 gap-2.5">
                     {upiApps.map((app) => (
-                      <button
+                      <a
                         key={app.name}
-                        type="button"
-                        onClick={() => handleLaunchUpiApp(app)}
+                        href={app.scheme}
+                        onClick={() => setLaunchedApp(app.name)}
                         className={`p-3 text-white rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 transition-all active:scale-95 ${
                           launchedApp === app.name
                             ? 'bg-[#26262A] border-[#C6FF3D] shadow-glow-lime-sm'
@@ -883,7 +888,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                           <span>{app.name}</span>
                         </div>
                         <span className="text-[10px] text-[#A1A1AA]">Open ↗</span>
-                      </button>
+                      </a>
                     ))}
                   </div>
                 </div>
