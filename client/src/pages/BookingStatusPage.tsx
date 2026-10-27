@@ -205,8 +205,39 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
     }
   };
 
-  
+  // App-specific UPI launcher configurations without payment parameters
+  const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
 
+  const upiApps = [
+    {
+      name: 'Google Pay',
+      color: '#4285F4',
+      scheme: isAndroid
+        ? 'intent://upi/pay#Intent;scheme=tez;package=com.google.android.apps.nbu.paisa.user;end'
+        : 'tez://upi/pay'
+    },
+    {
+      name: 'PhonePe',
+      color: '#5F259F',
+      scheme: isAndroid
+        ? 'intent://#Intent;scheme=phonepe;package=com.phonepe.app;end'
+        : 'phonepe://'
+    },
+    {
+      name: 'Paytm',
+      color: '#00BAF2',
+      scheme: isAndroid
+        ? 'intent://#Intent;scheme=paytmmp;package=net.one97.paytm;end'
+        : 'paytmmp://'
+    },
+    {
+      name: 'BHIM',
+      color: '#00875A',
+      scheme: isAndroid
+        ? 'intent://#Intent;scheme=bhim;package=in.org.npci.upiapp;end'
+        : 'bhim://'
+    }
+  ];
 
   const handleSubmitRating = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -781,51 +812,58 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
               </button>
             </div>
 
-            {/* TAB 1: Pay Online via Driver's UPI QR */}
+            {/* TAB 1: Pay Online (UPI Apps) */}
             {paymentTab === 'online' && (
               <div className="space-y-4 animate-fade-in">
                 {/* Fare Summary Card */}
                 <div className="p-4 bg-[#202023] rounded-2xl border border-[#303034] text-center space-y-1">
-                  <div className="text-xs text-[#A1A1AA]">Fare to Pay to Driver:</div>
+                  <div className="text-xs text-[#A1A1AA]">Ride Fare to Pay:</div>
                   <div className="text-3xl font-black text-[#C6FF3D]">₹{booking.estimated_fare}</div>
-                  <div className="text-[11px] text-[#71717A]">Pre-encoded in Driver's UPI QR Code</div>
+                  <div className="text-[11px] text-[#71717A]">Assigned Driver: {booking.driver_name || 'Driver'}</div>
                 </div>
 
-                {/* Step-by-Step UPI Scanning Instructions */}
-                <div className="p-3.5 bg-[#202023] rounded-2xl border border-[#303034] text-xs text-[#A1A1AA] space-y-2.5 leading-relaxed">
-                  <div className="font-bold text-white flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-[#C6FF3D]" />
-                    <span>How to Pay using any UPI App:</span>
+                {/* Available UPI Apps Grid */}
+                <div className="space-y-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA] block">
+                    Choose UPI App to Open:
+                  </span>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {upiApps.map((app) => (
+                      <a
+                        key={app.name}
+                        href={app.scheme}
+                        className="p-3 bg-[#202023] hover:bg-[#26262A] active:bg-[#1C1C1F] border border-[#303034] hover:border-[#C6FF3D]/50 text-white rounded-2xl text-xs font-bold flex items-center justify-between gap-2 transition-all active:scale-95"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full"
+                            style={{ backgroundColor: app.color }}
+                          />
+                          <span>{app.name}</span>
+                        </div>
+                        <span className="text-[10px] text-[#A1A1AA]">Open ↗</span>
+                      </a>
+                    ))}
                   </div>
-                  <ol className="list-decimal list-inside space-y-2 pl-1 text-[11px] text-[#D4D4D8]">
-                    <li>
-                      Open your preferred UPI app on your phone:
-                      <div className="mt-1 flex flex-wrap gap-1.5 text-[10px] font-bold text-white">
-                        <span className="px-2 py-0.5 rounded-lg bg-[#171719] border border-[#303034]">PhonePe</span>
-                        <span className="px-2 py-0.5 rounded-lg bg-[#171719] border border-[#303034]">Google Pay</span>
-                        <span className="px-2 py-0.5 rounded-lg bg-[#171719] border border-[#303034]">Paytm</span>
-                        <span className="px-2 py-0.5 rounded-lg bg-[#171719] border border-[#303034]">BHIM</span>
-                        <span className="px-2 py-0.5 rounded-lg bg-[#171719] border border-[#303034]">Any Bank UPI</span>
-                      </div>
-                    </li>
-                    <li>
-                      Tap the in-app <strong className="text-white">Scan QR (📷)</strong> icon on your app's home screen.
-                    </li>
-                    <li>
-                      Point your phone camera at the payment QR code displayed on your auto driver's phone.
-                    </li>
-                    <li>
-                      The exact fare of <strong className="text-[#C6FF3D]">₹{booking.estimated_fare}</strong> will appear automatically. Authorize payment with your UPI PIN.
-                    </li>
-                    <li>
-                      Your driver will verify the bank credit and confirm payment on their device.
-                    </li>
-                  </ol>
+                </div>
+
+                {/* Payment Instructions & Fallback */}
+                <div className="p-3 bg-[#202023] rounded-2xl border border-[#303034] text-xs text-[#A1A1AA] space-y-1.5 leading-relaxed">
+                  <div className="font-bold text-white flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-[#C6FF3D]" />
+                    <span>Payment Guidance:</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-1 text-[11px] text-[#D4D4D8]">
+                    <li>Tap your preferred UPI app above to open it on your device.</li>
+                    <li>If an app does not open automatically, launch it directly from your phone's home screen.</li>
+                    <li>Pay the fare of <strong className="text-[#C6FF3D]">₹{booking.estimated_fare}</strong> and authorize payment.</li>
+                    <li>Your driver will verify the credit and confirm receipt on their device.</li>
+                  </ul>
                 </div>
 
                 {/* Driver Info Pill */}
                 <div className="p-3 rounded-xl bg-[#202023] border border-[#303034] text-center text-xs space-y-0.5">
-                  <div className="text-[#A1A1AA]">Assigned Driver: <strong className="text-white">{booking.driver_name || 'Driver'}</strong></div>
+                  <div className="text-[#A1A1AA]">Driver: <strong className="text-white">{booking.driver_name || 'Driver'}</strong></div>
                   <div className="text-[11px] text-[#71717A] font-mono">Ride Reference: {booking.booking_reference || `#${booking.id}`}</div>
                 </div>
               </div>
