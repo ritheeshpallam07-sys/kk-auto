@@ -206,11 +206,6 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   };
 
   
-  // Generic Android UPI Intent URI to launch the native system UPI app chooser without targeting a specific app or passing payment parameters
-  const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
-  const upiChooserUri = isAndroid
-    ? 'intent://pay#Intent;scheme=upi;end'
-    : 'upi://pay';
 
 
   const handleSubmitRating = async (e: React.FormEvent) => {
@@ -786,60 +781,52 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
               </button>
             </div>
 
-            {/* TAB 1: Pay Online (Native UPI App Chooser) */}
+            {/* TAB 1: Pay Online via Driver's UPI QR */}
             {paymentTab === 'online' && (
               <div className="space-y-4 animate-fade-in">
-                {/* Instructions */}
-                <div className="p-3.5 bg-[#202023] rounded-2xl border border-[#303034] text-xs text-[#A1A1AA] space-y-2 leading-relaxed">
+                {/* Fare Summary Card */}
+                <div className="p-4 bg-[#202023] rounded-2xl border border-[#303034] text-center space-y-1">
+                  <div className="text-xs text-[#A1A1AA]">Fare to Pay to Driver:</div>
+                  <div className="text-3xl font-black text-[#C6FF3D]">₹{booking.estimated_fare}</div>
+                  <div className="text-[11px] text-[#71717A]">Pre-encoded in Driver's UPI QR Code</div>
+                </div>
+
+                {/* Step-by-Step UPI Scanning Instructions */}
+                <div className="p-3.5 bg-[#202023] rounded-2xl border border-[#303034] text-xs text-[#A1A1AA] space-y-2.5 leading-relaxed">
                   <div className="font-bold text-white flex items-center gap-1.5">
                     <CheckCircle2 className="w-4 h-4 text-[#C6FF3D]" />
-                    <span>How to Pay via UPI:</span>
+                    <span>How to Pay using any UPI App:</span>
                   </div>
-                  <ol className="list-decimal list-inside space-y-1.5 pl-1 text-[11px]">
-                    <li>Tap <strong className="text-white">Open UPI App Chooser</strong> below to launch your phone's native app selector.</li>
-                    <li>Choose your preferred UPI app (PhonePe, Google Pay, Paytm, BHIM, etc.).</li>
-                    <li>In your UPI app, tap the <strong className="text-white">Scan QR (📷)</strong> icon.</li>
-                    <li>Scan the payment QR code displayed on your auto driver's phone.</li>
-                    <li>The exact booking fare of <strong className="text-[#C6FF3D]">₹{booking.estimated_fare}</strong> is prefilled in the driver's QR. Authorize payment with your UPI PIN.</li>
-                    <li>Your driver will verify the credit and confirm receipt on their device.</li>
-                  </ol>
-                </div>
-
-                {/* Native UPI App Chooser Launch Button */}
-                <div className="space-y-2">
-                  <a
-                    href={upiChooserUri}
-                    className="w-full py-3.5 px-4 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs sm:text-sm rounded-2xl shadow-glow-lime flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
-                  >
-                    <CreditCard className="w-4 h-4 text-[#0B0B0D]" />
-                    <span>Open UPI App Chooser ↗</span>
-                  </a>
-                  <p className="text-[10px] text-center text-[#71717A]">
-                    Launches your Android system UPI app chooser so you can select any installed app.
-                  </p>
-                </div>
-
-                {/* Fallback & Unsupported Browser Guidance */}
-                <div className="p-3 bg-[#202023] rounded-2xl border border-[#303034] text-xs text-[#A1A1AA] space-y-1.5 leading-relaxed">
-                  <div className="font-bold text-white flex items-center gap-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-[#C6FF3D]" />
-                    <span>Manual Scanning / Fallback Instructions:</span>
-                  </div>
-                  <p className="text-[11px] text-[#A1A1AA]">
-                    If the app chooser does not appear automatically on your device or browser (or on iOS):
-                  </p>
-                  <ol className="list-decimal list-inside space-y-1 pl-1 text-[11px] text-[#D4D4D8]">
-                    <li>Open your preferred UPI app directly from your phone's home screen.</li>
-                    <li>Tap the in-app <strong className="text-white">Scan QR (📷)</strong> icon.</li>
-                    <li>Point your camera at the QR code shown on the driver's phone screen.</li>
-                    <li>Confirm the fare of <strong className="text-[#C6FF3D]">₹{booking.estimated_fare}</strong> and enter your UPI PIN.</li>
+                  <ol className="list-decimal list-inside space-y-2 pl-1 text-[11px] text-[#D4D4D8]">
+                    <li>
+                      Open your preferred UPI app on your phone:
+                      <div className="mt-1 flex flex-wrap gap-1.5 text-[10px] font-bold text-white">
+                        <span className="px-2 py-0.5 rounded-lg bg-[#171719] border border-[#303034]">PhonePe</span>
+                        <span className="px-2 py-0.5 rounded-lg bg-[#171719] border border-[#303034]">Google Pay</span>
+                        <span className="px-2 py-0.5 rounded-lg bg-[#171719] border border-[#303034]">Paytm</span>
+                        <span className="px-2 py-0.5 rounded-lg bg-[#171719] border border-[#303034]">BHIM</span>
+                        <span className="px-2 py-0.5 rounded-lg bg-[#171719] border border-[#303034]">Any Bank UPI</span>
+                      </div>
+                    </li>
+                    <li>
+                      Tap the in-app <strong className="text-white">Scan QR (📷)</strong> icon on your app's home screen.
+                    </li>
+                    <li>
+                      Point your phone camera at the payment QR code displayed on your auto driver's phone.
+                    </li>
+                    <li>
+                      The exact fare of <strong className="text-[#C6FF3D]">₹{booking.estimated_fare}</strong> will appear automatically. Authorize payment with your UPI PIN.
+                    </li>
+                    <li>
+                      Your driver will verify the bank credit and confirm payment on their device.
+                    </li>
                   </ol>
                 </div>
 
                 {/* Driver Info Pill */}
                 <div className="p-3 rounded-xl bg-[#202023] border border-[#303034] text-center text-xs space-y-0.5">
                   <div className="text-[#A1A1AA]">Assigned Driver: <strong className="text-white">{booking.driver_name || 'Driver'}</strong></div>
-                  <div className="text-[11px] text-[#71717A] font-mono">Fare to Pay: ₹{booking.estimated_fare}</div>
+                  <div className="text-[11px] text-[#71717A] font-mono">Ride Reference: {booking.booking_reference || `#${booking.id}`}</div>
                 </div>
               </div>
             )}
