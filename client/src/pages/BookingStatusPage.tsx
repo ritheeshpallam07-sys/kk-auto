@@ -205,39 +205,11 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
     }
   };
 
-  // App-specific UPI launcher configurations without payment parameters
+  // Generic Android UPI Intent URI to launch the native system UPI app chooser without targeting a specific app or passing payment parameters
   const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
-
-  const upiApps = [
-    {
-      name: 'Google Pay',
-      color: '#4285F4',
-      scheme: isAndroid
-        ? 'intent://upi/pay#Intent;scheme=tez;package=com.google.android.apps.nbu.paisa.user;end'
-        : 'tez://upi/pay'
-    },
-    {
-      name: 'PhonePe',
-      color: '#5F259F',
-      scheme: isAndroid
-        ? 'intent://#Intent;scheme=phonepe;package=com.phonepe.app;end'
-        : 'phonepe://'
-    },
-    {
-      name: 'Paytm',
-      color: '#00BAF2',
-      scheme: isAndroid
-        ? 'intent://#Intent;scheme=paytmmp;package=net.one97.paytm;end'
-        : 'paytmmp://'
-    },
-    {
-      name: 'BHIM',
-      color: '#00875A',
-      scheme: isAndroid
-        ? 'intent://#Intent;scheme=bhim;package=in.org.npci.upiapp;end'
-        : 'bhim://'
-    }
-  ];
+  const upiChooserUri = isAndroid
+    ? 'intent://pay#Intent;scheme=upi;end'
+    : 'upi://pay';
 
   const handleSubmitRating = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -812,7 +784,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
               </button>
             </div>
 
-            {/* TAB 1: Pay Online (UPI Apps) */}
+            {/* TAB 1: Pay Online (Standard UPI App Chooser) */}
             {paymentTab === 'online' && (
               <div className="space-y-4 animate-fade-in">
                 {/* Fare Summary Card */}
@@ -822,40 +794,29 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                   <div className="text-[11px] text-[#71717A]">Assigned Driver: {booking.driver_name || 'Driver'}</div>
                 </div>
 
-                {/* Available UPI Apps Grid */}
+                {/* Primary UPI Chooser Action */}
                 <div className="space-y-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA] block">
-                    Choose UPI App to Open:
-                  </span>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    {upiApps.map((app) => (
-                      <a
-                        key={app.name}
-                        href={app.scheme}
-                        className="p-3 bg-[#202023] hover:bg-[#26262A] active:bg-[#1C1C1F] border border-[#303034] hover:border-[#C6FF3D]/50 text-white rounded-2xl text-xs font-bold flex items-center justify-between gap-2 transition-all active:scale-95"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="w-2.5 h-2.5 rounded-full"
-                            style={{ backgroundColor: app.color }}
-                          />
-                          <span>{app.name}</span>
-                        </div>
-                        <span className="text-[10px] text-[#A1A1AA]">Open ↗</span>
-                      </a>
-                    ))}
-                  </div>
+                  <a
+                    href={upiChooserUri}
+                    className="w-full py-3.5 px-4 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs sm:text-sm rounded-2xl shadow-glow-lime flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
+                  >
+                    <CreditCard className="w-4 h-4 text-[#0B0B0D]" />
+                    <span>Open UPI Apps ↗</span>
+                  </a>
+                  <p className="text-[10px] text-center text-[#71717A]">
+                    Tapping opens your Android UPI app chooser to select from installed apps (Google Pay, PhonePe, Paytm, BHIM, etc.).
+                  </p>
                 </div>
 
-                {/* Payment Instructions & Fallback */}
+                {/* Payment Guidance & Fallback */}
                 <div className="p-3 bg-[#202023] rounded-2xl border border-[#303034] text-xs text-[#A1A1AA] space-y-1.5 leading-relaxed">
                   <div className="font-bold text-white flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-[#C6FF3D]" />
                     <span>Payment Guidance:</span>
                   </div>
                   <ul className="list-disc list-inside space-y-1 text-[11px] text-[#D4D4D8]">
-                    <li>Tap your preferred UPI app above to open it on your device.</li>
-                    <li>If an app does not open automatically, launch it directly from your phone's home screen.</li>
+                    <li>Tap <strong className="text-white">Open UPI Apps</strong> above to choose an installed UPI app on your device.</li>
+                    <li>If the chooser does not appear or an app requires manual entry, open your preferred UPI app directly from your phone's home screen.</li>
                     <li>Pay the fare of <strong className="text-[#C6FF3D]">₹{booking.estimated_fare}</strong> and authorize payment.</li>
                     <li>Your driver will verify the credit and confirm receipt on their device.</li>
                   </ul>
