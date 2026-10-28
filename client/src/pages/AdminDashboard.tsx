@@ -28,7 +28,8 @@ import {
   Building2,
   Calendar,
   Layers,
-  Percent
+  Percent,
+  Trash2
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -36,7 +37,7 @@ interface AdminDashboardProps {
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'drivers' | 'settlements' | 'routes' | 'commission' | 'bookings' | 'tripBookings' | 'ratings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'drivers' | 'settlements' | 'routes' | 'commission' | 'bookings' | 'tripBookings' | 'ratings' | 'deletions'>('overview');
   
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [financials, setFinancials] = useState<PlatformFinancials | null>(null);
@@ -53,6 +54,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [deletionRequests, setDeletionRequests] = useState<Array<{
+    id: number;
+    user_id: number;
+    user_name: string;
+    user_role: string;
+    user_email: string;
+    user_mobile: string;
+    reason?: string | null;
+    status: 'PENDING' | 'PROCESSED' | 'REJECTED';
+    requested_at: string;
+    processed_at?: string | null;
+    admin_notes?: string | null;
+  }>>([]);
+  const [isProcessingDeletion, setIsProcessingDeletion] = useState<number | null>(null);
 
   // Route editing state
   const [editingFares, setEditingFares] = useState<Record<number, number>>({});
@@ -79,7 +94,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
   const loadAllData = async () => {
     setIsLoading(true);
     try {
-      const [dashRes, bookRes, drivRes, setlRes, commRes, finRes, tripRes, ratRes] = await Promise.all([
+      const [dashRes, bookRes, drivRes, setlRes, commRes, finRes, tripRes, ratRes, delRes] = await Promise.all([
         api.admin.getDashboard(),
         api.admin.getAllBookings(),
         api.admin.getDrivers(),
@@ -87,7 +102,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
         api.admin.getCommission(),
         api.admin.getFinancials(),
         api.tripBookings.getAllOwner(),
-        api.admin.getDriverRatings()
+        api.admin.getDriverRatings(),
+        api.admin.getDeletionRequests()
       ]);
 
       if (dashRes.success && dashRes.data) {
@@ -140,10 +156,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
         });
         setTripQuoteInputs(quoteInputs);
       }
+
+      if (delRes.success && delRes.data) {
+        setDeletionRequests(delRes.data);
+      }
     } catch (err: any) {
       console.error(err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Process account deletion request
+  const handleProcessDeletion = async (id: number, action: 'APPROVE' | 'REJECT') => {
+    const confirmMsg = action === 'APPROVE'
+      ? 'Are you sure you want to APPROVE this deletion request? The user account will be DEACTIVATED and their access revoked.'
+      : 'Are you sure you want to REJECT this deletion request?';
+    if (!window.confirm(confirmMsg)) return;
+
+    setIsProcessingDeletion(id);
+    try {
+      const res = await api.admin.processDeletionRequest(id, { action });
+      if (res.success) {
+        showToast(action === 'APPROVE' ? 'Account deactivated successfully.' : 'Request rejected.');
+        loadAllData();
+      } else {
+        showToast(`Error: ${res.error || 'Failed to process request.'}`);
+      }
+    } catch (err: any) {
+      showToast(`Error: ${err.message || 'Network error'}`);
+    } finally {
+      setIsProcessingDeletion(null);
     }
   };
 
@@ -279,6 +322,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
 
   const m = stats?.metrics;
   const fin = financials || stats?.financials;
+  const pendingDeletionsCount = deletionRequests.filter(r => r.status === 'PENDING').length;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8 bg-[#0B0B0D] text-white safe-bottom">
@@ -399,6 +443,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
           }`}
         >
           <span>⭐ Driver Ratings ({driverRatings.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('deletions')}
+          className={`px-3.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'deletions' ? 'bg-[#C6FF3D] text-[#0B0B0D] font-black shadow-glow-lime' : 'text-[#A1A1AA] hover:text-white'
+          }`}
+        >
+          <Trash2 className="w-3.5 h-3.5 text-[#C6FF3D]" />
+          <span>Deletion Requests ({deletionRequests.length})</span>
+          {pendingDeletionsCount > 0 && (
+            <span className="px-1.5 py-0.5 bg-rose-500 text-white rounded-full text-[10px] font-black">
+              {pendingDeletionsCount}
+            </span>
+          )}
         </button>
       </div>
 
@@ -1245,6 +1304,114 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
                         {r.created_at
                           ? new Date(r.created_at).toLocaleDateString()
                           : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 8: ACCOUNT DELETION REQUESTS */}
+      {activeTab === 'deletions' && (
+        <div className="bg-[#171719] rounded-3xl p-6 sm:p-8 border border-[#303034] shadow-card space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#303034]">
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-rose-500" />
+                <span>Account Deletion Requests</span>
+              </h2>
+              <p className="text-xs text-[#A1A1AA] mt-0.5">
+                Review submitted deletion requests. Approving will permanently deactivate the user account and revoke platform access.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-[#A1A1AA]">
+                {deletionRequests.length} total ({pendingDeletionsCount} pending)
+              </span>
+            </div>
+          </div>
+
+          {deletionRequests.length === 0 ? (
+            <div className="py-12 text-center text-sm text-[#A1A1AA] bg-[#202023] rounded-2xl border border-[#303034]">
+              No account deletion requests received.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-[#303034] bg-[#202023]">
+              <table className="w-full text-left text-xs text-white min-w-[760px]">
+                <thead className="bg-[#171719] text-[#A1A1AA] border-b border-[#303034]">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">User</th>
+                    <th className="px-4 py-3 font-semibold">Role</th>
+                    <th className="px-4 py-3 font-semibold">Contact</th>
+                    <th className="px-4 py-3 font-semibold">Reason</th>
+                    <th className="px-4 py-3 font-semibold">Requested</th>
+                    <th className="px-4 py-3 font-semibold">Status</th>
+                    <th className="px-4 py-3 font-semibold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#303034]">
+                  {deletionRequests.map((req) => (
+                    <tr key={req.id} className="hover:bg-[#28282C] transition-colors">
+                      <td className="px-4 py-3.5">
+                        <div className="font-bold text-white">{req.user_name || `User #${req.user_id}`}</div>
+                        <div className="text-[10px] text-[#A1A1AA]">ID: #{req.user_id}</div>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                          req.user_role === 'driver' ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'
+                        }`}>
+                          {req.user_role}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="text-white">{req.user_mobile || '—'}</div>
+                        <div className="text-[10px] text-[#A1A1AA]">{req.user_email || '—'}</div>
+                      </td>
+                      <td className="px-4 py-3.5 max-w-xs">
+                        <p className="line-clamp-2 text-[#A1A1AA] text-xs">
+                          {req.reason || <span className="italic text-neutral-500">None provided</span>}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3.5 whitespace-nowrap text-[#A1A1AA]">
+                        {req.requested_at ? new Date(req.requested_at).toLocaleDateString() : '—'}
+                      </td>
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          req.status === 'PENDING'
+                            ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                            : req.status === 'PROCESSED'
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                        }`}>
+                          {req.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                        {req.status === 'PENDING' ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleProcessDeletion(req.id, 'APPROVE')}
+                              disabled={isProcessingDeletion === req.id}
+                              className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                            >
+                              {isProcessingDeletion === req.id ? 'Processing...' : 'Approve Deactivation'}
+                            </button>
+                            <button
+                              onClick={() => handleProcessDeletion(req.id, 'REJECT')}
+                              disabled={isProcessingDeletion === req.id}
+                              className="px-2.5 py-1.5 bg-[#303034] hover:bg-[#3E3E42] text-[#A1A1AA] hover:text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-[#A1A1AA]">
+                            {req.processed_at ? `Handled ${new Date(req.processed_at).toLocaleDateString()}` : 'Completed'}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}

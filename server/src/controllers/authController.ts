@@ -245,4 +245,204 @@ export class AuthController {
   public static async logout(req: Request, res: Response) {
     return res.json({ success: true, message: 'Logged out successfully.' });
   }
+
+  public static async getDeletionRequest(req: Request, res: Response) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: 'Not authenticated.' });
+      }
+
+      const result = await query(
+        `SELECT id, user_id, user_role, reason, status, requested_at, processed_at
+         FROM account_deletion_requests
+         WHERE user_id = $1
+         ORDER BY requested_at DESC
+         LIMIT 1`,
+        [req.user.id]
+      );
+
+      if (result.rows.length === 0) {
+        return res.json({
+          success: true,
+          data: {
+            hasPendingRequest: false,
+            request: null
+          }
+        });
+      }
+
+      const row = result.rows[0];
+      return res.json({
+        success: true,
+        data: {
+          hasPendingRequest: row.status === 'PENDING',
+          request: row
+        }
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message || 'Failed to fetch deletion status.' });
+    }
+  }
+
+  public static async requestAccountDeletion(req: Request, res: Response) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: 'Not authenticated.' });
+      }
+
+      const userId = req.user.id;
+      const userRole = req.user.role;
+
+      // Check active rides in progress
+      if (userRole === 'customer') {
+        const activeRideRes = await query(
+          `SELECT id, booking_reference, status
+           FROM bookings
+           WHERE customer_id = $1
+             AND status IN ('Searching for Auto', 'Driver Assigned', 'Driver Arriving', 'Ride Started')
+           LIMIT 1`,
+          [userId]
+        );
+        if (activeRideRes.rows.length > 0) {
+          const ride = activeRideRes.rows[0];
+          return res.status(400).json({
+            success: false,
+            error: `Cannot request account deletion while you have an active ride in progress (${ride.booking_reference} - ${ride.status}). Please complete or cancel your ride first.`
+          });
+        }
+
+        const activeTripRes = await query(
+          `SELECT id, booking_reference, status
+           FROM trip_bookings
+           WHERE customer_id = $1
+             AND status IN ('NEW', 'CONTACTED', 'CONFIRMED')
+           LIMIT 1`,
+          [userId]
+        );
+        if (activeTripRes.rows.length > 0) {
+          const trip = activeTripRes.rows[0];
+          return res.status(400).json({
+            success: false,
+            error: `Cannot request account deletion while you have an active outstation trip booking (${trip.booking_reference} - ${trip.status}). Please complete or cancel your trip first.`
+          });
+        }
+      } else if (userRole === 'driver') {
+        const activeDriverRideRes = await query(
+          `SELECT b.id, b.booking_reference, b.status
+           FROM bookings b
+           JOIN drivers d ON d.id = b.driver_id
+           WHERE d.user_id = $1
+             AND b.status IN ('Driver Assigned', 'Driver Arriving', 'Ride Started')
+           LIMIT 1`,
+          [userId]
+        );
+        if (activeDriverRideRes.rows.length > 0) {
+          const ride = activeDriverRideRes.rows[0];
+          return res.status(400).json({
+            success: false,
+            error: `Cannot request account deletion while you have an active ride assigned (${ride.booking_reference} - ${ride.status}). Please complete or cancel your ride first.`
+          });
+        }
+      }
+
+      // Check if an existing pending request is already under review
+      const existingRequest = await query(
+        `SELECT id, status, requested_at
+         FROM account_deletion_requests
+         WHERE user_id = $1 AND status = 'PENDING'
+         LIMIT 1`,
+        [userId]
+      );
+      if (existingRequest.rows.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'An account deletion request is already pending review for this account. For questions or assistance, please contact support@clik2go.in.'
+        });
+      }
+
+      // Fetch user email and mobile for record integrity
+      const userRecord = await query(
+        `SELECT email, mobile FROM users WHERE id = $1 LIMIT 1`,
+        [userId]
+      );
+      const email = userRecord.rows[0]?.email || req.user.email || '';
+      const mobile = userRecord.rows[0]?.mobile || req.user.mobile || '';
+
+      const reason = req.body.reason ? String(req.body.reason).trim().slice(0, 500) : null;
+
+      // Insert deletion request
+      const insertResult = await query(
+        `INSERT INTO account_deletion_requests (
+           user_id, user_role, user_email, user_mobile, reason, status, requested_at
+         )
+         VALUES ($1, $2, $3, $4, $5, 'PENDING', CURRENT_TIMESTAMP)
+         RETURNING id, user_id, user_role, reason, status, requested_at`,
+        [userId, userRole, email, mobile, reason]
+      );
+
+      // If driver, automatically set availability to offline
+      if (userRole === 'driver') {
+        await query(
+          `UPDATE drivers
+           SET availability_status = 'offline'
+           WHERE user_id = $1`,
+          [userId]
+        );
+      }
+
+      // Flag deletion requested on users table
+      await query(
+        `UPDATE users
+         SET deletion_requested_at = CURRENT_TIMESTAMP
+         WHERE id = $1`,
+        [userId]
+      );
+
+      return res.status(201).json({
+        success: true,
+        message: 'Your account deletion request has been submitted successfully. In accordance with statutory requirements, financial and ride transaction records are archived for legal compliance. For questions, contact support@clik2go.in.',
+        data: insertResult.rows[0]
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message || 'Failed to submit deletion request.' });
+    }
+  }
+
+  public static async cancelAccountDeletion(req: Request, res: Response) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: 'Not authenticated.' });
+      }
+
+      const userId = req.user.id;
+
+      const deleteResult = await query(
+        `DELETE FROM account_deletion_requests
+         WHERE user_id = $1 AND status = 'PENDING'
+         RETURNING id`,
+        [userId]
+      );
+
+      if (deleteResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'No pending account deletion request found to cancel.'
+        });
+      }
+
+      await query(
+        `UPDATE users
+         SET deletion_requested_at = NULL
+         WHERE id = $1`,
+        [userId]
+      );
+
+      return res.json({
+        success: true,
+        message: 'Your account deletion request has been cancelled. Your account remains active.'
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message || 'Failed to cancel deletion request.' });
+    }
+  }
 }

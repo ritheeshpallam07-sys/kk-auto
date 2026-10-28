@@ -92,7 +92,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
       }
     }
     if (!agreeTerms) {
-      setError('Please accept the Terms and Conditions to continue.');
+      setError('You must agree to the Terms & Conditions and acknowledge the Privacy Policy to register.');
       return;
     }
     setIsSubmitting(true);
@@ -396,18 +396,45 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ navigate }) => {
             )}
           </div>
 
-          {/* Terms checkbox */}
-          <div className="flex items-start gap-2.5 pt-1">
+          {/* Mandatory Registration Consent Checkbox */}
+          <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-[#202023]/60 border border-[#303034] hover:border-[#3E3E44] transition-colors">
             <input
               type="checkbox"
-              id="terms"
+              id="registration-terms"
               checked={agreeTerms}
-              onChange={(e) => setAgreeTerms(e.target.checked)}
-              className="w-4 h-4 mt-0.5 rounded text-[#C6FF3D] bg-[#202023] border-[#303034] focus:ring-[#C6FF3D]"
+              onChange={(e) => {
+                setAgreeTerms(e.target.checked);
+                if (error) setError(null);
+              }}
+              className="w-4 h-4 mt-0.5 rounded text-[#C6FF3D] bg-[#0B0B0D] border-[#303034] focus:ring-[#C6FF3D] focus:ring-offset-0 cursor-pointer flex-shrink-0"
               required
+              aria-required="true"
             />
-            <label htmlFor="terms" className="text-xs text-[#A1A1AA] leading-tight">
-              I agree to the <span className="font-bold text-white underline">Terms of Service</span> and <span className="font-bold text-white underline">Privacy Policy</span>.
+            <label htmlFor="registration-terms" className="text-xs text-[#A1A1AA] leading-relaxed cursor-pointer select-none">
+              By creating an account, I agree to the{' '}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  navigate('/terms');
+                }}
+                className="font-bold text-white hover:text-[#C6FF3D] underline underline-offset-2 transition-colors focus:outline-none focus:ring-1 focus:ring-[#C6FF3D] rounded px-0.5"
+              >
+                Terms & Conditions
+              </button>{' '}
+              and acknowledge the{' '}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  navigate('/privacy');
+                }}
+                className="font-bold text-white hover:text-[#C6FF3D] underline underline-offset-2 transition-colors focus:outline-none focus:ring-1 focus:ring-[#C6FF3D] rounded px-0.5"
+              >
+                Privacy Policy
+              </button>.
             </label>
           </div>
 

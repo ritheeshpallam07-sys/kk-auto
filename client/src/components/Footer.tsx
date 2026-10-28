@@ -69,6 +69,24 @@ export const Footer: React.FC<FooterProps> = ({ navigate }) => {
                   Profile & Settings
                 </button>
               </li>
+
+              <li>
+                <button
+                  onClick={() => navigate('/terms')}
+                  className="hover:text-[#C6FF3D] transition-colors"
+                >
+                  Terms & Conditions
+                </button>
+              </li>
+
+              <li>
+                <button
+                  onClick={() => navigate('/privacy')}
+                  className="hover:text-[#C6FF3D] transition-colors"
+                >
+                  Privacy Policy
+                </button>
+              </li>
             </ul>
           </div>
 
@@ -124,11 +142,23 @@ export const Footer: React.FC<FooterProps> = ({ navigate }) => {
           <div>
             © {new Date().getFullYear()} <strong className="text-white">Clik2Go</strong>. All rights reserved.
           </div>
-          <div className="flex items-center gap-4 text-[11px]">
-            <span>Safe Transit Platform</span>
+          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 text-[11px]">
+            <button
+              onClick={() => navigate('/terms')}
+              className="hover:text-[#C6FF3D] transition-colors"
+            >
+              Terms & Conditions
+            </button>
+            <span>•</span>
+            <button
+              onClick={() => navigate('/privacy')}
+              className="hover:text-[#C6FF3D] transition-colors"
+            >
+              Privacy Policy
+            </button>
             <span>•</span>
             <a href="https://clik2go.in" target="_blank" rel="noopener noreferrer" className="hover:text-[#C6FF3D] transition-colors">
-              https://clik2go.in
+              clik2go.in
             </a>
           </div>
         </div>

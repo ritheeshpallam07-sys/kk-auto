@@ -22,6 +22,8 @@ router.patch('/drivers/:id/approval', AdminController.updateDriverApproval);
 
 // Customer directory
 router.get('/customers', AdminController.getCustomers);
+router.get('/deletion-requests', AdminController.getDeletionRequests);
+router.patch('/deletion-requests/:id/process', AdminController.processDeletionRequest);
 
 // Fixed Route & Fare Config
 router.get('/fare-config', AdminController.getFareConfig);

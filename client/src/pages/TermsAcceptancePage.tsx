@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Logo } from '../components/Logo';
-import { ShieldCheck, FileText, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Lock } from 'lucide-react';
+import { ShieldCheck, FileText, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Lock, ExternalLink } from 'lucide-react';
 
 interface TermsAcceptancePageProps {
   navigate: (path: string) => void;
@@ -86,10 +86,21 @@ export const TermsAcceptancePage: React.FC<TermsAcceptancePageProps> = ({ naviga
 
             {expandedSection === 'terms' && (
               <div className="px-4 pb-4 pt-1 text-xs text-[#A1A1AA] border-t border-[#303034] space-y-2 max-h-48 overflow-y-auto">
-                <p><strong className="text-white">1. Fixed Fare Promise:</strong> All auto fares displayed at the time of booking are fixed based on verified route parameters. No hidden meter charges or surge multipliers.</p>
-                <p><strong className="text-white">2. Passenger Safety:</strong> Riders must follow local safety guidelines. Clik2Go reserves the right to suspend accounts engaged in abusive behavior towards drivers or customers.</p>
-                <p><strong className="text-white">3. Cancellations:</strong> Free cancellation is available before a driver arrives at pickup. Frequent cancellations after arrival may incur temporary restrictions.</p>
-                <p><strong className="text-white">4. Payment:</strong> Fares can be paid directly to drivers via Cash or UPI, or online via Cashfree where supported.</p>
+                <p><strong className="text-white">1. Committee-Decided Fares:</strong> All ride fares strictly follow the rates decided by the local drivers&apos; committee with zero surge charges.</p>
+                <p><strong className="text-white">2. Service Area:</strong> Operates strictly within our designated local operating town/city and authorized zone routes.</p>
+                <p><strong className="text-white">3. Cancellations:</strong> Free customer cancellation before a driver is assigned. Driver cancellations after acceptance may incur a penalty determined by the Owner/Admin.</p>
+                <p><strong className="text-white">4. Payment:</strong> Direct Cash or driver UPI QR payments upon ride completion. Duplicate payments are eligible for review at support@clik2go.in.</p>
+                <p><strong className="text-white">5. Disputes & Misuse:</strong> Disputes are resolved by the Owner/Admin. Account misuse may result in restrictions or suspension.</p>
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/terms')}
+                    className="text-[#C6FF3D] font-bold underline text-[11px] inline-flex items-center gap-1"
+                  >
+                    <span>Read Full Terms & Conditions</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -119,9 +130,20 @@ export const TermsAcceptancePage: React.FC<TermsAcceptancePageProps> = ({ naviga
 
             {expandedSection === 'privacy' && (
               <div className="px-4 pb-4 pt-1 text-xs text-[#A1A1AA] border-t border-[#303034] space-y-2 max-h-48 overflow-y-auto">
-                <p><strong className="text-white">1. Location Data:</strong> We collect GPS coordinates only during active booking and ride progression to calculate accurate route fares and enable driver pickup navigation.</p>
-                <p><strong className="text-white">2. Contact Protection:</strong> Your phone number is masked or used strictly between assigned driver and rider for pickup coordination.</p>
-                <p><strong className="text-white">3. Data Security:</strong> Industry-standard TLS encryption is used for all transactions and sensitive account credentials.</p>
+                <p><strong className="text-white">1. Information Collected:</strong> Name, 10-digit mobile number, and email address. Passwords are securely hashed with bcrypt (never stored in plain text).</p>
+                <p><strong className="text-white">2. Access Controls:</strong> Customer pickup/drop details are visible to the assigned driver only after that driver accepts the booking.</p>
+                <p><strong className="text-white">3. Retention & Deletion:</strong> Ride history is retained while accounts are active. Deletion requests can be submitted via Profile settings or support@clik2go.in; financial and statutory records are archived as required by law.</p>
+                <p><strong className="text-white">4. Notifications:</strong> Delivered via website alerts and transactional verification emails.</p>
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/privacy')}
+                    className="text-[#C6FF3D] font-bold underline text-[11px] inline-flex items-center gap-1"
+                  >
+                    <span>Read Full Privacy Policy</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -139,7 +161,28 @@ export const TermsAcceptancePage: React.FC<TermsAcceptancePageProps> = ({ naviga
             className="mt-0.5 w-4 h-4 rounded text-[#C6FF3D] bg-[#0B0B0D] border-[#303034] focus:ring-[#C6FF3D] focus:ring-offset-0 cursor-pointer"
           />
           <span className="text-xs text-[#A1A1AA] leading-relaxed">
-            I have read, understood, and agree to the <span className="text-white font-bold">Terms of Service</span> and <span className="text-white font-bold">Privacy Policy</span> (v1.0).
+            I have read, understood, and agree to the{' '}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate('/terms');
+              }}
+              className="text-white font-bold underline hover:text-[#C6FF3D]"
+            >
+              Terms & Conditions
+            </button>{' '}
+            and acknowledge the{' '}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate('/privacy');
+              }}
+              className="text-white font-bold underline hover:text-[#C6FF3D]"
+            >
+              Privacy Policy
+            </button>.
           </span>
         </label>
 

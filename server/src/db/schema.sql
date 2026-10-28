@@ -329,3 +329,23 @@ ALTER TABLE email_verifications
   ADD COLUMN IF NOT EXISTS payout_bank_account VARCHAR(100),
   ADD COLUMN IF NOT EXISTS payout_ifsc VARCHAR(50);
 
+-- Account Deletion Requests (Privacy & Legal Compliance Architecture)
+CREATE TABLE IF NOT EXISTS account_deletion_requests (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_role VARCHAR(50) NOT NULL,
+  user_email VARCHAR(255) NOT NULL,
+  user_mobile VARCHAR(50) NOT NULL,
+  reason TEXT,
+  status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+  requested_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  processed_at TIMESTAMP WITH TIME ZONE,
+  admin_notes TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_deletion_requests_user ON account_deletion_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_deletion_requests_status ON account_deletion_requests(status);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_requested_at TIMESTAMP WITH TIME ZONE;
+

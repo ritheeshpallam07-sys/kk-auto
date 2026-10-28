@@ -16,6 +16,23 @@ export interface User {
   terms_accepted_at?: string | null;
 }
 
+export interface AccountDeletionRequest {
+  id: number;
+  user_id: number;
+  user_role: string;
+  user_email: string;
+  user_mobile: string;
+  reason?: string | null;
+  status: 'PENDING' | 'PROCESSED' | 'REJECTED';
+  requested_at: string;
+  processed_at?: string | null;
+}
+
+export interface DeletionRequestResponse {
+  hasPendingRequest: boolean;
+  request: AccountDeletionRequest | null;
+}
+
 export interface FareEstimate {
   available: boolean;
   pickupAddress: string;
@@ -281,6 +298,17 @@ export const api = {
       request<User>('/auth/accept-terms', {
         method: 'POST',
         body: JSON.stringify({ version })
+      }),
+    getDeletionRequest: () =>
+      request<DeletionRequestResponse>('/auth/deletion-request'),
+    requestAccountDeletion: (reason?: string) =>
+      request<AccountDeletionRequest>('/auth/deletion-request', {
+        method: 'POST',
+        body: JSON.stringify({ reason })
+      }),
+    cancelAccountDeletion: () =>
+      request<{ success: boolean }>('/auth/deletion-request', {
+        method: 'DELETE'
       })
   },
   bookings: {
@@ -415,6 +443,25 @@ savePushSubscription: (subscription: {
       request<{ settledCount: number; settledAmount: number }>('/admin/settlements/settle', {
         method: 'POST',
         body: JSON.stringify(params)
+      }),
+    getDeletionRequests: () =>
+      request<Array<{
+        id: number;
+        user_id: number;
+        user_name: string;
+        user_role: string;
+        user_email: string;
+        user_mobile: string;
+        reason?: string | null;
+        status: 'PENDING' | 'PROCESSED' | 'REJECTED';
+        requested_at: string;
+        processed_at?: string | null;
+        admin_notes?: string | null;
+      }>>('/admin/deletion-requests'),
+    processDeletionRequest: (id: number, data: { action: 'APPROVE' | 'REJECT'; adminNotes?: string }) =>
+      request<{ success: boolean; message: string }>(`/admin/deletion-requests/${id}/process`, {
+        method: 'PATCH',
+        body: JSON.stringify(data)
       })
   },
   tripBookings: {

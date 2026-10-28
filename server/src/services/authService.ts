@@ -38,7 +38,8 @@ public static async login(
   const normalizedIdentifier = identifier.trim().toLowerCase();
 
   const result = await query(
-    `SELECT id, name, email, mobile, password_hash, role, terms_version, terms_accepted_at
+    `SELECT id, name, email, mobile, password_hash, role, terms_version, terms_accepted_at,
+            COALESCE(status, 'ACTIVE') as status
      FROM users
      WHERE LOWER(email) = $1 OR mobile = $2
      LIMIT 1`,
@@ -50,6 +51,11 @@ public static async login(
   }
 
   const row = result.rows[0];
+
+  if (row.status === 'DEACTIVATED') {
+    throw new Error('This account has been deactivated. For inquiries or reactivation, please contact support@clik2go.in.');
+  }
+
   const isValid = await this.comparePassword(password, row.password_hash);
 
   if (!isValid) {
@@ -63,7 +69,8 @@ public static async login(
     mobile: row.mobile,
     role: row.role,
     terms_version: row.terms_version || null,
-    terms_accepted_at: row.terms_accepted_at ? new Date(row.terms_accepted_at).toISOString() : null
+    terms_accepted_at: row.terms_accepted_at ? new Date(row.terms_accepted_at).toISOString() : null,
+    status: row.status
   };
 
   return {
@@ -74,7 +81,8 @@ public static async login(
 
 public static async getUserById(id: number): Promise<AuthUser | null> {
   const result = await query(
-    `SELECT id, name, email, mobile, role, terms_version, terms_accepted_at
+    `SELECT id, name, email, mobile, role, terms_version, terms_accepted_at,
+            COALESCE(status, 'ACTIVE') as status
      FROM users
      WHERE id = $1
      LIMIT 1`,
@@ -86,6 +94,11 @@ public static async getUserById(id: number): Promise<AuthUser | null> {
   }
 
   const row = result.rows[0];
+
+  if (row.status === 'DEACTIVATED') {
+    return null;
+  }
+
   return {
     id: row.id,
     name: row.name,
@@ -93,7 +106,8 @@ public static async getUserById(id: number): Promise<AuthUser | null> {
     mobile: row.mobile,
     role: row.role,
     terms_version: row.terms_version || null,
-    terms_accepted_at: row.terms_accepted_at ? new Date(row.terms_accepted_at).toISOString() : null
+    terms_accepted_at: row.terms_accepted_at ? new Date(row.terms_accepted_at).toISOString() : null,
+    status: row.status
   };
 }
 

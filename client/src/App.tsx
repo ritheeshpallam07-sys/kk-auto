@@ -18,6 +18,8 @@ import { AdminDashboard } from './pages/AdminDashboard';
 import { ProfilePage } from './pages/ProfilePage';
 import { VerifyEmailPage } from './pages/VerifyEmailPage';
 import { TermsAcceptancePage } from './pages/TermsAcceptancePage';
+import { TermsPage } from './pages/TermsPage';
+import { PrivacyPage } from './pages/PrivacyPage';
 
 export const App: React.FC = () => {
   const [currentPath, setCurrentPath] = useState<string>(
@@ -75,6 +77,14 @@ export const App: React.FC = () => {
     }
     if (currentPath === '/verify-email') {
       return <VerifyEmailPage navigate={navigate} />;
+    }
+
+    if (currentPath === '/terms') {
+      return <TermsPage navigate={navigate} />;
+    }
+
+    if (currentPath === '/privacy') {
+      return <PrivacyPage navigate={navigate} />;
     }
 
     if (currentPath === '/accept-terms') {

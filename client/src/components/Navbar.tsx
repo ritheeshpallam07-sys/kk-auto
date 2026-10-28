@@ -345,6 +345,25 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             </div>
 
+            {/* Legal Links */}
+            <div className="flex items-center justify-center gap-3 py-2 text-[11px] text-[#A1A1AA]">
+              <button
+                type="button"
+                onClick={() => handleNav('/terms')}
+                className="hover:text-[#C6FF3D] transition-colors"
+              >
+                Terms & Conditions
+              </button>
+              <span>•</span>
+              <button
+                type="button"
+                onClick={() => handleNav('/privacy')}
+                className="hover:text-[#C6FF3D] transition-colors"
+              >
+                Privacy Policy
+              </button>
+            </div>
+
           </div>
         </div>
 

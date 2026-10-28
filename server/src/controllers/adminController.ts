@@ -215,6 +215,87 @@ export class AdminController {
     }
   }
 
+  public static async getDeletionRequests(req: Request, res: Response) {
+    try {
+      const requests = await query(
+        `SELECT r.id, r.user_id, r.user_role, r.user_email, r.user_mobile,
+                r.reason, r.status, r.requested_at, r.processed_at, r.admin_notes,
+                u.name as user_name
+         FROM account_deletion_requests r
+         JOIN users u ON u.id = r.user_id
+         ORDER BY r.requested_at DESC`
+      );
+      return res.json({ success: true, data: requests.rows });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async processDeletionRequest(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { action, adminNotes } = req.body; // action: 'APPROVE' | 'REJECT'
+
+      if (!action || !['APPROVE', 'REJECT'].includes(action)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Action is required and must be either APPROVE or REJECT.'
+        });
+      }
+
+      const reqRes = await query(
+        `SELECT id, user_id, user_role, status
+         FROM account_deletion_requests
+         WHERE id = $1
+         LIMIT 1`,
+        [id]
+      );
+
+      if (reqRes.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Account deletion request not found.' });
+      }
+
+      const delReq = reqRes.rows[0];
+      const newStatus = action === 'APPROVE' ? 'PROCESSED' : 'REJECTED';
+
+      await query(
+        `UPDATE account_deletion_requests
+         SET status = $1, processed_at = CURRENT_TIMESTAMP, admin_notes = $2
+         WHERE id = $3`,
+        [newStatus, adminNotes || null, id]
+      );
+
+      if (action === 'APPROVE') {
+        // Deactivate user account so they can no longer log in or access protected features
+        await query(
+          `UPDATE users
+           SET status = 'DEACTIVATED', updated_at = CURRENT_TIMESTAMP
+           WHERE id = $1`,
+          [delReq.user_id]
+        );
+
+        // If driver, take offline and suspend approval
+        if (delReq.user_role === 'driver') {
+          await query(
+            `UPDATE drivers
+             SET availability_status = 'offline', approval_status = 'SUSPENDED', updated_at = CURRENT_TIMESTAMP
+             WHERE user_id = $1`,
+            [delReq.user_id]
+          );
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: action === 'APPROVE'
+          ? 'Account deletion request approved. The user account has been deactivated.'
+          : 'Account deletion request rejected.'
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
   /**
    * Get fixed route fare rates
    */

@@ -10,5 +10,8 @@ router.post('/login', AuthController.login);
 router.post('/logout', AuthController.logout);
 router.get('/me', authenticateToken, AuthController.getMe);
 router.post('/accept-terms', authenticateToken, AuthController.acceptTerms);
+router.get('/deletion-request', authenticateToken, AuthController.getDeletionRequest);
+router.post('/deletion-request', authenticateToken, AuthController.requestAccountDeletion);
+router.delete('/deletion-request', authenticateToken, AuthController.cancelAccountDeletion);
 
 export default router;
