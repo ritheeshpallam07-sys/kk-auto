@@ -4,6 +4,7 @@ export interface ApiResponse<T = any> {
   message?: string;
   data?: T;
   error?: string;
+  status?: number;
 }
 
 export interface User {
@@ -244,7 +245,11 @@ export interface RatingRecord {
   booking_reference?: string;
 }
 
-async function request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+async function request<T>(
+  endpoint: string,
+  options: RequestInit = {},
+  timeoutMs: number = 10000
+): Promise<ApiResponse<T>> {
   const token = localStorage.getItem('kk_token');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -255,21 +260,47 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
     const res = await fetch(`${API_BASE}${endpoint}`, {
-  ...options,
-  headers,
-  cache: 'no-store'
-});
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Something went wrong');
+      ...options,
+      headers,
+      cache: 'no-store',
+      signal: options.signal || controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    let data: any = {};
+    const text = await res.text();
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { error: text || 'Server returned invalid response' };
+      }
     }
-    return data;
+
+    if (!res.ok) {
+      return {
+        success: false,
+        status: res.status,
+        error: data.error || (res.status === 401 ? 'Session expired' : 'Request failed')
+      };
+    }
+
+    return {
+      ...data,
+      status: res.status
+    };
   } catch (err: any) {
+    clearTimeout(timeoutId);
+    const isTimeout = err.name === 'AbortError';
     return {
       success: false,
-      error: err.message || 'Network error'
+      status: 0,
+      error: isTimeout ? 'Connection timed out. Please check your internet.' : (err.message || 'Network error')
     };
   }
 }

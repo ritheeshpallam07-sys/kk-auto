@@ -45,6 +45,7 @@ export const App: React.FC = () => {
   const navigate = (path: string) => {
     window.history.pushState({}, '', path);
     setCurrentPath(path.split('?')[0]);
+    window.dispatchEvent(new Event('popstate'));
     window.scrollTo(0, 0);
   };
 
@@ -277,7 +278,7 @@ export const App: React.FC = () => {
 
         {/* Footer (hidden on Owner console and Book Auto screens) */}
         {!isOwnerRoute && !isBookingRoute && (
-          <Footer navigate={navigate} />
+          <Footer navigate={navigate} currentPath={currentPath} />
         )}
       </div>
     </AuthProvider>

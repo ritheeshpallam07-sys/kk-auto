@@ -23,6 +23,8 @@ interface AuthContextType {
   }>;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  sessionError: string | null;
+  retrySession: () => Promise<void>;
   isCustomer: boolean;
   isDriver: boolean;
   isAdmin: boolean;
@@ -34,28 +36,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('kk_token'));
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const isCheckingRef = React.useRef(false);
 
-  useEffect(() => {
-    async function loadUser() {
-      const storedToken = localStorage.getItem('kk_token');
-      if (storedToken) {
-        const res = await api.auth.me();
-        if (res.success && res.data) {
-          setUser(res.data);
-        } else {
-          // Token invalid or expired
-          localStorage.removeItem('kk_token');
-          setToken(null);
-          setUser(null);
-        }
+  const checkSession = async () => {
+    const storedToken = localStorage.getItem('kk_token');
+    if (!storedToken) {
+      setUser(null);
+      setToken(null);
+      setSessionError(null);
+      setIsLoading(false);
+      return;
+    }
+
+    if (isCheckingRef.current) return;
+    isCheckingRef.current = true;
+    setIsLoading(true);
+
+    try {
+      const res = await api.auth.me();
+      if (res.success && res.data) {
+        setUser(res.data);
+        setToken(storedToken);
+        setSessionError(null);
+      } else if (res.status === 401 || res.status === 403) {
+        // Token invalid, expired, or deactivated by admin - clean logout
+        localStorage.removeItem('kk_token');
+        setToken(null);
+        setUser(null);
+        setSessionError(null);
+      } else {
+        // Network failure, timeout, or 5xx server issue - preserve token and show retryable state
+        setSessionError(res.error || 'Server temporarily unreachable. Please check connection and retry.');
       }
+    } catch (err: any) {
+      setSessionError(err.message || 'Connection error');
+    } finally {
+      isCheckingRef.current = false;
       setIsLoading(false);
     }
-    loadUser();
+  };
+
+  useEffect(() => {
+    checkSession();
   }, []);
 
   const login = async (identifier: string, pass: string) => {
     setIsLoading(true);
+    setSessionError(null);
     const res = await api.auth.login(identifier, pass);
     setIsLoading(false);
 
@@ -120,6 +148,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('kk_token');
     setToken(null);
     setUser(null);
+    setSessionError(null);
   };
 
   const refreshUser = async () => {
@@ -127,7 +156,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (res.success && res.data) {
       setUser(res.data);
-    } else {
+      setSessionError(null);
+    } else if (res.status === 401 || res.status === 403) {
       logout();
     }
   };
@@ -185,6 +215,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         register,
         logout,
         refreshUser,
+        sessionError,
+        retrySession: checkSession,
         isCustomer,
         isDriver,
         isAdmin

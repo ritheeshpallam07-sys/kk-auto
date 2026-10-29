@@ -16,6 +16,8 @@ import {
   Info,
   ChevronRight,
   ExternalLink,
+  Settings,
+  History,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -61,14 +63,34 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="flex items-center gap-2">
               {/* Desktop quick shortcuts */}
               <div className="hidden sm:flex items-center gap-1.5 mr-2">
-                <button
-                  type="button"
-                  onClick={() => handleNav('/book')}
-                  className="px-3.5 py-1.5 rounded-xl bg-[#202023] hover:bg-[#303034] text-xs font-bold text-white border border-[#303034] flex items-center gap-1.5 transition-colors"
-                >
-                  <Car className="w-3.5 h-3.5 text-[#C6FF3D]" />
-                  <span>Book Auto</span>
-                </button>
+                {user?.role === 'driver' ? (
+                  <button
+                    type="button"
+                    onClick={() => handleNav('/driver')}
+                    className="px-3.5 py-1.5 rounded-xl bg-[#202023] hover:bg-[#303034] text-xs font-bold text-white border border-[#303034] flex items-center gap-1.5 transition-colors"
+                  >
+                    <span>🛺</span>
+                    <span>Driver Console</span>
+                  </button>
+                ) : user?.role === 'admin' ? (
+                  <button
+                    type="button"
+                    onClick={() => handleNav('/owner/dashboard')}
+                    className="px-3.5 py-1.5 rounded-xl bg-[#202023] hover:bg-[#303034] text-xs font-bold text-white border border-[#303034] flex items-center gap-1.5 transition-colors"
+                  >
+                    <span>🛡️</span>
+                    <span>Owner Console</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleNav('/book')}
+                    className="px-3.5 py-1.5 rounded-xl bg-[#202023] hover:bg-[#303034] text-xs font-bold text-white border border-[#303034] flex items-center gap-1.5 transition-colors"
+                  >
+                    <Car className="w-3.5 h-3.5 text-[#C6FF3D]" />
+                    <span>Book Auto</span>
+                  </button>
+                )}
               </div>
 
               {/* Hamburger Menu Toggle Button */}
@@ -158,51 +180,35 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Scrollable Drawer Body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
 
-          {/* Quick Navigation Links */}
+          {/* Navigation Links by Role */}
           <div className="space-y-1">
             <p className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA] px-2 mb-1">
-              Actions
+              Menu
             </p>
 
-            <button
-              type="button"
-              onClick={() => handleNav('/book')}
-              className="w-full p-3 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] hover:border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-[#202023] group-hover:bg-[#C6FF3D]/10 text-[#C6FF3D] flex items-center justify-center">
-                  <Car className="w-4 h-4" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-white">Book Auto</p>
-                  <p className="text-[10px] text-[#A1A1AA]">Point-to-point fixed pricing</p>
-                </div>
-              </div>
-              <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleNav('/dashboard?tab=trips')}
-              className="w-full p-3 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] hover:border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-[#202023] group-hover:bg-[#C6FF3D]/10 text-[#C6FF3D] flex items-center justify-center">
-                  <Compass className="w-4 h-4" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-white">Plan a Trip</p>
-                  <p className="text-[10px] text-[#A1A1AA]">Outstation car bookings</p>
-                </div>
-              </div>
-              <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
-            </button>
-
-            {user && (
+            {/* DRIVER MENU */}
+            {isDriver ? (
               <>
                 <button
                   type="button"
-                  onClick={() => handleNav('/my-rides')}
+                  onClick={() => handleNav('/driver')}
+                  className="w-full p-3 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] hover:border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-[#202023] group-hover:bg-[#C6FF3D]/10 text-[#C6FF3D] flex items-center justify-center">
+                      🛺
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">Driver Dashboard</p>
+                      <p className="text-[10px] text-[#A1A1AA]">Live dispatches & earnings</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleNav('/driver?tab=history')}
                   className="w-full p-3 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] hover:border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
                 >
                   <div className="flex items-center gap-3">
@@ -210,11 +216,48 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <Clock className="w-4 h-4" />
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-white">My Rides</p>
-                      <p className="text-[10px] text-[#A1A1AA]">History & active rides</p>
+                      <p className="text-xs font-bold text-white">Complete Ride History</p>
+                      <p className="text-[10px] text-[#A1A1AA]">Past fares & ride records</p>
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleNav('/driver?tab=settings')}
+                  className="w-full p-3 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] hover:border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-[#202023] group-hover:bg-[#C6FF3D]/10 text-[#C6FF3D] flex items-center justify-center">
+                      <Settings className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">Account Settings</p>
+                      <p className="text-[10px] text-[#A1A1AA]">Profile, UPI & vehicle details</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
+                </button>
+              </>
+            ) : isAdmin ? (
+              /* ADMIN MENU */
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleNav('/owner/dashboard')}
+                  className="w-full p-3 rounded-2xl bg-[#C6FF3D]/10 border border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-[#C6FF3D] text-[#0B0B0D] flex items-center justify-center">
+                      🛡️
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">Owner Console</p>
+                      <p className="text-[10px] text-[#C6FF3D]">Operations & routes</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-[#C6FF3D]" />
                 </button>
 
                 <button
@@ -228,50 +271,87 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </div>
                     <div>
                       <p className="text-xs font-bold text-white">My Profile</p>
-                      <p className="text-[10px] text-[#A1A1AA]">Account & settings</p>
+                      <p className="text-[10px] text-[#A1A1AA]">Admin account & settings</p>
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
                 </button>
               </>
-            )}
+            ) : (
+              /* CUSTOMER / PUBLIC MENU */
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleNav('/book')}
+                  className="w-full p-3 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] hover:border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-[#202023] group-hover:bg-[#C6FF3D]/10 text-[#C6FF3D] flex items-center justify-center">
+                      <Car className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">Book Auto</p>
+                      <p className="text-[10px] text-[#A1A1AA]">Point-to-point fixed pricing</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
+                </button>
 
-            {isDriver && (
-              <button
-                type="button"
-                onClick={() => handleNav('/driver')}
-                className="w-full p-3 rounded-2xl bg-[#C6FF3D]/10 border border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-[#C6FF3D] text-[#0B0B0D] flex items-center justify-center">
-                    🛺
+                <button
+                  type="button"
+                  onClick={() => handleNav('/dashboard?tab=trips')}
+                  className="w-full p-3 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] hover:border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-[#202023] group-hover:bg-[#C6FF3D]/10 text-[#C6FF3D] flex items-center justify-center">
+                      <Compass className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">Plan a Trip</p>
+                      <p className="text-[10px] text-[#A1A1AA]">Outstation car bookings</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-bold text-white">Driver Console</p>
-                    <p className="text-[10px] text-[#C6FF3D]">Manage rides & earnings</p>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-[#C6FF3D]" />
-              </button>
-            )}
+                  <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
+                </button>
 
-            {isAdmin && (
-              <button
-                type="button"
-                onClick={() => handleNav('/owner/dashboard')}
-                className="w-full p-3 rounded-2xl bg-[#C6FF3D]/10 border border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-[#C6FF3D] text-[#0B0B0D] flex items-center justify-center">
-                    🛡️
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-white">Owner Console</p>
-                    <p className="text-[10px] text-[#C6FF3D]">Operations & routes</p>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-[#C6FF3D]" />
-              </button>
+                {user && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleNav('/my-rides')}
+                      className="w-full p-3 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] hover:border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-[#202023] group-hover:bg-[#C6FF3D]/10 text-[#C6FF3D] flex items-center justify-center">
+                          <Clock className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-white">My Rides</p>
+                          <p className="text-[10px] text-[#A1A1AA]">History & active rides</p>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleNav('/profile')}
+                      className="w-full p-3 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] hover:border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-[#202023] group-hover:bg-[#C6FF3D]/10 text-[#C6FF3D] flex items-center justify-center">
+                          <User className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-white">My Profile</p>
+                          <p className="text-[10px] text-[#A1A1AA]">Account & settings</p>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
+                    </button>
+                  </>
+                )}
+              </>
             )}
           </div>
 
@@ -304,48 +384,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </ul>
             </div>
 
-            {/* Services */}
-            <div className="bg-[#171719] rounded-2xl border border-[#303034] p-3.5 space-y-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-white">
-                <Car className="w-4 h-4 text-[#C6FF3D]" />
-                <span>Services</span>
-              </div>
-              <p className="text-[11px] text-[#A1A1AA]">
-                • <strong className="text-white">City Auto:</strong> Daily point-to-point auto rides across town.<br />
-                • <strong className="text-white">Plan a Trip:</strong> Outstation cars and tourist packages with Cashfree payments.
-              </p>
-            </div>
-
-            {/* Support & Contact */}
-            <div className="bg-[#171719] rounded-2xl border border-[#303034] p-3.5 space-y-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-white">
-                <Phone className="w-4 h-4 text-[#C6FF3D]" />
-                <span>Support & Helpdesk</span>
-              </div>
-              <p className="text-[11px] text-[#A1A1AA] leading-relaxed">
-                Need immediate ride help or special booking assistance?
-              </p>
-              <div className="flex items-center gap-2 pt-1">
-                <a
-                  href="tel:919876543210"
-                  className="px-3 py-1.5 rounded-xl bg-[#202023] hover:bg-[#303034] border border-[#303034] text-[11px] font-bold text-[#C6FF3D] flex items-center gap-1.5 transition-colors"
-                >
-                  <Phone className="w-3 h-3" />
-                  <span>Call Support</span>
-                </a>
-                <a
-                  href="https://wa.me/919876543210"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-1.5 rounded-xl bg-[#202023] hover:bg-[#303034] border border-[#303034] text-[11px] font-bold text-white flex items-center gap-1.5 transition-colors"
-                >
-                  <span>WhatsApp</span>
-                  <ExternalLink className="w-3 h-3 text-[#A1A1AA]" />
-                </a>
-              </div>
-            </div>
-
-            {/* Legal Links */}
+            {/* Legal Links (Always Preserved) */}
             <div className="flex items-center justify-center gap-3 py-2 text-[11px] text-[#A1A1AA]">
               <button
                 type="button"

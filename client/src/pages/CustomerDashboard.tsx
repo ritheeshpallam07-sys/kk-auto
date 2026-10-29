@@ -156,7 +156,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
               <span>Clik2Go Commute</span>
             </div>
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight">
-              Where to, {user?.name ? user.name.split(' ')[0] : 'Rider'}?
+              Where to, Rider?
             </h1>
             <p className="text-xs sm:text-sm text-[#A1A1AA] mt-1">
               Select an option below to get moving
