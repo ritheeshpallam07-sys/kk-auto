@@ -3111,6 +3111,174 @@ async function runTests() {
     process.env.NODE_ENV = origNodeEnv14;
   }
 
+  // --- TEST SUITE 15: Server-Side JWT Logout & Token Revocation ---
+  console.log('\n--- TEST SUITE 15: Server-Side JWT Logout & Token Revocation ---');
+
+  // Create test user for Suite 15
+  const suite15Email = `revocation_user_${Date.now()}@clik2go.in`;
+  const suite15Mobile = `9${Math.floor(100000000 + Math.random() * 900000000)}`;
+  const suite15Res = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status, created_at, updated_at)
+     VALUES ('Revocation User', $1, $2, 'hash', 'customer', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+     RETURNING id`,
+    [suite15Email, suite15Mobile]
+  );
+  const suite15UserId = suite15Res.rows[0].id;
+  const userSuite15: AuthUser = {
+    id: suite15UserId,
+    name: 'Revocation User',
+    email: suite15Email,
+    mobile: suite15Mobile,
+    role: 'customer'
+  };
+
+  // Helper to run authenticateToken
+  async function testAuthMiddleware(token: string): Promise<{ status: number; body: any; nextCalled: boolean }> {
+    let status = 200;
+    let body: any = null;
+    let nextCalled = false;
+    const req = {
+      headers: { authorization: `Bearer ${token}` }
+    } as any;
+    const res = {
+      status(code: number) { status = code; return this; },
+      json(data: any) { body = data; return this; }
+    } as any;
+    await authenticateToken(req, res, () => { nextCalled = true; });
+    return { status, body, nextCalled };
+  }
+
+  // Helper to run AuthController.logout
+  async function testLogout(token?: string): Promise<{ status: number; body: any }> {
+    let status = 200;
+    let body: any = null;
+    const req = {
+      headers: token ? { authorization: `Bearer ${token}` } : {}
+    } as any;
+    const res = {
+      status(code: number) { status = code; return this; },
+      json(data: any) { body = data; return this; }
+    } as any;
+    await AuthController.logout(req, res);
+    return { status, body };
+  }
+
+  // 15.1 Token is valid before logout
+  const token1 = AuthService.generateToken(userSuite15);
+  const authBeforeLogout = await testAuthMiddleware(token1);
+  assert.strictEqual(authBeforeLogout.nextCalled, true, 'Token must be valid and call next() before logout');
+  assert.strictEqual(authBeforeLogout.status, 200);
+  console.log('✅ PASS 15.1: Token is valid and authenticated prior to logout');
+
+  // 15.2 POST /api/auth/logout revokes token; subsequent request returns HTTP 403
+  const logoutRes1 = await testLogout(token1);
+  assert.strictEqual(logoutRes1.status, 200);
+  assert.strictEqual(logoutRes1.body.success, true);
+
+  const authAfterLogout = await testAuthMiddleware(token1);
+  assert.strictEqual(authAfterLogout.nextCalled, false, 'Revoked token must NOT proceed to next()');
+  assert.strictEqual(authAfterLogout.status, 403, 'Revoked token must return HTTP 403');
+  assert.match(authAfterLogout.body.error, /invalid or expired session/i);
+  console.log('✅ PASS 15.2: POST /api/auth/logout revokes token immediately (HTTP 403)');
+
+  // 15.3 Repeated logout is idempotent
+  const repeatedLogoutRes = await testLogout(token1);
+  assert.strictEqual(repeatedLogoutRes.status, 200);
+  assert.strictEqual(repeatedLogoutRes.body.success, true);
+  console.log('✅ PASS 15.3: Repeated logout is idempotent (HTTP 200)');
+
+  // 15.4 Multi-device session isolation: Revoking Device A token does NOT revoke Device B token
+  const tokenDeviceA = AuthService.generateToken(userSuite15);
+  const tokenDeviceB = AuthService.generateToken(userSuite15);
+
+  // Both tokens start valid
+  const devABefore = await testAuthMiddleware(tokenDeviceA);
+  const devBBefore = await testAuthMiddleware(tokenDeviceB);
+  assert.strictEqual(devABefore.nextCalled, true);
+  assert.strictEqual(devBBefore.nextCalled, true);
+
+  // Logout Device A only
+  await testLogout(tokenDeviceA);
+
+  // Device A is revoked, Device B remains active
+  const devAAfter = await testAuthMiddleware(tokenDeviceA);
+  const devBAfter = await testAuthMiddleware(tokenDeviceB);
+  assert.strictEqual(devAAfter.status, 403, 'Device A token must be revoked');
+  assert.strictEqual(devBAfter.nextCalled, true, 'Device B token must remain valid');
+  assert.strictEqual(devBAfter.status, 200, 'Device B must not be affected by Device A logout');
+  console.log('✅ PASS 15.4: Multi-device isolation: revoking token A preserves token B for same user');
+
+  // 15.5 Revoked admin token immediately blocked from admin APIs
+  const adminToken = AuthService.generateToken(userAdmin);
+  const adminBefore = await testAuthMiddleware(adminToken);
+  assert.strictEqual(adminBefore.nextCalled, true);
+
+  await testLogout(adminToken);
+  const adminAfter = await testAuthMiddleware(adminToken);
+  assert.strictEqual(adminAfter.status, 403, 'Revoked admin token must be rejected with 403');
+  console.log('✅ PASS 15.5: Revoking admin token immediately blocks admin access');
+
+  // 15.6 Deactivated user accounts remain blocked even if token is not revoked
+  const deactUserSuite15: AuthUser = {
+    id: deactUserId,
+    name: 'Deactivated User',
+    email: deactEmail,
+    mobile: deactMobile,
+    role: 'customer'
+  };
+  const freshDeactToken = AuthService.generateToken(deactUserSuite15);
+  const deactAuth = await testAuthMiddleware(freshDeactToken);
+  assert.strictEqual(deactAuth.status, 403);
+  assert.match(deactAuth.body.error, /deactivated/i);
+  console.log('✅ PASS 15.6: Deactivated user accounts remain strictly blocked with deactivation notice');
+
+  // 15.7 Legacy token without jti can be revoked using SHA-256 fallback
+  const legacySecret = getJwtSecret();
+  // Sign legacy token WITHOUT jti claim
+  const legacyToken = jwt.sign(
+    {
+      id: userSuite15.id,
+      name: userSuite15.name,
+      email: userSuite15.email,
+      mobile: userSuite15.mobile,
+      role: userSuite15.role
+    },
+    legacySecret,
+    { expiresIn: '7d', algorithm: JWT_ALGORITHM }
+  );
+
+  const legacyBefore = await testAuthMiddleware(legacyToken);
+  assert.strictEqual(legacyBefore.nextCalled, true, 'Legacy token without jti is valid initially');
+
+  await testLogout(legacyToken);
+  const legacyAfter = await testAuthMiddleware(legacyToken);
+  assert.strictEqual(legacyAfter.status, 403, 'Legacy token must be revoked using SHA-256 fallback');
+  assert.match(legacyAfter.body.error, /invalid or expired session/i);
+  console.log('✅ PASS 15.7: Legacy token without jti revoked via SHA-256 fallback');
+
+  // 15.8 cleanExpiredRevokedTokens() deletes expired records and preserves active ones
+  // Insert an expired revoked token directly
+  const expiredIdentifier = 'expired_test_token_identifier_123';
+  await query(
+    `INSERT INTO revoked_tokens (token_identifier, user_id, expires_at)
+     VALUES ($1, $2, CURRENT_TIMESTAMP - INTERVAL '1 hour')
+     ON CONFLICT (token_identifier) DO NOTHING`,
+    [expiredIdentifier, suite15UserId]
+  );
+
+  const cleanedCount = await AuthService.cleanExpiredRevokedTokens();
+  assert.ok(cleanedCount >= 1, 'Expired revoked token must be cleaned up');
+
+  // Verify expired row is gone
+  const checkExpired = await query('SELECT 1 FROM revoked_tokens WHERE token_identifier = $1', [expiredIdentifier]);
+  assert.strictEqual(checkExpired.rows.length, 0, 'Expired revoked token record must be deleted');
+
+  // Verify active revoked token (from token1) is STILL present
+  const token1Identifier = (jwt.decode(token1) as any).jti;
+  const checkActive = await query('SELECT 1 FROM revoked_tokens WHERE token_identifier = $1', [token1Identifier]);
+  assert.strictEqual(checkActive.rows.length, 1, 'Active unexpired revoked token must be preserved');
+  console.log('✅ PASS 15.8: cleanExpiredRevokedTokens cleans expired records and preserves active ones');
+
   console.log('\n=========================================');
   console.log('🎉 ALL SECURITY PHASE 1 TESTS PASSED!');
   console.log('=========================================\n');

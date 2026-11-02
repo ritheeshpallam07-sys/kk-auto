@@ -21,7 +21,7 @@ interface AuthContextType {
     requiresVerification?: boolean;
     email?: string;
   }>;
-  logout: () => void;
+  logout: () => void | Promise<void>;
   refreshUser: () => Promise<void>;
   sessionError: string | null;
   retrySession: () => Promise<void>;
@@ -144,11 +144,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(false);
   }
 };
-  const logout = () => {
-    localStorage.removeItem('kk_token');
-    setToken(null);
-    setUser(null);
-    setSessionError(null);
+  const logout = async () => {
+    try {
+      await api.auth.logout();
+    } catch (err) {
+      console.error('[Auth] Server logout notification failed:', err);
+    } finally {
+      localStorage.removeItem('kk_token');
+      setToken(null);
+      setUser(null);
+      setSessionError(null);
+    }
   };
 
   const refreshUser = async () => {

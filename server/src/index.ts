@@ -10,6 +10,7 @@ dotenv.config();
 import { initDb } from './config/db';
 import { initPlatformDefaults } from './db/seed';
 import { getJwtSecret } from './middleware/auth';
+import { AuthService } from './services/authService';
 import authRoutes from './routes/authRoutes';
 import bookingRoutes from './routes/bookingRoutes';
 import driverRoutes from './routes/driverRoutes';
@@ -214,6 +215,17 @@ export async function startServer() {
 
     await initDb();
     await initPlatformDefaults();
+
+    // Initial background cleanup of expired rate limits and revoked tokens
+    await AuthService.cleanupExpiredRateLimits().catch(() => {});
+    await AuthService.cleanExpiredRevokedTokens().catch(() => {});
+
+    // Periodic cleanup (every 24 hours)
+    const cleanupInterval = setInterval(() => {
+      AuthService.cleanupExpiredRateLimits().catch(() => {});
+      AuthService.cleanExpiredRevokedTokens().catch(() => {});
+    }, 24 * 60 * 60 * 1000);
+    cleanupInterval.unref();
 
     app.listen(PORT, () => {
       console.log(`=========================================`);

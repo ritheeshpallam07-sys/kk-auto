@@ -424,7 +424,20 @@ export class AuthController {
   }
 
   public static async logout(req: Request, res: Response) {
-    return res.json({ success: true, message: 'Logged out successfully.' });
+    try {
+      const authHeader = req.headers['authorization'];
+      const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+
+      if (token) {
+        await AuthService.revokeToken(token);
+      }
+
+      return res.json({ success: true, message: 'Logged out successfully.' });
+    } catch (err: any) {
+      // Logout must be idempotent and resilient: always return success to the client
+      console.error('[Auth] Error during token revocation on logout:', err?.message || err);
+      return res.json({ success: true, message: 'Logged out successfully.' });
+    }
   }
 
   public static async getDeletionRequest(req: Request, res: Response) {

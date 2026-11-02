@@ -34,8 +34,81 @@ export class AuthService {
         terms_version: user.terms_version || null
       },
       secret,
-      { expiresIn: '7d', algorithm: JWT_ALGORITHM }
+      { expiresIn: '7d', algorithm: JWT_ALGORITHM, jwtid: crypto.randomUUID() }
     );
+  }
+
+  /**
+   * Resolves a unique token identifier for tracking and revocation.
+   * Prioritizes standard JWT 'jti' claim; falls back to SHA-256 hash for legacy tokens without jti.
+   * Raw JWT is NEVER stored in database or logs.
+   */
+  public static resolveTokenIdentifier(decoded: any, rawToken: string): string {
+    if (decoded && decoded.jti && typeof decoded.jti === 'string') {
+      return decoded.jti;
+    }
+    return crypto.createHash('sha256').update(rawToken).digest('hex');
+  }
+
+  /**
+   * Revokes a specific JWT token on logout.
+   * Decodes/verifies the token, calculates expiry, and persists the token identifier.
+   * Idempotent: repeated calls for the same token succeed without error.
+   * Never stores the raw JWT in the database.
+   */
+  public static async revokeToken(token: string): Promise<boolean> {
+    try {
+      if (!token || typeof token !== 'string') {
+        return false;
+      }
+
+      const secret = getJwtSecret();
+      // Verify signature using pinned algorithm; ignoreExpiration ensures tokens close to or past expiry can still be revoked
+      const decoded = jwt.verify(token, secret, {
+        algorithms: [JWT_ALGORITHM],
+        ignoreExpiration: true
+      }) as any;
+
+      if (!decoded || !decoded.id) {
+        return false;
+      }
+
+      const tokenIdentifier = this.resolveTokenIdentifier(decoded, token);
+      const expiresAt = decoded.exp
+        ? new Date(decoded.exp * 1000)
+        : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+      await query(
+        `INSERT INTO revoked_tokens (token_identifier, user_id, expires_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (token_identifier) DO NOTHING`,
+        [tokenIdentifier, decoded.id, expiresAt]
+      );
+
+      return true;
+    } catch (err: any) {
+      // Invalid signature or unparseable token: cannot be authenticated anyway
+      return false;
+    }
+  }
+
+  /**
+   * Cleans up expired revoked tokens from the database.
+   * Safely removes records where expires_at < CURRENT_TIMESTAMP.
+   * Active revoked tokens are retained until their natural expiration.
+   */
+  public static async cleanExpiredRevokedTokens(): Promise<number> {
+    try {
+      const result = await query(
+        `DELETE FROM revoked_tokens
+         WHERE expires_at < CURRENT_TIMESTAMP
+         RETURNING token_identifier`
+      );
+      return result.rowCount ?? result.rows.length;
+    } catch (err: any) {
+      console.error('Revoked tokens cleanup failed:', err?.message || 'Database error');
+      return 0;
+    }
   }
 
   /**

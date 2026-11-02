@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { query } from '../config/db';
 
 export const JWT_ALGORITHM: jwt.Algorithm = 'HS256';
@@ -36,6 +37,8 @@ export interface AuthUser {
   terms_version?: string | null;
   terms_accepted_at?: string | null;
   status?: string | null;
+  jti?: string;
+  exp?: number;
 }
 
 declare global {
@@ -60,16 +63,32 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
       algorithms: [JWT_ALGORITHM]
     }) as AuthUser;
 
-    // Check if user is active in database (rejects deactivated accounts immediately)
+    const tokenIdentifier = decoded.jti || crypto.createHash('sha256').update(token).digest('hex');
+
+    // Single unified query: checks user active status AND token revocation status in one roundtrip
     const userRes = await query(
-      `SELECT status FROM users WHERE id = $1 LIMIT 1`,
-      [decoded.id]
+      `SELECT u.status,
+              EXISTS(
+                SELECT 1 FROM revoked_tokens rt
+                WHERE rt.token_identifier = $2
+              ) AS is_revoked
+       FROM users u
+       WHERE u.id = $1
+       LIMIT 1`,
+      [decoded.id, tokenIdentifier]
     );
 
     if (userRes.rows.length === 0 || userRes.rows[0].status === 'DEACTIVATED') {
       return res.status(403).json({
         success: false,
         error: 'Your account has been deactivated. Access is denied. Contact support@clik2go.in.'
+      });
+    }
+
+    if (Boolean(userRes.rows[0].is_revoked)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Invalid or expired session. Please log in again.'
       });
     }
 
