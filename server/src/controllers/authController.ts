@@ -1,12 +1,25 @@
 import { Request, Response } from 'express';
+import crypto from 'crypto';
 import { AuthService } from '../services/authService';
 import { query, withTransaction } from '../config/db';
+
+/**
+ * Safely resolves the connecting client IP behind reverse proxies (Cloudflare + Render).
+ * Prioritizes verified CF-Connecting-IP if present and valid; otherwise relies on Express req.ip (trust proxy: 1).
+ */
+export function getClientIp(req: Request): string {
+  const cfIp = req.headers['cf-connecting-ip'];
+  if (typeof cfIp === 'string' && cfIp.trim() && /^[a-fA-F0-9:.]+$/.test(cfIp.trim())) {
+    return cfIp.trim();
+  }
+  return req.ip || req.socket?.remoteAddress || '127.0.0.1';
+}
 
 export class AuthController {
   public static async register(req: Request, res: Response) {
     try {
       // CONF-07-D: IP-based rate limiting on registration requests
-      const clientIp = req.ip || req.socket?.remoteAddress || '127.0.0.1';
+      const clientIp = getClientIp(req);
       const ipLimit = await AuthService.checkRateLimit(`reg_ip_${clientIp}`, 15, 900);
       if (!ipLimit.allowed) {
         if (ipLimit.isServiceUnavailable) {
@@ -78,7 +91,7 @@ export class AuthController {
   public static async verifyEmailOtp(req: Request, res: Response) {
     try {
       // CONF-07-D: IP-based rate limiting on OTP verification attempts
-      const clientIp = req.ip || req.socket?.remoteAddress || '127.0.0.1';
+      const clientIp = getClientIp(req);
       const ipLimit = await AuthService.checkRateLimit(`verify_ip_${clientIp}`, 30, 900);
       if (!ipLimit.allowed) {
         if (ipLimit.isServiceUnavailable) {
@@ -311,7 +324,7 @@ export class AuthController {
   public static async login(req: Request, res: Response) {
     try {
       // CONF-07-D: IP-based rate limiting on login attempts
-      const clientIp = req.ip || req.socket?.remoteAddress || '127.0.0.1';
+      const clientIp = getClientIp(req);
       const ipLimit = await AuthService.checkRateLimit(`login_ip_${clientIp}`, 15, 900);
       if (!ipLimit.allowed) {
         if (ipLimit.isServiceUnavailable) {
@@ -330,6 +343,30 @@ export class AuthController {
       }
 
       const { identifier, password } = req.body;
+      const cleanIdentifier = typeof identifier === 'string' ? identifier.trim().toLowerCase() : '';
+
+      // Account-level brute-force protection (5 attempts per 15 minutes)
+      // SHA-256 digest prevents sensitive identifier exposure in rate-limit storage
+      if (cleanIdentifier) {
+        const idHash = crypto.createHash('sha256').update(cleanIdentifier).digest('hex').slice(0, 32);
+        const accLimit = await AuthService.checkRateLimit(`login_acc_${idHash}`, 5, 900);
+        if (!accLimit.allowed) {
+          if (accLimit.isServiceUnavailable) {
+            return res.status(503).json({
+              success: false,
+              error: 'Authentication service temporarily unavailable. Please try again later.'
+            });
+          }
+          if (typeof res.set === 'function') {
+            res.set('Retry-After', String(accLimit.retryAfterSeconds));
+          }
+          return res.status(429).json({
+            success: false,
+            error: 'Too many failed login attempts for this account. Please try again later.'
+          });
+        }
+      }
+
       const result = await AuthService.login(identifier, password);
 
       return res.status(200).json({

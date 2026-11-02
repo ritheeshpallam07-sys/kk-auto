@@ -262,7 +262,10 @@ export class DriverController {
   public static async acceptBooking(req: Request, res: Response) {
   try {
     const user = req.user!;
-    const { id } = req.params;
+    const bookingId = Number(req.params.id);
+    if (!Number.isInteger(bookingId) || bookingId <= 0) {
+      return res.status(400).json({ success: false, error: 'Valid booking ID is required.' });
+    }
 
     // Get driver record
     const driverRes = await query(
@@ -317,7 +320,7 @@ export class DriverController {
          AND status = 'Searching for Auto'
          AND driver_id IS NULL
        RETURNING *`,
-      [driver.id, id]
+      [driver.id, bookingId]
     );
 
     // Another driver already accepted it

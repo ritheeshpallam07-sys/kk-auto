@@ -18,6 +18,8 @@ import paymentRoutes from './routes/paymentRoutes';
 import tripBookingRoutes from './routes/tripBookingRoutes';
 
 const app = express();
+// Enable single-hop reverse proxy trust for Render / Cloudflare architecture
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 
 /**

@@ -5,7 +5,7 @@ import { PaymentService } from '../src/services/paymentService';
 import jwt from 'jsonwebtoken';
 import { getJwtSecret, JWT_ALGORITHM, DEFAULT_DEV_JWT_SECRET, authenticateToken, AuthUser } from '../src/middleware/auth';
 import { AuthService } from '../src/services/authService';
-import { AuthController } from '../src/controllers/authController';
+import { AuthController, getClientIp } from '../src/controllers/authController';
 import { EmailService } from '../src/services/emailService';
 import { DriverController } from '../src/controllers/driverController';
 import { BookingController } from '../src/controllers/bookingController';
@@ -2793,6 +2793,90 @@ async function runTests() {
     process.env.NODE_ENV = origEnv;
   }
   console.log('✅ PASS 11.8: Production error middleware sanitizes 500 error messages');
+
+  // =========================================================================
+  // TEST SUITE 12: Reverse Proxy & Account-Level Rate Limiting
+  // =========================================================================
+  console.log('\n--- 12. Testing Reverse Proxy & Account-Level Rate Limiting ---');
+
+  // 12.1 Verify Express trust proxy configuration
+  assert.strictEqual(app.get('trust proxy'), 1, 'Express trust proxy must be configured to 1 for Render single-hop reverse proxy');
+  console.log('✅ PASS 12.1: Express single-hop reverse proxy trust configured (trust proxy: 1)');
+
+  // 12.2 Verify getClientIp extraction and Cloudflare header handling
+  const reqWithCf = {
+    headers: { 'cf-connecting-ip': '198.51.100.42' },
+    ip: '10.0.0.1'
+  } as unknown as Request;
+  assert.strictEqual(getClientIp(reqWithCf), '198.51.100.42', 'getClientIp must resolve valid cf-connecting-ip header');
+
+  const reqWithBadCf = {
+    headers: { 'cf-connecting-ip': '<script>alert(1)</script>' },
+    ip: '203.0.113.88'
+  } as unknown as Request;
+  assert.strictEqual(getClientIp(reqWithBadCf), '203.0.113.88', 'getClientIp must fall back to req.ip on malformed cf-connecting-ip header');
+
+  const reqPlain = {
+    headers: {},
+    ip: '203.0.113.99'
+  } as unknown as Request;
+  assert.strictEqual(getClientIp(reqPlain), '203.0.113.99', 'getClientIp must resolve req.ip when cf-connecting-ip is not present');
+  console.log('✅ PASS 12.2: Safe client IP extraction verifies CF-Connecting-IP and falls back to req.ip');
+
+  // 12.3 Account-level login rate limiting (5 attempts per 15 minutes)
+  const targetEmail = `target_victim_${Date.now()}@clik2go.in`;
+  let lastAccLoginRes: any = null;
+  // Send 6 login attempts with different IPs against the SAME target account
+  for (let i = 0; i < 6; i++) {
+    const diffIp = `198.51.100.${i + 1}`;
+    const ctx = createMockContext(undefined, {}, { identifier: targetEmail, password: 'wrong' }, diffIp);
+    await AuthController.login(ctx.req, ctx.res);
+    lastAccLoginRes = ctx.getResponse();
+  }
+  assert.strictEqual(lastAccLoginRes.statusCode, 429, '6th attempt against same account must return HTTP 429');
+  assert.strictEqual(lastAccLoginRes.responseData.error, 'Too many failed login attempts for this account. Please try again later.');
+  assert.ok(lastAccLoginRes.headersSet['Retry-After'], 'Retry-After header must be present on account lockout');
+  console.log('✅ PASS 12.3: Account-level brute-force rate limit stops multi-IP credential attacks (HTTP 429)');
+
+  // 12.4 Multiple users behind same proxy IP: User B is NOT locked out when User A reaches account lockout
+  const sharedProxyIp = '203.0.113.250';
+  const userAEmail = `user_a_${Date.now()}@clik2go.in`;
+  const userBEmail = `user_b_${Date.now()}@clik2go.in`;
+
+  // User A exhausts account limit (5 attempts from shared IP)
+  for (let i = 0; i < 5; i++) {
+    const ctxA = createMockContext(undefined, {}, { identifier: userAEmail, password: 'wrong' }, sharedProxyIp);
+    await AuthController.login(ctxA.req, ctxA.res);
+  }
+  const ctxA6 = createMockContext(undefined, {}, { identifier: userAEmail, password: 'wrong' }, sharedProxyIp);
+  await AuthController.login(ctxA6.req, ctxA6.res);
+  assert.strictEqual(ctxA6.getResponse().statusCode, 429, 'User A is locked out');
+
+  // User B attempts login from the SAME shared proxy IP - must NOT be locked out by User A's account lockout!
+  const ctxB = createMockContext(undefined, {}, { identifier: userBEmail, password: 'wrong' }, sharedProxyIp);
+  await AuthController.login(ctxB.req, ctxB.res);
+  assert.strictEqual(ctxB.getResponse().statusCode, 401, 'User B must not be locked out by User A account limit');
+  assert.strictEqual(ctxB.getResponse().responseData.error, 'Invalid email/mobile or password.');
+  console.log('✅ PASS 12.4: Legitimate users behind shared proxy are not locked out by individual account lockouts');
+
+  // 12.5 Parameter validation in DriverController.acceptBooking
+  const ctxBadAccept = createMockContext(userDriverA, { id: 'invalid-alpha' });
+  await DriverController.acceptBooking(ctxBadAccept.req, ctxBadAccept.res);
+  assert.strictEqual(ctxBadAccept.getResponse().statusCode, 400);
+  assert.strictEqual(ctxBadAccept.getResponse().responseData.error, 'Valid booking ID is required.');
+  console.log('✅ PASS 12.5: DriverController.acceptBooking rejects non-integer booking ID with HTTP 400');
+
+  // 12.6 Parameter validation in TripBookingController updateByOwner & createPaymentOrder
+  const ctxBadOwnerUpdate = createMockContext(userCustA, { id: 'bad-id' });
+  await TripBookingController.updateByOwner(ctxBadOwnerUpdate.req, ctxBadOwnerUpdate.res);
+  assert.strictEqual(ctxBadOwnerUpdate.getResponse().statusCode, 400);
+  assert.strictEqual(ctxBadOwnerUpdate.getResponse().responseData.error, 'Valid trip booking ID is required.');
+
+  const ctxBadPaymentOrder = createMockContext(userCustA, { id: '-5' });
+  await TripBookingController.createPaymentOrder(ctxBadPaymentOrder.req, ctxBadPaymentOrder.res);
+  assert.strictEqual(ctxBadPaymentOrder.getResponse().statusCode, 400);
+  assert.strictEqual(ctxBadPaymentOrder.getResponse().responseData.error, 'Valid trip booking ID is required.');
+  console.log('✅ PASS 12.6: TripBookingController routes reject non-integer IDs with HTTP 400');
 
   console.log('\n=========================================');
   console.log('🎉 ALL SECURITY PHASE 1 TESTS PASSED!');

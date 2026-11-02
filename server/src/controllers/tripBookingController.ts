@@ -113,8 +113,8 @@ export class TripBookingController {
   public static async updateByOwner(req: Request, res: Response) {
     try {
       const tripId = Number(req.params.id);
-      if (isNaN(tripId)) {
-        return res.status(400).json({ success: false, error: 'Invalid trip booking ID.' });
+      if (!Number.isInteger(tripId) || tripId <= 0) {
+        return res.status(400).json({ success: false, error: 'Valid trip booking ID is required.' });
       }
 
       const { quotedPrice, status } = req.body;
@@ -145,8 +145,8 @@ export class TripBookingController {
       const tripId = Number(req.params.id);
       const { paymentMethod } = req.body;
 
-      if (isNaN(tripId)) {
-        return res.status(400).json({ success: false, error: 'Invalid trip booking ID.' });
+      if (!Number.isInteger(tripId) || tripId <= 0) {
+        return res.status(400).json({ success: false, error: 'Valid trip booking ID is required.' });
       }
 
       const result = await TripBookingService.createTripPaymentOrder(
