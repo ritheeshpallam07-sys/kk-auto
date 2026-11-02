@@ -1,8 +1,16 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { query } from '../config/db';
-import { AuthUser, JWT_SECRET } from '../middleware/auth';
+import { AuthUser, JWT_SECRET, JWT_ALGORITHM, getJwtSecret } from '../middleware/auth';
 import { EmailService } from './emailService';
+
+export interface RateLimitResult {
+  allowed: boolean;
+  remaining: number;
+  retryAfterSeconds: number;
+  isServiceUnavailable?: boolean;
+}
 
 export class AuthService {
   public static async hashPassword(password: string): Promise<string> {
@@ -15,6 +23,7 @@ export class AuthService {
   }
 
   public static generateToken(user: AuthUser): string {
+    const secret = getJwtSecret();
     return jwt.sign(
       {
         id: user.id,
@@ -24,92 +33,228 @@ export class AuthService {
         role: user.role,
         terms_version: user.terms_version || null
       },
-      JWT_SECRET,
-      { expiresIn: '7d' }
+      secret,
+      { expiresIn: '7d', algorithm: JWT_ALGORITHM }
     );
   }
-  private static generateOtp(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-public static async login(
-  identifier: string,
-  password: string
-): Promise<{ user: AuthUser; token: string }> {
-  const normalizedIdentifier = identifier.trim().toLowerCase();
 
-  const result = await query(
-    `SELECT id, name, email, mobile, password_hash, role, terms_version, terms_accepted_at,
-            COALESCE(status, 'ACTIVE') as status
-     FROM users
-     WHERE LOWER(email) = $1 OR mobile = $2
-     LIMIT 1`,
-    [normalizedIdentifier, identifier.trim()]
-  );
-
-  if (result.rows.length === 0) {
-    throw new Error('Invalid email/mobile or password.');
+  /**
+   * Cryptographically secure 6-digit OTP generation using Node.js crypto.randomInt (CONF-07-A)
+   */
+  public static generateOtp(): string {
+    return crypto.randomInt(100000, 1000000).toString();
   }
 
-  const row = result.rows[0];
-
-  if (row.status === 'DEACTIVATED') {
-    throw new Error('This account has been deactivated. For inquiries or reactivation, please contact support@clik2go.in.');
+  /**
+   * Keyed HMAC-SHA256 OTP hashing using server-side secret (CONF-07-C)
+   */
+  public static hashOtp(otp: string, email: string): string {
+    const secret = process.env.OTP_SECRET || getJwtSecret();
+    return crypto
+      .createHmac('sha256', secret)
+      .update(`${email.trim().toLowerCase()}:${otp.trim()}`)
+      .digest('hex');
   }
 
-  const isValid = await this.comparePassword(password, row.password_hash);
+  /**
+   * Timing-safe OTP hash comparison with backward-compatibility for legacy records (CONF-07-C)
+   */
+  public static verifyOtpHash(
+    candidateOtp: string,
+    email: string,
+    storedHash?: string | null,
+    legacyPlaintextOtp?: string | null
+  ): boolean {
+    const normOtp = String(candidateOtp || '').trim();
+    const normEmail = String(email || '').trim().toLowerCase();
 
-  if (!isValid) {
-    throw new Error('Invalid email/mobile or password.');
+    if (!/^\d{6}$/.test(normOtp)) {
+      return false;
+    }
+
+    if (storedHash) {
+      const candidateHash = this.hashOtp(normOtp, normEmail);
+      const bufA = Buffer.from(candidateHash, 'hex');
+      const bufB = Buffer.from(storedHash, 'hex');
+      if (bufA.length !== bufB.length) {
+        return false;
+      }
+      return crypto.timingSafeEqual(bufA, bufB);
+    }
+
+    // Backward-compatibility: verify against legacy plaintext OTP if storedHash is null
+    if (legacyPlaintextOtp && legacyPlaintextOtp !== '******') {
+      const bufA = Buffer.from(normOtp, 'utf8');
+      const bufB = Buffer.from(legacyPlaintextOtp, 'utf8');
+      if (bufA.length !== bufB.length) {
+        return false;
+      }
+      return crypto.timingSafeEqual(bufA, bufB);
+    }
+
+    return false;
   }
 
-  const user: AuthUser = {
-    id: row.id,
-    name: row.name,
-    email: row.email,
-    mobile: row.mobile,
-    role: row.role,
-    terms_version: row.terms_version || null,
-    terms_accepted_at: row.terms_accepted_at ? new Date(row.terms_accepted_at).toISOString() : null,
-    status: row.status
-  };
+  /**
+   * Persistent shared rate limiter in PostgreSQL (CONF-07-D)
+   */
+  public static async checkRateLimit(
+    key: string,
+    maxPoints: number,
+    windowSeconds: number
+  ): Promise<RateLimitResult> {
+    try {
+      const expireAt = new Date(Date.now() + windowSeconds * 1000);
+      const res = await query<{ points: number; ttl: number }>(
+        `INSERT INTO rate_limits (key, points, expire_at)
+         VALUES ($1, 1, $2)
+         ON CONFLICT (key) DO UPDATE
+         SET points = CASE
+           WHEN rate_limits.expire_at <= CURRENT_TIMESTAMP THEN 1
+           ELSE rate_limits.points + 1
+         END,
+         expire_at = CASE
+           WHEN rate_limits.expire_at <= CURRENT_TIMESTAMP THEN $2
+           ELSE rate_limits.expire_at
+         END
+         RETURNING points, GREATEST(1, EXTRACT(EPOCH FROM (expire_at - CURRENT_TIMESTAMP))::INTEGER) as ttl`,
+        [key, expireAt]
+      );
 
-  return {
-    user,
-    token: this.generateToken(user)
-  };
-}
+      const row = res.rows[0];
+      const points = row ? Number(row.points) : 1;
+      const ttl = row ? Number(row.ttl) : windowSeconds;
 
-public static async getUserById(id: number): Promise<AuthUser | null> {
-  const result = await query(
-    `SELECT id, name, email, mobile, role, terms_version, terms_accepted_at,
-            COALESCE(status, 'ACTIVE') as status
-     FROM users
-     WHERE id = $1
-     LIMIT 1`,
-    [id]
-  );
+      if (points > maxPoints) {
+        return {
+          allowed: false,
+          remaining: 0,
+          retryAfterSeconds: ttl
+        };
+      }
 
-  if (result.rows.length === 0) {
-    return null;
+      return {
+        allowed: true,
+        remaining: Math.max(0, maxPoints - points),
+        retryAfterSeconds: 0
+      };
+    } catch (err: any) {
+      // Security: Do NOT log key, IP addresses, secrets, or sensitive request data
+      console.error('Rate limit persistent store unavailable:', err?.message || 'Database error');
+      return {
+        allowed: false,
+        remaining: 0,
+        retryAfterSeconds: 0,
+        isServiceUnavailable: true
+      };
+    }
   }
 
-  const row = result.rows[0];
-
-  if (row.status === 'DEACTIVATED') {
-    return null;
+  /**
+   * Bounded batch cleanup of expired rate limit entries (CONF-07 Reliability).
+   * Safely deletes expired rows without long database locks.
+   * Does not affect active rate limits.
+   */
+  public static async cleanupExpiredRateLimits(batchSize: number = 1000): Promise<number> {
+    try {
+      const safeBatchSize = Math.max(1, Math.min(batchSize, 10000));
+      const result = await query(
+        `DELETE FROM rate_limits
+         WHERE key IN (
+           SELECT key
+           FROM rate_limits
+           WHERE expire_at < CURRENT_TIMESTAMP
+           LIMIT $1
+         )
+         RETURNING key`,
+        [safeBatchSize]
+      );
+      return result.rowCount ?? result.rows.length;
+    } catch (err: any) {
+      console.error('Rate limit cleanup failed:', err?.message || 'Database error');
+      return 0;
+    }
   }
 
-  return {
-    id: row.id,
-    name: row.name,
-    email: row.email,
-    mobile: row.mobile,
-    role: row.role,
-    terms_version: row.terms_version || null,
-    terms_accepted_at: row.terms_accepted_at ? new Date(row.terms_accepted_at).toISOString() : null,
-    status: row.status
-  };
-}
+  public static async login(
+    identifier: string,
+    password: string
+  ): Promise<{ user: AuthUser; token: string }> {
+    const normalizedIdentifier = identifier.trim().toLowerCase();
+
+    const result = await query(
+      `SELECT id, name, email, mobile, password_hash, role, terms_version, terms_accepted_at,
+              COALESCE(status, 'ACTIVE') as status
+       FROM users
+       WHERE LOWER(email) = $1 OR mobile = $2
+       LIMIT 1`,
+      [normalizedIdentifier, identifier.trim()]
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error('Invalid email/mobile or password.');
+    }
+
+    const row = result.rows[0];
+
+    if (row.status === 'DEACTIVATED') {
+      throw new Error('This account has been deactivated. For inquiries or reactivation, please contact support@clik2go.in.');
+    }
+
+    const isValid = await this.comparePassword(password, row.password_hash);
+
+    if (!isValid) {
+      throw new Error('Invalid email/mobile or password.');
+    }
+
+    const user: AuthUser = {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      mobile: row.mobile,
+      role: row.role,
+      terms_version: row.terms_version || null,
+      terms_accepted_at: row.terms_accepted_at ? new Date(row.terms_accepted_at).toISOString() : null,
+      status: row.status
+    };
+
+    return {
+      user,
+      token: this.generateToken(user)
+    };
+  }
+
+  public static async getUserById(id: number): Promise<AuthUser | null> {
+    const result = await query(
+      `SELECT id, name, email, mobile, role, terms_version, terms_accepted_at,
+              COALESCE(status, 'ACTIVE') as status
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    const row = result.rows[0];
+
+    if (row.status === 'DEACTIVATED') {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      mobile: row.mobile,
+      role: row.role,
+      terms_version: row.terms_version || null,
+      terms_accepted_at: row.terms_accepted_at ? new Date(row.terms_accepted_at).toISOString() : null,
+      status: row.status
+    };
+  }
 
   public static async register(data: {
     name: string;
@@ -155,39 +300,84 @@ public static async getUserById(id: number): Promise<AuthUser | null> {
       }
     }
 
-    const emailCheck = await query(
-      'SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1',
+    // CONF-07-F: Check if user already exists in users table.
+    // If account exists, return standard verification prompt without disclosing account existence.
+    const userCheck = await query(
+      'SELECT id FROM users WHERE LOWER(email) = $1 OR mobile = $2 LIMIT 1',
+      [email, mobile]
+    );
+    if (userCheck.rows.length > 0) {
+      return { requiresVerification: true, email };
+    }
+
+    // CONF-07-D & CONF-07-E: Check existing pending verification record
+    const pendingCheck = await query(
+      'SELECT * FROM email_verifications WHERE email = $1 LIMIT 1',
       [email]
     );
-    if (emailCheck.rows.length > 0) {
-      throw new Error('An account with this email address already exists.');
+
+    if (pendingCheck.rows.length > 0) {
+      const existing = pendingCheck.rows[0];
+      const isUnexpired = new Date(existing.expires_at).getTime() > Date.now();
+
+      if (isUnexpired) {
+        // Enforce 60-second cooldown between OTP sends for the same email
+        const lastSent = new Date(existing.last_sent_at || existing.created_at).getTime();
+        const elapsedMs = Date.now() - lastSent;
+        if (elapsedMs < 60_000) {
+          const retrySec = Math.max(1, Math.ceil((60_000 - elapsedMs) / 1000));
+          const err: any = new Error(`Please wait ${retrySec} seconds before requesting another verification code.`);
+          err.statusCode = 429;
+          err.retryAfterSeconds = retrySec;
+          throw err;
+        }
+
+        // CONF-07-E: Legitimate resend for active pending verification.
+        // Refresh OTP hash, expiry, reset attempts, and update last_sent_at.
+        // STRICTLY PRESERVE original pending credentials (password_hash, mobile, name, payout details).
+        const newOtp = this.generateOtp();
+        const newHash = this.hashOtp(newOtp, email);
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+        await query(
+          `UPDATE email_verifications
+           SET otp_hash = $1,
+               otp = NULL,
+               expires_at = $2,
+               attempts = 0,
+               last_sent_at = CURRENT_TIMESTAMP
+           WHERE email = $3`,
+          [newHash, expiresAt, email]
+        );
+
+        await EmailService.sendVerificationOtp(email, newOtp);
+        return { requiresVerification: true, email };
+      }
     }
 
-    const mobileCheck = await query(
-      'SELECT id FROM users WHERE mobile = $1 LIMIT 1',
-      [mobile]
-    );
-    if (mobileCheck.rows.length > 0) {
-      throw new Error('An account with this mobile number already exists.');
-    }
-
+    // Initial registration or previous verification has expired: create fresh verification
     const passwordHash = await this.hashPassword(data.password);
     const otp = this.generateOtp();
+    const otpHmac = this.hashOtp(otp, email);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    const isInitial = pendingCheck.rows.length === 0;
 
     await query(
       `INSERT INTO email_verifications (
-        email, name, mobile, password_hash, role, otp, expires_at,
+        email, name, mobile, password_hash, role, otp_hash, otp, expires_at,
         auto_number, auto_model, license_number,
-        payout_upi, payout_bank_account, payout_ifsc, created_at
+        payout_upi, payout_bank_account, payout_ifsc,
+        attempts, last_sent_at, created_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)
+      VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, $8, $9, $10, $11, $12, $13, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       ON CONFLICT (email) DO UPDATE SET
         name = EXCLUDED.name,
         mobile = EXCLUDED.mobile,
         password_hash = EXCLUDED.password_hash,
         role = EXCLUDED.role,
-        otp = EXCLUDED.otp,
+        otp_hash = EXCLUDED.otp_hash,
+        otp = NULL,
         expires_at = EXCLUDED.expires_at,
         auto_number = EXCLUDED.auto_number,
         auto_model = EXCLUDED.auto_model,
@@ -195,13 +385,21 @@ public static async getUserById(id: number): Promise<AuthUser | null> {
         payout_upi = EXCLUDED.payout_upi,
         payout_bank_account = EXCLUDED.payout_bank_account,
         payout_ifsc = EXCLUDED.payout_ifsc,
+        attempts = 0,
+        last_sent_at = CURRENT_TIMESTAMP,
         created_at = CURRENT_TIMESTAMP`,
       [
-        email, name, mobile, passwordHash, role, otp, expiresAt,
+        email,
+        name,
+        mobile,
+        passwordHash,
+        role,
+        otpHmac,
+        expiresAt,
         role === 'driver' ? data.autoNumber!.trim().toUpperCase() : null,
         role === 'driver' ? data.autoModel?.trim() || 'Bajaj Compact 4S' : null,
         role === 'driver'
-          ? data.licenseNumber?.trim() || ('DL-AUTO-' + Math.floor(100000 + Math.random() * 900000))
+          ? data.licenseNumber?.trim() || ('DL-AUTO-' + crypto.randomInt(100000, 1000000))
           : null,
         role === 'driver' ? data.payoutUpi?.trim() || null : null,
         role === 'driver' ? data.payoutBankAccount?.trim() || null : null,
@@ -212,7 +410,9 @@ public static async getUserById(id: number): Promise<AuthUser | null> {
     try {
       await EmailService.sendVerificationOtp(email, otp);
     } catch (error) {
-      await query('DELETE FROM email_verifications WHERE email = $1', [email]);
+      if (isInitial) {
+        await query('DELETE FROM email_verifications WHERE email = $1', [email]);
+      }
       throw error;
     }
 

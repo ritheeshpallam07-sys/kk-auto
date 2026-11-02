@@ -323,6 +323,11 @@ const insertResult = await query(
 
   /**
    * Get single booking details by ID or reference
+   * Strictly enforces role-based access control (CONF-04):
+   * - Customer: can access only their own bookings (booking.customer_id matches user.id)
+   * - Driver: resolves driver record; can access only bookings assigned to them (booking.driver_id matches driver.id)
+   * - Admin: full access
+   * Denies access with HTTP 403 and zero booking/customer PII for unauthorized requests.
    */
   public static async getBookingById(req: Request, res: Response) {
     try {
@@ -359,7 +364,26 @@ const insertResult = await query(
 
       const booking = resBooking.rows[0];
 
-      if (user.role === 'customer' && booking.customer_id !== user.id) {
+      // Authorization Check (CONF-04)
+      if (user.role === 'customer') {
+        if (Number(booking.customer_id) !== Number(user.id)) {
+          return res.status(403).json({ success: false, error: 'Unauthorized to view this booking.' });
+        }
+      } else if (user.role === 'driver') {
+        const driverRes = await query(
+          `SELECT id FROM drivers WHERE user_id = $1 LIMIT 1`,
+          [user.id]
+        );
+        if (driverRes.rows.length === 0) {
+          return res.status(403).json({ success: false, error: 'Unauthorized to view this booking.' });
+        }
+        const driverId = driverRes.rows[0].id;
+        if (!booking.driver_id || Number(booking.driver_id) !== Number(driverId)) {
+          return res.status(403).json({ success: false, error: 'Unauthorized to view this booking.' });
+        }
+      } else if (user.role === 'admin') {
+        // Administrative access explicitly verified
+      } else {
         return res.status(403).json({ success: false, error: 'Unauthorized to view this booking.' });
       }
 
@@ -371,6 +395,15 @@ const insertResult = await query(
 
   /**
    * Cancel booking
+   */
+  /**
+   * Cancel booking
+   * Enforces strict role-based authorization:
+   * - Customer: can cancel only their own bookings in 'Searching for Auto', 'Driver Assigned', or 'Driver Arriving'.
+   * - Driver: can cancel only bookings assigned to their resolved driver ID in 'Driver Assigned' or 'Driver Arriving'.
+   * - Admin: authorized to cancel cancellable bookings.
+   * Disallows cancelling 'Ride Started', 'Ride Completed', or already 'Cancelled' bookings.
+   * Atomically updates booking status and assigned driver availability in a single transactional query.
    */
   public static async cancelBooking(req: Request, res: Response) {
     try {
@@ -390,29 +423,155 @@ const insertResult = await query(
       }
 
       const booking = resBooking.rows[0];
+      let driverId: number | null = null;
 
-      if (user.role === 'customer' && booking.customer_id !== user.id) {
-        return res.status(403).json({ success: false, error: 'Unauthorized to cancel this booking.' });
+      // 1. Authorization checks
+      if (user.role === 'customer') {
+        if (Number(booking.customer_id) !== Number(user.id)) {
+          return res.status(403).json({ success: false, error: 'Unauthorized to cancel this booking.' });
+        }
+      } else if (user.role === 'driver') {
+        const driverRes = await query(
+          `SELECT id FROM drivers WHERE user_id = $1 LIMIT 1`,
+          [user.id]
+        );
+        if (driverRes.rows.length === 0) {
+          return res.status(403).json({ success: false, error: 'Driver record not found.' });
+        }
+        driverId = driverRes.rows[0].id;
+
+        if (!booking.driver_id) {
+          return res.status(403).json({ success: false, error: 'Unauthorized to cancel an unassigned booking.' });
+        }
+
+        if (Number(booking.driver_id) !== Number(driverId)) {
+          return res.status(403).json({ success: false, error: 'Unauthorized to cancel a booking not assigned to you.' });
+        }
+      } else if (user.role === 'admin') {
+        // Administrative cancellation explicitly verified server-side
+      } else {
+        return res.status(403).json({ success: false, error: 'Unauthorized.' });
+      }
+
+      // 2. Status validation checks
+      if (booking.status === 'Cancelled') {
+        return res.status(400).json({ success: false, error: 'Booking is already cancelled.' });
       }
 
       if (booking.status === 'Ride Completed') {
         return res.status(400).json({ success: false, error: 'Cannot cancel a completed ride.' });
       }
 
-      if (booking.status === 'Cancelled') {
-        return res.status(400).json({ success: false, error: 'Booking is already cancelled.' });
+      if (booking.status === 'Ride Started') {
+        return res.status(400).json({ success: false, error: 'Cannot cancel a ride that is already in progress.' });
       }
 
-      const updatedRes = await query(
-        `UPDATE bookings SET status = 'Cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
-        [booking.id]
-      );
+      const allowedStatuses = ['Searching for Auto', 'Driver Assigned', 'Driver Arriving'];
+      if (!allowedStatuses.includes(booking.status)) {
+        return res.status(400).json({ success: false, error: `Cannot cancel a ride with status "${booking.status}".` });
+      }
 
-      if (booking.driver_id) {
-        await query(
-          `UPDATE drivers SET availability_status = 'available' WHERE id = $1`,
-          [booking.driver_id]
+      // 3. Atomic state update using CTE transaction with embedded authorization predicates:
+      // - Customer: embeds customer_id check directly into the UPDATE WHERE condition.
+      // - Driver: embeds driver_id check directly into the UPDATE WHERE condition.
+      // - Admin: verified server-side role check.
+      // If assignment, ownership, or status changes concurrently, the update affects 0 rows.
+      // Driver availability updates ONLY if the booking was actually cancelled for that specific driver.
+      let updateSql = '';
+      let updateParams: any[] = [];
+
+      if (user.role === 'customer') {
+        updateSql = `
+          WITH cancelled_booking AS (
+            UPDATE bookings
+            SET status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+              AND customer_id = $2
+              AND status IN ('Searching for Auto', 'Driver Assigned', 'Driver Arriving')
+            RETURNING *
+          ),
+          updated_driver AS (
+            UPDATE drivers
+            SET availability_status = 'available', updated_at = CURRENT_TIMESTAMP
+            WHERE id = (SELECT driver_id FROM cancelled_booking WHERE driver_id IS NOT NULL)
+            RETURNING id
+          )
+          SELECT * FROM cancelled_booking`;
+        updateParams = [booking.id, user.id];
+      } else if (user.role === 'driver') {
+        updateSql = `
+          WITH cancelled_booking AS (
+            UPDATE bookings
+            SET status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+              AND driver_id = $2
+              AND status IN ('Driver Assigned', 'Driver Arriving')
+            RETURNING *
+          ),
+          updated_driver AS (
+            UPDATE drivers
+            SET availability_status = 'available', updated_at = CURRENT_TIMESTAMP
+            WHERE id = (SELECT driver_id FROM cancelled_booking WHERE driver_id IS NOT NULL)
+            RETURNING id
+          )
+          SELECT * FROM cancelled_booking`;
+        updateParams = [booking.id, driverId];
+      } else if (user.role === 'admin') {
+        updateSql = `
+          WITH cancelled_booking AS (
+            UPDATE bookings
+            SET status = 'Cancelled', updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+              AND status IN ('Searching for Auto', 'Driver Assigned', 'Driver Arriving')
+            RETURNING *
+          ),
+          updated_driver AS (
+            UPDATE drivers
+            SET availability_status = 'available', updated_at = CURRENT_TIMESTAMP
+            WHERE id = (SELECT driver_id FROM cancelled_booking WHERE driver_id IS NOT NULL)
+            RETURNING id
+          )
+          SELECT * FROM cancelled_booking`;
+        updateParams = [booking.id];
+      }
+
+      const updatedRes = await query(updateSql, updateParams);
+
+      if (updatedRes.rows.length === 0) {
+        // Query the latest database state to provide exact, safe conflict or authorization error
+        const latestRes = await query(
+          `SELECT customer_id, driver_id, status FROM bookings WHERE id = $1 LIMIT 1`,
+          [booking.id]
         );
+        if (latestRes.rows.length === 0) {
+          return res.status(404).json({ success: false, error: 'Booking not found.' });
+        }
+        const current = latestRes.rows[0];
+
+        if (user.role === 'customer' && Number(current.customer_id) !== Number(user.id)) {
+          return res.status(403).json({ success: false, error: 'Unauthorized to cancel this booking.' });
+        }
+
+        if (user.role === 'driver' && Number(current.driver_id) !== Number(driverId)) {
+          return res.status(403).json({ success: false, error: 'Booking assignment changed. Unauthorized to cancel.' });
+        }
+
+        if (current.status === 'Cancelled') {
+          return res.status(400).json({ success: false, error: 'Booking is already cancelled.' });
+        }
+
+        if (current.status === 'Ride Started') {
+          return res.status(400).json({ success: false, error: 'Cannot cancel a ride that is already in progress.' });
+        }
+
+        if (current.status === 'Ride Completed') {
+          return res.status(400).json({ success: false, error: 'Cannot cancel a completed ride.' });
+        }
+
+        return res.status(409).json({
+          success: false,
+          error: `Booking status changed to "${current.status}". Cancellation failed.`
+        });
       }
 
       return res.json({

@@ -356,13 +356,12 @@ export class TripBookingService {
         environment: this.isProductionEnvironment() ? 'production' : 'sandbox'
       };
     } catch (err: any) {
-      console.error(
-        'Cashfree trip order creation failed:',
-        err?.response?.data || err?.message || err
-      );
-      throw new Error(
-        err?.response?.data?.message || err?.message || 'Unable to create payment order.'
-      );
+      const rawStatus = Number(err?.response?.status || err?.status);
+      const status = Number.isInteger(rawStatus) && rawStatus >= 100 && rawStatus <= 599 ? rawStatus : 500;
+      const rawCode = String(err?.response?.data?.code || err?.code || '');
+      const code = /^[A-Z0-9_-]{1,32}$/i.test(rawCode) ? rawCode.toUpperCase() : 'GATEWAY_ERROR';
+      console.error(`Cashfree trip order creation failed (status: ${status}, code: ${code})`);
+      throw new Error('Unable to create payment order. Please try again later.');
     }
   }
 

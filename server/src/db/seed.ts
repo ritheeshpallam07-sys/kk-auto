@@ -1,28 +1,29 @@
 import { query, initDb } from '../config/db';
 import { AuthService } from '../services/authService';
 
-export async function runSeed() {
-  console.log('[Seed] Initializing database schema...');
-  await initDb();
+/**
+ * Essential platform defaults (settings, locations, fixed routes).
+ * Uses strictly ON CONFLICT DO NOTHING to ensure existing custom prices,
+ * commissions, and route statuses are never overwritten.
+ * Safe to execute during every server startup in both production and development.
+ */
+export async function initPlatformDefaults() {
+  console.log('[Bootstrap] Ensuring essential platform defaults exist...');
 
-  // Always ensure platform settings exist
+  // 1. Platform Settings - default fixed commission of 5.0 (preserve existing custom settings)
   await query(
     `INSERT INTO platform_settings (key, value, description, updated_at)
      VALUES ('owner_commission_fixed', '5.0', 'Fixed platform commission retained by owner per completed auto trip', CURRENT_TIMESTAMP)
-     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`
+     ON CONFLICT (key) DO NOTHING`
   );
 
-  console.log('[Seed] Seeding fixed locations...');
+  // 2. Locations - insert missing locations only
   const locations = ['JNTUA', 'Cross', 'Bus Stand', 'Marava'];
   for (const loc of locations) {
     await query('INSERT INTO locations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [loc]);
   }
 
-  console.log('[Seed] Seeding authorized fixed routes...');
-  // Exact 6 routes:
-  // JNTUA -> Cross = ₹20, Cross -> JNTUA = ₹20
-  // JNTUA -> Bus Stand = ₹25, Bus Stand -> JNTUA = ₹25
-  // JNTUA -> Marava = ₹30, Marava -> JNTUA = ₹30
+  // 3. Authorized Fixed Routes - insert missing routes only; preserve existing prices and statuses
   const routes = [
     { from: 'JNTUA', to: 'Cross', fare: 20.0 },
     { from: 'Cross', to: 'JNTUA', fare: 20.0 },
@@ -36,15 +37,30 @@ export async function runSeed() {
     await query(
       `INSERT INTO fare_routes (from_location, to_location, fare, is_active, updated_at)
        VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP)
-       ON CONFLICT (from_location, to_location) DO UPDATE SET fare = EXCLUDED.fare, is_active = TRUE`,
+       ON CONFLICT (from_location, to_location) DO NOTHING`,
       [r.from, r.to, r.fare]
     );
   }
 
-  // Check if users already seeded
-  const existing = await query('SELECT COUNT(*) as count FROM users');
-  const userCount = parseInt(existing.rows[0].count, 10);
-    if (process.env.UPDATE_ADMIN_CREDENTIALS === 'true') {
+  console.log('[Bootstrap] Essential platform defaults verified.');
+}
+
+export async function runSeed() {
+  console.log('[Seed] Initializing database schema...');
+  await initDb();
+  await initPlatformDefaults();
+
+  // Strict production safeguard: Never seed demo accounts, mock rides, or reset credentials in production
+  if (process.env.NODE_ENV === 'production') {
+    console.log('[Seed] Production environment detected: Demo accounts, test data cleaning, and credential resets are strictly disabled.');
+    return;
+  }
+
+  // Guard against destructive flags in production or unless explicitly configured
+  if (process.env.UPDATE_ADMIN_CREDENTIALS === 'true') {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('SECURITY VIOLATION: UPDATE_ADMIN_CREDENTIALS cannot be run in production.');
+    }
     console.log('[Seed] Updating admin credentials...');
 
     const adminHash = await AuthService.hashPassword('@Kumar_00');
@@ -59,7 +75,11 @@ export async function runSeed() {
 
     console.log('[Seed] Admin credentials updated.');
   }
-    if (process.env.CLEAN_TEST_DATA === 'true') {
+
+  if (process.env.CLEAN_TEST_DATA === 'true') {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('SECURITY VIOLATION: CLEAN_TEST_DATA cannot be run in production.');
+    }
     console.log('[Seed] Cleaning test users and dependent test data...');
 
     await query(
@@ -69,6 +89,10 @@ export async function runSeed() {
 
     console.log('[Seed] Test users and dependent test data cleaned.');
   }
+
+  // Check if users already seeded
+  const existing = await query('SELECT COUNT(*) as count FROM users');
+  const userCount = parseInt(existing.rows[0].count, 10);
 
   let adminId: number;
   let driver1Id: number;
@@ -103,7 +127,7 @@ export async function runSeed() {
     availability_status, approval_status, payout_upi, cashfree_vendor_id,
     payout_bank_account, payout_ifsc
   )
-   VALUES ($1, $2, $3, $4, 'available', 'APPROVED', 'ramesh@oksbi', 'KKDRIVER001', '302910482910', 'SBIN0001234') RETURNING id`,
+   VALUES ($1, $2, $3, $4, 'available', 'APPROVED', 'ramesh@oksbi', NULL, '302910482910', 'SBIN0001234') RETURNING id`,
   [d1UserId, 'KA-01-AK-1984', 'Bajaj RE 4S CNG', 'DL-KA-2018-009871']
 );
     driver1Id = d1Res.rows[0].id;
@@ -250,16 +274,6 @@ export async function runSeed() {
       `INSERT INTO ratings (booking_id, customer_id, driver_id, rating, review, created_at)
        VALUES ($1, $2, $3, 5, 'Smooth ride and polite auto driver. Exact fixed fare charged!', NOW() - INTERVAL '2 days')`,
       [b1.rows[0].id, customerId, driver1Id]
-    );
-  } else {
-    // Make sure existing drivers have approval_status and payout details populated
-    await query(
-      `UPDATE drivers SET 
-         approval_status = COALESCE(approval_status, 'APPROVED'),
-         payout_upi = COALESCE(payout_upi, 'ramesh@oksbi'),
-         payout_bank_account = COALESCE(payout_bank_account, '302910482910'),
-         payout_ifsc = COALESCE(payout_ifsc, 'SBIN0001234')
-       WHERE approval_status IS NULL OR payout_upi IS NULL`
     );
   }
 

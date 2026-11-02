@@ -1,6 +1,7 @@
 import { query } from '../config/db';
 import crypto from 'crypto';
 import { Cashfree, CFEnvironment } from 'cashfree-pg';
+import { TripBooking } from './tripBookingService';
 const isProduction =
   process.env.CASHFREE_ENVIRONMENT === 'production' ||
   process.env.CASHFREE_ENV === 'production' ||
@@ -11,12 +12,30 @@ const cashfreeEndpoint = isProduction
   ? 'https://api.cashfree.com/pg/orders'
   : 'https://sandbox.cashfree.com/pg/orders';
 
-const cashfree = new Cashfree(
+let cashfree: any = new Cashfree(
   cashfreeEnv,
   process.env.CASHFREE_APP_ID || '',
   process.env.CASHFREE_SECRET_KEY || ''
 );
 cashfree.XApiVersion = '2025-01-01';
+export interface WebhookResult {
+  processed: boolean;
+  payment?: PaymentRecord;
+  trip?: TripBooking;
+}
+
+export class WebhookValidationError extends Error {
+  public readonly isWebhookValidationError = true;
+  public readonly code: string;
+
+  constructor(message: string, code: string = 'WEBHOOK_VALIDATION_FAILED') {
+    super(message);
+    this.name = 'WebhookValidationError';
+    this.code = code;
+    Object.setPrototypeOf(this, WebhookValidationError.prototype);
+  }
+}
+
 export interface PaymentRecord {
   id: number;
   booking_id: number;
@@ -61,6 +80,17 @@ export interface PlatformFinancials {
 }
 
 export class PaymentService {
+  private static cashfreeClient: any = cashfree;
+
+  public static setCashfreeClient(client: any): void {
+    PaymentService.cashfreeClient = client;
+    cashfree = client;
+  }
+
+  public static getCashfreeClient(): any {
+    return PaymentService.cashfreeClient || cashfree;
+  }
+
   /**
    * Retrieves current platform fixed commission per trip from platform_settings
    */
@@ -114,12 +144,6 @@ export class PaymentService {
   }
 
   const booking = bookingRes.rows[0];
-  console.log('PAYMENT AUTH CHECK:', {
-  bookingId,
-  bookingCustomerId: booking.customer_id,
-  loggedInCustomerId: customerId,
-  bookingStatus: booking.status
-});
 
   // Make sure the logged-in customer owns this booking
   if (Number(booking.customer_id) !== Number(customerId)) {
@@ -276,14 +300,6 @@ const driverAmount = Number((totalFare - ownerAmount).toFixed(2));
 };
 
   try {
-    console.log('Cashfree SDK diagnostics:', {
-      apiVersion: cashfree.XApiVersion,
-      environment: isProduction ? 'PRODUCTION' : 'SANDBOX',
-      hasClientId: !!process.env.CASHFREE_APP_ID,
-      clientIdLength: process.env.CASHFREE_APP_ID?.length,
-      hasClientSecret: !!process.env.CASHFREE_SECRET_KEY,
-      clientSecretLength: process.env.CASHFREE_SECRET_KEY?.length
-    });
     const response = await new Promise<any>((resolve, reject) => {
       const https = require('https');
 
@@ -315,11 +331,6 @@ const driverAmount = Number((totalFare - ownerAmount).toFixed(2));
               if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
                 resolve({ data: parsed });
               } else {
-                console.log('Cashfree REST error:', {
-                  status: res.statusCode,
-                  body: parsed
-                });
-
                 reject({
                   response: {
                     data: parsed,
@@ -355,16 +366,13 @@ const driverAmount = Number((totalFare - ownerAmount).toFixed(2));
       environment: isProduction ? 'production' : 'sandbox'
     };
   } catch (err: any) {
-    console.error(
-      'Cashfree order creation failed:',
-      err?.response?.data || err?.message || err
-    );
+    const rawStatus = Number(err?.response?.status || err?.status);
+    const status = Number.isInteger(rawStatus) && rawStatus >= 100 && rawStatus <= 599 ? rawStatus : 500;
+    const rawCode = String(err?.response?.data?.code || err?.code || '');
+    const code = /^[A-Z0-9_-]{1,32}$/i.test(rawCode) ? rawCode.toUpperCase() : 'GATEWAY_ERROR';
+    console.error(`Cashfree order creation failed (status: ${status}, code: ${code})`);
 
-    throw new Error(
-      err?.response?.data?.message ||
-      err?.message ||
-      'Unable to create Cashfree payment order.'
-    );
+    throw new Error('Unable to create Cashfree payment order. Please try again later.');
   }
 }
 
@@ -397,182 +405,365 @@ const driverAmount = Number((totalFare - ownerAmount).toFixed(2));
   /**
    * Webhook processing: verified gateway notifications (Razorpay / Stripe webhook handler)
    */
+  /**
+   * Cashfree webhook handler with timing-safe signature verification
+   * and isolated routing for regular bookings (ORDER_KK_) and trip bookings (TRIP_).
+   */
   public static async handleWebhook(
-  payload: any,
-  signature?: string,
-  timestamp?: string,
-  rawBody?: string
-): Promise<{ processed: boolean; payment?: PaymentRecord }> {
+    payload: any,
+    signature?: string,
+    timestamp?: string,
+    rawBody?: string
+  ): Promise<WebhookResult> {
+    // 1. Signature Verification
+    if (!signature || !timestamp || !rawBody) {
+      throw new WebhookValidationError(
+        'Cashfree webhook signature data is missing.',
+        'MISSING_SIGNATURE_DATA'
+      );
+    }
 
-  // Cashfree webhook signature verification
-  if (!signature || !timestamp || !rawBody) {
-    throw new Error('Cashfree webhook signature data is missing.');
-  }
+    const clientSecret = process.env.CASHFREE_SECRET_KEY;
+    if (!clientSecret) {
+      throw new Error('Cashfree secret key is not configured.');
+    }
 
-  const clientSecret = process.env.CASHFREE_SECRET_KEY;
+    const signatureData = `${timestamp}${rawBody}`;
+    const expectedSignature = crypto
+      .createHmac('sha256', clientSecret)
+      .update(signatureData)
+      .digest('base64');
 
-  if (!clientSecret) {
-    throw new Error('Cashfree secret key is not configured.');
-  }
+    const sigBuffer = Buffer.from(signature, 'utf8');
+    const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
 
-  const signatureData = `${timestamp}${rawBody}`;
+    if (
+      sigBuffer.length !== expectedBuffer.length ||
+      !crypto.timingSafeEqual(sigBuffer, expectedBuffer)
+    ) {
+      throw new WebhookValidationError(
+        'Invalid Cashfree webhook signature.',
+        'INVALID_SIGNATURE'
+      );
+    }
 
-  const expectedSignature = crypto
-    .createHmac('sha256', clientSecret)
-    .update(signatureData)
-    .digest('base64');
+    // 2. Extract Webhook Identifiers
+    const gatewayOrderId =
+      payload?.data?.order?.order_id ||
+      payload?.data?.order?.orderId ||
+      payload?.order_id;
 
-  if (signature !== expectedSignature) {
-    throw new Error('Invalid Cashfree webhook signature.');
-  }
+    const gatewayPaymentId =
+      payload?.data?.payment?.cf_payment_id ||
+      payload?.data?.payment?.payment_id ||
+      payload?.payment_id;
 
-  const gatewayOrderId =
-    payload?.data?.order?.order_id ||
-    payload?.data?.order?.orderId ||
-    payload?.order_id;
+    const webhookStatus =
+      payload?.data?.payment?.payment_status ||
+      payload?.payment_status ||
+      payload?.status;
 
-  const gatewayPaymentId =
-    payload?.data?.payment?.cf_payment_id ||
-    payload?.data?.payment?.payment_id ||
-    payload?.payment_id;
+    if (!gatewayOrderId) {
+      throw new WebhookValidationError(
+        'Cashfree order identifier missing from webhook payload.',
+        'MISSING_ORDER_ID'
+      );
+    }
 
-  const webhookStatus =
-    payload?.data?.payment?.payment_status ||
-    payload?.payment_status ||
-    payload?.status;
+    if (!webhookStatus) {
+      throw new WebhookValidationError(
+        'Cashfree payment status missing from webhook payload.',
+        'MISSING_PAYMENT_STATUS'
+      );
+    }
 
-  if (!gatewayOrderId) {
-    throw new Error('Cashfree order identifier missing from webhook payload.');
-  }
+    if (!gatewayPaymentId) {
+      throw new WebhookValidationError(
+        'Cashfree payment ID missing from webhook.',
+        'MISSING_PAYMENT_ID'
+      );
+    }
 
-  if (!webhookStatus) {
-    throw new Error('Cashfree payment status missing from webhook payload.');
-  }
+    const orderIdStr = String(gatewayOrderId);
 
-  const paymentRes = await query<PaymentRecord>(
-    `SELECT * FROM payments
-     WHERE gateway_order_id = $1
-     LIMIT 1`,
-    [gatewayOrderId]
-  );
+    // 3. Webhook Routing by Order Identifier Prefix
+    if (orderIdStr.startsWith('TRIP_')) {
+      return await this.handleTripWebhook(
+        orderIdStr,
+        String(gatewayPaymentId),
+        payload
+      );
+    }
 
-  if (paymentRes.rows.length === 0) {
-    throw new Error(
-      `No payment record found matching Cashfree order ${gatewayOrderId}`
+    if (orderIdStr.startsWith('ORDER_KK_')) {
+      return await this.handleRegularBookingWebhook(
+        orderIdStr,
+        String(gatewayPaymentId),
+        payload
+      );
+    }
+
+    throw new WebhookValidationError(
+      `Unrecognized order identifier prefix: ${orderIdStr}`,
+      'UNRECOGNIZED_ORDER_PREFIX'
     );
   }
 
-  
-const existingPayment = paymentRes.rows[0];
-
-// Cashfree payment ID lekunte payment ni verify cheyyalem.
-if (!gatewayPaymentId) {
-throw new Error('Cashfree payment ID missing from webhook.');
-}
-
-// Cashfree API nunchi actual payment details fetch cheyyi.
-const cashfreeResponse = await cashfree.PGOrderFetchPayments(
-String(gatewayOrderId)
-);
-
-const cashfreePayments = cashfreeResponse.data || [];
-
-const verifiedPayment = cashfreePayments.find(
-(item) =>
-String(item.cf_payment_id) === String(gatewayPaymentId)
-);
-
-if (!verifiedPayment) {
-throw new Error('Payment ID could not be verified with Cashfree.');
-}
-
-// Order ID match avvali.
-if (String(verifiedPayment.order_id) !== String(gatewayOrderId)) {
-throw new Error('Cashfree order ID mismatch.');
-}
-
-// Expected amount database nunchi teesuko.
-const expectedAmount = Number(
-Number(existingPayment.total_amount).toFixed(2)
-);
-
-const orderAmount = Number(
-Number(verifiedPayment.order_amount).toFixed(2)
-);
-
-const paymentAmount = Number(
-Number(verifiedPayment.payment_amount).toFixed(2)
-);
-
-const currency =
-verifiedPayment.order_currency ||
-verifiedPayment.payment_currency;
-
-// Currency INR undali; order and payment amounts match avvali.
-if (
-currency !== 'INR' ||
-!Number.isFinite(expectedAmount) ||
-!Number.isFinite(orderAmount) ||
-!Number.isFinite(paymentAmount) ||
-orderAmount !== expectedAmount ||
-paymentAmount !== expectedAmount
-) {
-throw new Error(
-'Cashfree payment amount or currency verification failed.'
-);
-}
-
-const normalizedStatus = String(
-verifiedPayment.payment_status || ''
-).toUpperCase();
-
-let paymentStatus: 'COMPLETED' | 'PENDING' | 'FAILED';
-
-if (normalizedStatus === 'SUCCESS') {
-paymentStatus = 'COMPLETED';
-} else if (normalizedStatus === 'PENDING') {
-paymentStatus = 'PENDING';
-} else if (
-['FAILED', 'USER_DROPPED', 'CANCELLED', 'VOID'].includes(
-normalizedStatus
-)
-) {
-paymentStatus = 'FAILED';
-} else {
-return { processed: false, payment: existingPayment };
-}
-
-// Completed payment ni later webhook downgrade cheyyakudadhu.
-if (existingPayment.payment_status === 'COMPLETED') {
-return { processed: true, payment: existingPayment };
-}
-
-const updated = await query<PaymentRecord>(
-`UPDATE payments
-   SET payment_status = $1,
-       gateway_payment_id = COALESCE($2, gateway_payment_id),
-       updated_at = CURRENT_TIMESTAMP
-   WHERE id = $3
-     AND payment_status <> 'COMPLETED'
-   RETURNING *`,
-[
-paymentStatus,
-String(verifiedPayment.cf_payment_id),
-existingPayment.id
-]
-);
-
-return {
-processed: true,
-payment: updated.rows[0] || existingPayment
-};
-}
-
-      /**
-   * Driver confirms direct UPI payment for a completed regular ride.
-   * Does not use Cashfree or marketplace splits.
+  /**
+   * Dedicated Cashfree Trip Payment Reconciliation (CONF-06)
+   * Resolves trip booking by payment_reference and updates trip_bookings.payment_status.
+   * Strictly isolated from regular bookings and payments table.
    */
-  public static async confirmDriverPayment(
+  private static async handleTripWebhook(
+    gatewayOrderId: string,
+    gatewayPaymentId: string,
+    payload: any
+  ): Promise<WebhookResult> {
+    const tripRes = await query<TripBooking>(
+      `SELECT * FROM trip_bookings
+       WHERE payment_reference = $1
+       LIMIT 1`,
+      [gatewayOrderId]
+    );
+
+    if (tripRes.rows.length === 0) {
+      throw new WebhookValidationError(
+        `No trip booking record found matching Cashfree order ${gatewayOrderId}`,
+        'RECORD_NOT_FOUND'
+      );
+    }
+
+    const existingTrip = tripRes.rows[0];
+
+    // Idempotent return: already PAID trips are not re-processed or downgraded
+    if (existingTrip.payment_status === 'PAID') {
+      return { processed: true, trip: existingTrip };
+    }
+
+    const cf = this.getCashfreeClient();
+    const cashfreeResponse = await cf.PGOrderFetchPayments(gatewayOrderId);
+    const cashfreePayments = cashfreeResponse?.data || [];
+
+    const verifiedPayment = cashfreePayments.find(
+      (item: any) => String(item.cf_payment_id) === String(gatewayPaymentId)
+    );
+
+    if (!verifiedPayment) {
+      throw new WebhookValidationError(
+        'Payment ID could not be verified with Cashfree.',
+        'PAYMENT_NOT_VERIFIED'
+      );
+    }
+
+    if (String(verifiedPayment.order_id) !== String(gatewayOrderId)) {
+      throw new WebhookValidationError(
+        'Cashfree order ID mismatch.',
+        'ORDER_ID_MISMATCH'
+      );
+    }
+
+    const expectedAmount = Number(
+      Number(existingTrip.quoted_price || 0).toFixed(2)
+    );
+    const orderAmount = Number(
+      Number(verifiedPayment.order_amount).toFixed(2)
+    );
+    const paymentAmount = Number(
+      Number(verifiedPayment.payment_amount).toFixed(2)
+    );
+
+    const currency =
+      verifiedPayment.order_currency || verifiedPayment.payment_currency;
+
+    if (
+      currency !== 'INR' ||
+      !Number.isFinite(expectedAmount) ||
+      !Number.isFinite(orderAmount) ||
+      !Number.isFinite(paymentAmount) ||
+      expectedAmount <= 0 ||
+      orderAmount !== expectedAmount ||
+      paymentAmount !== expectedAmount
+    ) {
+      throw new WebhookValidationError(
+        'Cashfree trip payment amount or currency verification failed.',
+        'AMOUNT_CURRENCY_MISMATCH'
+      );
+    }
+
+    const normalizedStatus = String(
+      verifiedPayment.payment_status || ''
+    ).toUpperCase();
+
+    if (normalizedStatus === 'SUCCESS') {
+      const paymentMethod =
+        verifiedPayment.payment_group ||
+        verifiedPayment.payment_method ||
+        'ONLINE';
+
+      const updated = await query<TripBooking>(
+        `UPDATE trip_bookings
+         SET payment_status = 'PAID',
+             payment_method = COALESCE($1, payment_method, 'ONLINE'),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2
+           AND payment_status <> 'PAID'
+         RETURNING *`,
+        [paymentMethod, existingTrip.id]
+      );
+
+      return {
+        processed: true,
+        trip: updated.rows[0] || existingTrip
+      };
+    } else if (
+      ['FAILED', 'USER_DROPPED', 'CANCELLED', 'VOID'].includes(
+        normalizedStatus
+      )
+    ) {
+      const updated = await query<TripBooking>(
+        `UPDATE trip_bookings
+         SET payment_status = 'FAILED',
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1
+           AND payment_status <> 'PAID'
+         RETURNING *`,
+        [existingTrip.id]
+      );
+
+      return {
+        processed: true,
+        trip: updated.rows[0] || existingTrip
+      };
+    } else {
+      // Pending or other status: do not mark as PAID
+      return {
+        processed: false,
+        trip: existingTrip
+      };
+    }
+  }
+
+  /**
+   * Cashfree Regular Booking Payment Reconciliation
+   * Updates payments table. Strictly isolated from trip_bookings.
+   */
+  private static async handleRegularBookingWebhook(
+    gatewayOrderId: string,
+    gatewayPaymentId: string,
+    payload: any
+  ): Promise<WebhookResult> {
+    const paymentRes = await query<PaymentRecord>(
+      `SELECT * FROM payments
+       WHERE gateway_order_id = $1
+       LIMIT 1`,
+      [gatewayOrderId]
+    );
+
+    if (paymentRes.rows.length === 0) {
+      throw new WebhookValidationError(
+        `No payment record found matching Cashfree order ${gatewayOrderId}`,
+        'RECORD_NOT_FOUND'
+      );
+    }
+
+    const existingPayment = paymentRes.rows[0];
+
+    // Idempotent return: already COMPLETED payment is not re-processed or downgraded
+    if (existingPayment.payment_status === 'COMPLETED') {
+      return { processed: true, payment: existingPayment };
+    }
+
+    const cf = this.getCashfreeClient();
+    const cashfreeResponse = await cf.PGOrderFetchPayments(gatewayOrderId);
+    const cashfreePayments = cashfreeResponse?.data || [];
+
+    const verifiedPayment = cashfreePayments.find(
+      (item: any) => String(item.cf_payment_id) === String(gatewayPaymentId)
+    );
+
+    if (!verifiedPayment) {
+      throw new WebhookValidationError(
+        'Payment ID could not be verified with Cashfree.',
+        'PAYMENT_NOT_VERIFIED'
+      );
+    }
+
+    if (String(verifiedPayment.order_id) !== String(gatewayOrderId)) {
+      throw new WebhookValidationError(
+        'Cashfree order ID mismatch.',
+        'ORDER_ID_MISMATCH'
+      );
+    }
+
+    const expectedAmount = Number(
+      Number(existingPayment.total_amount).toFixed(2)
+    );
+    const orderAmount = Number(
+      Number(verifiedPayment.order_amount).toFixed(2)
+    );
+    const paymentAmount = Number(
+      Number(verifiedPayment.payment_amount).toFixed(2)
+    );
+
+    const currency =
+      verifiedPayment.order_currency || verifiedPayment.payment_currency;
+
+    if (
+      currency !== 'INR' ||
+      !Number.isFinite(expectedAmount) ||
+      !Number.isFinite(orderAmount) ||
+      !Number.isFinite(paymentAmount) ||
+      orderAmount !== expectedAmount ||
+      paymentAmount !== expectedAmount
+    ) {
+      throw new WebhookValidationError(
+        'Cashfree payment amount or currency verification failed.',
+        'AMOUNT_CURRENCY_MISMATCH'
+      );
+    }
+
+    const normalizedStatus = String(
+      verifiedPayment.payment_status || ''
+    ).toUpperCase();
+
+    let paymentStatus: 'COMPLETED' | 'PENDING' | 'FAILED';
+
+    if (normalizedStatus === 'SUCCESS') {
+      paymentStatus = 'COMPLETED';
+    } else if (normalizedStatus === 'PENDING') {
+      paymentStatus = 'PENDING';
+    } else if (
+      ['FAILED', 'USER_DROPPED', 'CANCELLED', 'VOID'].includes(
+        normalizedStatus
+      )
+    ) {
+      paymentStatus = 'FAILED';
+    } else {
+      return { processed: false, payment: existingPayment };
+    }
+
+    const updated = await query<PaymentRecord>(
+      `UPDATE payments
+         SET payment_status = $1,
+             gateway_payment_id = COALESCE($2, gateway_payment_id),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $3
+           AND payment_status <> 'COMPLETED'
+         RETURNING *`,
+      [
+        paymentStatus,
+        String(verifiedPayment.cf_payment_id),
+        existingPayment.id
+      ]
+    );
+
+    return {
+      processed: true,
+      payment: updated.rows[0] || existingPayment
+    };
+  }
+
+    public static async confirmDriverPayment(
     bookingId: number,
     userId: number
   ): Promise<any> {

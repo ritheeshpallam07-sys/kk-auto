@@ -154,6 +154,14 @@ export interface DriverEarningsSummary {
   payments: PaymentRecord[];
 }
 
+export interface SafeDriver {
+  id: number;
+  name: string;
+  auto_number: string;
+  auto_model: string;
+  availability_status: 'available' | 'offline' | 'on_ride';
+}
+
 export interface DriverProfile {
   id: number;
   user_id: number;
@@ -434,6 +442,7 @@ savePushSubscription: (subscription: {
       method: 'PATCH',
       body: JSON.stringify({ status })
     }),
+    getDirectory: () => request<SafeDriver[]>('/drivers'),
     getEarnings: () => request<DriverEarningsSummary>('/payments/driver/earnings')
   },
   admin: {

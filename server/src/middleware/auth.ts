@@ -2,7 +2,30 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { query } from '../config/db';
 
-export const JWT_SECRET = process.env.JWT_SECRET || 'kk_auto_super_secure_jwt_secret_2025';
+export const JWT_ALGORITHM: jwt.Algorithm = 'HS256';
+export const DEFAULT_DEV_JWT_SECRET = 'kk_auto_super_secure_jwt_secret_2025';
+
+export function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (isProduction) {
+    if (!secret || secret.trim() === '' || secret === DEFAULT_DEV_JWT_SECRET) {
+      throw new Error(
+        'FATAL: JWT_SECRET environment variable is missing, empty, or set to insecure default in production mode.'
+      );
+    }
+    return secret;
+  }
+
+  if (!secret) {
+    return DEFAULT_DEV_JWT_SECRET;
+  }
+
+  return secret;
+}
+
+export const JWT_SECRET = getJwtSecret();
 
 export interface AuthUser {
   id: number;
@@ -32,7 +55,10 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthUser;
+    const secret = getJwtSecret();
+    const decoded = jwt.verify(token, secret, {
+      algorithms: [JWT_ALGORITHM]
+    }) as AuthUser;
 
     // Check if user is active in database (rejects deactivated accounts immediately)
     const userRes = await query(

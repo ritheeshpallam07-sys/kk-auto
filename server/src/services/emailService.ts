@@ -1,12 +1,24 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = new Resend(process.env.RESEND_API_KEY || 're_placeholder_init');
+
+export type EmailOtpSender = (email: string, otp: string) => Promise<void>;
 
 export class EmailService {
+  private static mockSender: EmailOtpSender | null = null;
+
+  public static setEmailSender(sender: EmailOtpSender | null): void {
+    EmailService.mockSender = sender;
+  }
+
   public static async sendVerificationOtp(
     email: string,
     otp: string
   ): Promise<void> {
+    if (EmailService.mockSender) {
+      return EmailService.mockSender(email, otp);
+    }
+
     if (!process.env.RESEND_API_KEY) {
       throw new Error('RESEND_API_KEY is not configured.');
     }

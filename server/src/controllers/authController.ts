@@ -1,10 +1,29 @@
 import { Request, Response } from 'express';
 import { AuthService } from '../services/authService';
-import { query } from '../config/db';
+import { query, withTransaction } from '../config/db';
 
 export class AuthController {
   public static async register(req: Request, res: Response) {
     try {
+      // CONF-07-D: IP-based rate limiting on registration requests
+      const clientIp = req.ip || req.socket?.remoteAddress || '127.0.0.1';
+      const ipLimit = await AuthService.checkRateLimit(`reg_ip_${clientIp}`, 15, 900);
+      if (!ipLimit.allowed) {
+        if (ipLimit.isServiceUnavailable) {
+          return res.status(503).json({
+            success: false,
+            error: 'Authentication service temporarily unavailable. Please try again later.'
+          });
+        }
+        if (typeof res.set === 'function') {
+          res.set('Retry-After', String(ipLimit.retryAfterSeconds));
+        }
+        return res.status(429).json({
+          success: false,
+          error: 'Too many registration requests from this IP. Please try again later.'
+        });
+      }
+
       const {
         name,
         email,
@@ -44,17 +63,39 @@ export class AuthController {
 
       return res.status(201).json({
         success: true,
-        message: role === 'driver' 
-          ? 'Driver account registered successfully. Your profile is pending Owner/Admin verification.'
-          : 'Account created successfully.',
+        message: 'Account registered successfully. If eligible, a verification code has been sent to your email.',
         data: result
       });
     } catch (err: any) {
-      return res.status(400).json({ success: false, error: err.message || 'Registration failed.' });
+      const statusCode = err.statusCode || 400;
+      if (err.retryAfterSeconds && typeof res.set === 'function') {
+        res.set('Retry-After', String(err.retryAfterSeconds));
+      }
+      return res.status(statusCode).json({ success: false, error: err.message || 'Registration failed.' });
     }
   }
+
   public static async verifyEmailOtp(req: Request, res: Response) {
     try {
+      // CONF-07-D: IP-based rate limiting on OTP verification attempts
+      const clientIp = req.ip || req.socket?.remoteAddress || '127.0.0.1';
+      const ipLimit = await AuthService.checkRateLimit(`verify_ip_${clientIp}`, 30, 900);
+      if (!ipLimit.allowed) {
+        if (ipLimit.isServiceUnavailable) {
+          return res.status(503).json({
+            success: false,
+            error: 'Verification service temporarily unavailable. Please try again later.'
+          });
+        }
+        if (typeof res.set === 'function') {
+          res.set('Retry-After', String(ipLimit.retryAfterSeconds));
+        }
+        return res.status(429).json({
+          success: false,
+          error: 'Too many verification attempts from this IP. Please try again later.'
+        });
+      }
+
       const { email, otp } = req.body;
 
       if (!email || !otp) {
@@ -74,120 +115,200 @@ export class AuthController {
         });
       }
 
-      const verificationResult = await query(
-        `SELECT *
-         FROM email_verifications
-         WHERE email = $1
-         LIMIT 1`,
-        [normalizedEmail]
-      );
-
-      if (verificationResult.rows.length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: 'No pending email verification found. Please register again.'
-        });
-      }
-
-      const verification = verificationResult.rows[0];
-
-      if (new Date(verification.expires_at).getTime() < Date.now()) {
-        await query(
-          'DELETE FROM email_verifications WHERE email = $1',
+      // Execute atomic OTP verification, single-use consumption, and account creation inside a transaction
+      const txResult = await withTransaction(async (tx) => {
+        // Revalidate the OTP record inside the transaction
+        const verificationResult = await tx.query(
+          `SELECT *
+           FROM email_verifications
+           WHERE email = $1
+           LIMIT 1`,
           [normalizedEmail]
         );
 
-        return res.status(400).json({
-          success: false,
-          error: 'OTP expired. Please register again.'
-        });
-      }
+        // CONF-07-F: Standardized response to prevent account/verification enumeration
+        if (verificationResult.rows.length === 0) {
+          return {
+            status: 400,
+            error: 'Invalid verification code or code has expired.'
+          };
+        }
 
-      if (verification.otp !== normalizedOtp) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid OTP.'
-        });
-      }
+        const verification = verificationResult.rows[0];
 
-      const existingUser = await query(
-        'SELECT id FROM users WHERE LOWER(email) = $1 OR mobile = $2 LIMIT 1',
-        [normalizedEmail, verification.mobile]
-      );
+        // Reject expired verification
+        if (new Date(verification.expires_at).getTime() < Date.now()) {
+          await tx.query(
+            'DELETE FROM email_verifications WHERE email = $1',
+            [normalizedEmail]
+          );
 
-      if (existingUser.rows.length > 0) {
-        await query(
-          'DELETE FROM email_verifications WHERE email = $1',
-          [normalizedEmail]
-        );
+          return {
+            status: 400,
+            error: 'Invalid verification code or code has expired.'
+          };
+        }
 
-        return res.status(409).json({
-          success: false,
-          error: 'An account with this email or mobile number already exists.'
-        });
-      }
+        // CONF-07-B: Reject if already locked out (5 or more attempts)
+        if (verification.attempts >= 5) {
+          await tx.query(
+            'DELETE FROM email_verifications WHERE email = $1',
+            [normalizedEmail]
+          );
 
-      const userResult = await query(
-        `INSERT INTO users (
-          name, email, mobile, password_hash, role, created_at, updated_at
-        )
-        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        RETURNING id, name, email, mobile, role`,
-        [
-          verification.name,
+          return {
+            status: 429,
+            error: 'Too many invalid attempts. Verification code has been invalidated. Please register again.'
+          };
+        }
+
+        // CONF-07-C: Verify candidate OTP against stored HMAC-SHA256 hash or legacy plaintext
+        const isMatch = AuthService.verifyOtpHash(
+          normalizedOtp,
           normalizedEmail,
-          verification.mobile,
-          verification.password_hash,
-          verification.role
-        ]
-      );
+          verification.otp_hash,
+          verification.otp
+        );
 
-      const newUser = userResult.rows[0];
+        if (!isMatch) {
+          // CONF-07-B: Atomically increment failed attempts
+          const updateRes = await tx.query<{ attempts: number }>(
+            `UPDATE email_verifications
+             SET attempts = attempts + 1
+             WHERE email = $1
+               AND attempts < 5
+             RETURNING attempts`,
+            [normalizedEmail]
+          );
 
-      if (verification.role === 'driver') {
-        await query(
-          `INSERT INTO drivers (
-            user_id, auto_number, auto_model, license_number,
-            availability_status, approval_status,
-            payout_upi, payout_bank_account, payout_ifsc,
-            created_at, updated_at
+          const currentAttempts = updateRes.rows[0]?.attempts ?? 5;
+
+          if (currentAttempts >= 5) {
+            await tx.query(
+              'DELETE FROM email_verifications WHERE email = $1',
+              [normalizedEmail]
+            );
+
+            return {
+              status: 429,
+              error: 'Too many invalid attempts. Verification code has been invalidated. Please register again.'
+            };
+          }
+
+          return {
+            status: 400,
+            error: 'Invalid verification code or code has expired.'
+          };
+        }
+
+        // Check if user already exists
+        const existingUser = await tx.query(
+          'SELECT id FROM users WHERE LOWER(email) = $1 OR mobile = $2 LIMIT 1',
+          [normalizedEmail, verification.mobile]
+        );
+
+        if (existingUser.rows.length > 0) {
+          return {
+            status: 400,
+            error: 'Invalid verification code or code has expired.'
+          };
+        }
+
+        // CONF-07-B: Atomically consume verification code exactly once inside transaction
+        const deleteResult = await tx.query(
+          `DELETE FROM email_verifications
+           WHERE email = $1
+             AND attempts < 5
+             AND expires_at > CURRENT_TIMESTAMP
+           RETURNING *`,
+          [normalizedEmail]
+        );
+
+        if (deleteResult.rows.length === 0) {
+          return {
+            status: 400,
+            error: 'Invalid verification code or code has expired.'
+          };
+        }
+
+        const validVerification = deleteResult.rows[0];
+
+        // Insert new user record inside the transaction
+        const userResult = await tx.query(
+          `INSERT INTO users (
+            name, email, mobile, password_hash, role, created_at, updated_at
           )
-          VALUES ($1, $2, $3, $4, 'available', 'PENDING', $5, $6, $7,
-                  CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+          VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          RETURNING id, name, email, mobile, role`,
           [
-            newUser.id,
-            verification.auto_number,
-            verification.auto_model || 'Bajaj Compact 4S',
-            verification.license_number || 'DL-AUTO-2024-8899',
-            verification.payout_upi || null,
-            verification.payout_bank_account || null,
-            verification.payout_ifsc || null
+            validVerification.name,
+            normalizedEmail,
+            validVerification.mobile,
+            validVerification.password_hash,
+            validVerification.role
           ]
         );
+
+        const newUser = userResult.rows[0];
+
+        // For drivers, create associated driver record in that same transaction
+        if (validVerification.role === 'driver') {
+          await tx.query(
+            `INSERT INTO drivers (
+              user_id, auto_number, auto_model, license_number,
+              availability_status, approval_status,
+              payout_upi, payout_bank_account, payout_ifsc,
+              created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, 'available', 'PENDING', $5, $6, $7,
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            [
+              newUser.id,
+              validVerification.auto_number,
+              validVerification.auto_model || 'Bajaj Compact 4S',
+              validVerification.license_number || 'DL-AUTO-2024-8899',
+              validVerification.payout_upi || null,
+              validVerification.payout_bank_account || null,
+              validVerification.payout_ifsc || null
+            ]
+          );
+        }
+
+        return {
+          status: 201,
+          user: newUser,
+          role: validVerification.role
+        };
+      });
+
+      if (txResult.error) {
+        return res.status(txResult.status || 400).json({
+          success: false,
+          error: txResult.error
+        });
       }
 
-      await query(
-        'DELETE FROM email_verifications WHERE email = $1',
-        [normalizedEmail]
-      );
-
-      const token = AuthService.generateToken(newUser);
+      // Generate JWT only after commit succeeds
+      const token = AuthService.generateToken(txResult.user!);
 
       return res.status(201).json({
         success: true,
-        message: verification.role === 'driver'
+        message: txResult.role === 'driver'
           ? 'Email verified. Driver account created and awaiting Owner/Admin approval.'
           : 'Email verified successfully. Account created.',
-        data: { user: newUser, token }
+        data: { user: txResult.user, token }
       });
     } catch (err: any) {
+      // Rollback on every failure; never expose SQL errors or sensitive values to clients
+      console.error('Email verification error:', err?.message || 'Verification failure');
       return res.status(400).json({
         success: false,
-        error: err.message || 'Email verification failed.'
+        error: 'Email verification failed.'
       });
     }
   }
-  public static async login(req: Request, res: Response) {
+
+    public static async login(req: Request, res: Response) {
     try {
       const { identifier, password } = req.body;
       const result = await AuthService.login(identifier, password);

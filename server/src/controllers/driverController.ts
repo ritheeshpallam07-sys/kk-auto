@@ -224,10 +224,20 @@ export class DriverController {
       });
     }
 
+    // Available ride requests projection: provides area names and trip details before acceptance,
+    // but strictly omits exact addresses (pickup_address, destination_address) and customer contact PII
+    // (name, mobile, email) to protect passenger privacy while preserving discovery for available drivers.
     const resRequests = await query(
-      `SELECT b.*, u.name as customer_name, u.mobile as customer_mobile
+      `SELECT b.id,
+              b.booking_reference,
+              b.estimated_fare,
+              b.pickup_area_name,
+              b.destination_area_name,
+              b.passengers,
+              b.status,
+              b.created_at,
+              b.pickup_datetime
        FROM bookings b
-       JOIN users u ON b.customer_id = u.id
        WHERE b.status = 'Searching for Auto'
        ORDER BY b.created_at ASC
        LIMIT 20`
@@ -491,17 +501,37 @@ public static getPushPublicKey(req: Request, res: Response) {
 }
 
   /**
-   * List all drivers (for directory or admin)
+   * List all drivers.
+   * - Authorized admins receive complete driver records including administrative status and contact details.
+   * - Authenticated customers and drivers receive strictly safe public directory metadata
+   *   (id, name, auto_number, auto_model, availability_status) for verified/approved drivers only.
+   * - Sensitive financial and identification fields (bank account, IFSC, UPI, licence, vendor ID, email, mobile)
+   *   are strictly excluded from non-admin responses.
    */
   public static async getAllDrivers(req: Request, res: Response) {
     try {
-      const drivers = await query(
-        `SELECT d.*, u.name, u.email, u.mobile
+      const user = req.user;
+      const isAdmin = user?.role === 'admin';
+
+      if (isAdmin) {
+        const drivers = await query(
+          `SELECT d.*, u.name, u.email, u.mobile
+           FROM drivers d
+           JOIN users u ON d.user_id = u.id
+           ORDER BY d.id ASC`
+        );
+        return res.json({ success: true, data: drivers.rows });
+      }
+
+      // Safe public/customer projection: excludes banking details, IFSC, UPI, licence, vendor ID, email, and mobile
+      const safeDrivers = await query(
+        `SELECT d.id, d.auto_number, d.auto_model, d.availability_status, u.name
          FROM drivers d
          JOIN users u ON d.user_id = u.id
+         WHERE d.approval_status IN ('APPROVED', 'ACTIVE')
          ORDER BY d.id ASC`
       );
-      return res.json({ success: true, data: drivers.rows });
+      return res.json({ success: true, data: safeDrivers.rows });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message });
     }

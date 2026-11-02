@@ -236,9 +236,7 @@ FROM (
 JOIN fare_areas p ON p.name = v.pickup_name
 JOIN fare_areas d ON d.name = v.destination_name
 ON CONFLICT (pickup_area_id, destination_area_id)
-DO UPDATE SET
-  fare = EXCLUDED.fare,
-  updated_at = CURRENT_TIMESTAMP;
+DO NOTHING;
 -- Idempotent column migrations for existing instances
 ALTER TABLE drivers ADD COLUMN IF NOT EXISTS approval_status VARCHAR(50) NOT NULL DEFAULT 'PENDING';
 ALTER TABLE drivers ADD COLUMN IF NOT EXISTS payout_upi VARCHAR(100);
@@ -246,16 +244,6 @@ ALTER TABLE drivers ADD COLUMN IF NOT EXISTS payout_bank_account VARCHAR(100);
 ALTER TABLE drivers ADD COLUMN IF NOT EXISTS payout_ifsc VARCHAR(50);
 ALTER TABLE drivers ADD COLUMN IF NOT EXISTS cashfree_vendor_id VARCHAR(100);
 ALTER TABLE fare_routes ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
-UPDATE drivers
-SET cashfree_vendor_id = 'KKDRIVER001'
-WHERE id = (
-  SELECT d.id
-  FROM drivers d
-  JOIN users u ON u.id = d.user_id
-  WHERE u.email = 'ramesh@kkauto.com'
-  LIMIT 1
-)
-AND cashfree_vendor_id IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_mobile ON users(mobile);
@@ -348,4 +336,20 @@ CREATE INDEX IF NOT EXISTS idx_deletion_requests_status ON account_deletion_requ
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_requested_at TIMESTAMP WITH TIME ZONE;
+
+-- CONF-07: OTP Security, Rate Limiting, and Brute-Force Protection
+ALTER TABLE email_verifications
+  ADD COLUMN IF NOT EXISTS otp_hash VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS last_sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE email_verifications ALTER COLUMN otp DROP NOT NULL;
+
+CREATE TABLE IF NOT EXISTS rate_limits (
+  key VARCHAR(255) PRIMARY KEY,
+  points INTEGER NOT NULL DEFAULT 1,
+  expire_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_rate_limits_expire ON rate_limits(expire_at);
 
