@@ -73,23 +73,25 @@ export const OwnerLoginPage: React.FC<OwnerLoginPageProps> = ({
           </p>
         </div>
 
-        {/* Quick Demo Pill */}
-        <div className="p-3 bg-[#202023] rounded-2xl border border-[#303034] mb-6 flex items-center justify-between">
-          <div>
-            <span className="text-[10px] uppercase font-bold text-[#A1A1AA] block">Demo Credentials</span>
-            <span className="text-xs font-mono text-white">admin@example.com</span>
+        {/* Quick Demo Pill (Development only) */}
+        {import.meta.env.DEV && (
+          <div className="p-3 bg-[#202023] rounded-2xl border border-[#303034] mb-6 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] uppercase font-bold text-[#A1A1AA] block">Demo Credentials</span>
+              <span className="text-xs font-mono text-white">admin@example.com</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setIdentifier('admin@example.com');
+                setPassword('password123');
+              }}
+              className="px-3 py-1 bg-[#171719] hover:bg-[#26262A] border border-[#303034] text-[11px] font-bold text-[#C6FF3D] rounded-lg"
+            >
+              Auto-fill
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setIdentifier('admin@example.com');
-              setPassword('password123');
-            }}
-            className="px-3 py-1 bg-[#171719] hover:bg-[#26262A] border border-[#303034] text-[11px] font-bold text-[#C6FF3D] rounded-lg"
-          >
-            Auto-fill
-          </button>
-        </div>
+        )}
 
         {error && (
           <div className="mb-6 p-4 rounded-xl bg-rose-950/40 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">

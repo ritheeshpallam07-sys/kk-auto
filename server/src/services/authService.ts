@@ -24,6 +24,7 @@ export class AuthService {
 
   public static generateToken(user: AuthUser): string {
     const secret = getJwtSecret();
+    const expiresIn = user.role === 'admin' ? '2h' : '7d';
     return jwt.sign(
       {
         id: user.id,
@@ -34,7 +35,7 @@ export class AuthService {
         terms_version: user.terms_version || null
       },
       secret,
-      { expiresIn: '7d', algorithm: JWT_ALGORITHM, jwtid: crypto.randomUUID() }
+      { expiresIn, algorithm: JWT_ALGORITHM, jwtid: crypto.randomUUID() }
     );
   }
 

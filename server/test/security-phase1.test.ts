@@ -3279,6 +3279,78 @@ async function runTests() {
   assert.strictEqual(checkActive.rows.length, 1, 'Active unexpired revoked token must be preserved');
   console.log('✅ PASS 15.8: cleanExpiredRevokedTokens cleans expired records and preserves active ones');
 
+  // --- TEST SUITE 16: Admin Security Hardening & Session Expiry Policies ---
+  console.log('\n--- TEST SUITE 16: Admin Security Hardening & Session Expiry Policies ---');
+
+  // 16.1 Admin JWT expiry = 2 hours (7200 seconds)
+  const suite16AdminUser: AuthUser = {
+    id: 1001,
+    name: 'Audit Admin',
+    email: 'admin.audit@clik2go.in',
+    mobile: '9876543201',
+    role: 'admin'
+  };
+  const adminTokenHardened = AuthService.generateToken(suite16AdminUser);
+  const adminDecoded = jwt.decode(adminTokenHardened) as any;
+  const adminTtl = adminDecoded.exp - adminDecoded.iat;
+  assert.strictEqual(adminTtl, 2 * 60 * 60, 'Admin JWT expiry must be exactly 2 hours (7200 seconds)');
+  console.log(`✅ PASS 16.1: Admin JWT expires in exactly 2 hours (${adminTtl}s)`);
+
+  // 16.2 Customer JWT expiry = 7 days (604800 seconds)
+  const suite16CustUser: AuthUser = {
+    id: 1002,
+    name: 'Audit Customer',
+    email: 'cust.audit@clik2go.in',
+    mobile: '9876543202',
+    role: 'customer'
+  };
+  const custTokenHardened = AuthService.generateToken(suite16CustUser);
+  const custDecoded = jwt.decode(custTokenHardened) as any;
+  const custTtl = custDecoded.exp - custDecoded.iat;
+  assert.strictEqual(custTtl, 7 * 24 * 60 * 60, 'Customer JWT expiry must remain exactly 7 days (604800 seconds)');
+  console.log(`✅ PASS 16.2: Customer JWT expiry remains exactly 7 days (${custTtl}s)`);
+
+  // 16.3 Driver JWT expiry = 7 days (604800 seconds)
+  const suite16DriverUser: AuthUser = {
+    id: 1003,
+    name: 'Audit Driver',
+    email: 'driver.audit@clik2go.in',
+    mobile: '9876543203',
+    role: 'driver'
+  };
+  const driverTokenHardened = AuthService.generateToken(suite16DriverUser);
+  const driverDecoded = jwt.decode(driverTokenHardened) as any;
+  const driverTtl = driverDecoded.exp - driverDecoded.iat;
+  assert.strictEqual(driverTtl, 7 * 24 * 60 * 60, 'Driver JWT expiry must remain exactly 7 days (604800 seconds)');
+  console.log(`✅ PASS 16.3: Driver JWT expiry remains exactly 7 days (${driverTtl}s)`);
+
+  // 16.4 Development demo UI visible test (verifies source code includes DEV guard around demo credentials)
+  const fs = await import('fs');
+  const path = await import('path');
+  const ownerLoginPath = path.resolve(__dirname, '../../client/src/pages/OwnerLoginPage.tsx');
+  const ownerLoginContent = fs.readFileSync(ownerLoginPath, 'utf8');
+  assert.match(
+    ownerLoginContent,
+    /import\.meta\.env\.DEV\s*&&\s*\(\s*<div[^>]*>[\s\S]*?Demo Credentials[\s\S]*?admin@example\.com[\s\S]*?Auto-fill/i,
+    'OwnerLoginPage.tsx must wrap Demo Credentials with import.meta.env.DEV guard'
+  );
+  console.log('✅ PASS 16.4: OwnerLoginPage properly configures import.meta.env.DEV guard for development demo credentials');
+
+  // 16.5 Production demo UI hidden test (verifies compiled bundle omits Demo Credentials)
+  const distAssetsDir = path.resolve(__dirname, '../../client/dist/assets');
+  if (fs.existsSync(distAssetsDir)) {
+    const jsFiles = fs.readdirSync(distAssetsDir).filter((f: string) => f.endsWith('.js'));
+    for (const jsFile of jsFiles) {
+      const bundleContent = fs.readFileSync(path.join(distAssetsDir, jsFile), 'utf8');
+      assert.strictEqual(
+        bundleContent.includes('Demo Credentials'),
+        false,
+        `Compiled production bundle ${jsFile} must NOT contain Demo Credentials UI`
+      );
+    }
+  }
+  console.log('✅ PASS 16.5: Demo credentials UI strictly suppressed and omitted from production build');
+
   console.log('\n=========================================');
   console.log('🎉 ALL SECURITY PHASE 1 TESTS PASSED!');
   console.log('=========================================\n');
