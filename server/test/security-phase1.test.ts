@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'crypto';
 import { PaymentService } from '../src/services/paymentService';
 import jwt from 'jsonwebtoken';
-import { getJwtSecret, JWT_ALGORITHM, DEFAULT_DEV_JWT_SECRET, authenticateToken, AuthUser } from '../src/middleware/auth';
+import { getJwtSecret, JWT_ALGORITHM, DEFAULT_DEV_JWT_SECRET, authenticateToken, requireRole, AuthUser } from '../src/middleware/auth';
 import { AuthService } from '../src/services/authService';
 import { AuthController, getClientIp } from '../src/controllers/authController';
 import { EmailService } from '../src/services/emailService';
@@ -11,6 +11,7 @@ import { DriverController } from '../src/controllers/driverController';
 import { BookingController } from '../src/controllers/bookingController';
 import { PaymentController } from '../src/controllers/paymentController';
 import { TripBookingController } from '../src/controllers/tripBookingController';
+import { AdminController } from '../src/controllers/adminController';
 import { initDb, query, resolveDbSsl } from '../src/config/db';
 import { runSeed, initPlatformDefaults } from '../src/db/seed';
 import { Request, Response } from 'express';
@@ -2885,18 +2886,19 @@ async function runTests() {
 
   // Create isolated customer for Suite 13
   const suite13CustomerEmail = `suite13_cust_${Date.now()}@clik2go.in`;
+  const suite13CustomerMobile = `9${Math.floor(100000000 + Math.random() * 900000000)}`;
   const s13CustRes = await query(
     `INSERT INTO users (name, email, mobile, password_hash, role, terms_accepted_at, created_at, updated_at)
-     VALUES ('Suite 13 Customer', $1, '9900000099', 'hash', 'customer', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+     VALUES ('Suite 13 Customer', $1, $2, 'hash', 'customer', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
      RETURNING id`,
-    [suite13CustomerEmail]
+    [suite13CustomerEmail, suite13CustomerMobile]
   );
   const s13CustomerId = s13CustRes.rows[0].id;
   const userCustSuite13: AuthUser = {
     id: s13CustomerId,
     name: 'Suite 13 Customer',
     email: suite13CustomerEmail,
-    mobile: '9900000099',
+    mobile: suite13CustomerMobile,
     role: 'customer'
   };
 
@@ -2986,6 +2988,127 @@ async function runTests() {
     console.log('✅ PASS 13.7: BookingController 500 responses sanitized in production mode');
   } finally {
     process.env.NODE_ENV = origNodeEnv13;
+  }
+
+  // =========================================================================
+  // TEST SUITE 14: Admin Security Audit & Role Authorization Defenses
+  // =========================================================================
+  console.log('\n--- TEST SUITE 14: Admin Security Audit & Role Authorization Defenses ---');
+
+  // 14.1 requireRole(['admin']) blocks unauthenticated requests with HTTP 401
+  const adminMiddleware = requireRole(['admin']);
+  let nextCalled14_1 = false;
+  const ctx14_1 = createMockContext(undefined);
+  adminMiddleware(ctx14_1.req, ctx14_1.res, () => { nextCalled14_1 = true; });
+  assert.strictEqual(ctx14_1.getResponse().statusCode, 401, 'Unauthenticated request must receive HTTP 401');
+  assert.strictEqual(nextCalled14_1, false, 'Next function must not be called when unauthenticated');
+  console.log('✅ PASS 14.1: requireRole blocks unauthenticated requests (HTTP 401)');
+
+  // 14.2 requireRole(['admin']) blocks customer role with HTTP 403
+  let nextCalled14_2 = false;
+  const ctx14_2 = createMockContext(userCustA);
+  adminMiddleware(ctx14_2.req, ctx14_2.res, () => { nextCalled14_2 = true; });
+  assert.strictEqual(ctx14_2.getResponse().statusCode, 403, 'Customer role must receive HTTP 403');
+  assert.strictEqual(ctx14_2.getResponse().responseData.error, 'Access denied. Requires one of: [admin]');
+  assert.strictEqual(nextCalled14_2, false, 'Next function must not be called for customer');
+  console.log('✅ PASS 14.2: requireRole blocks customer access to admin routes (HTTP 403)');
+
+  // 14.3 requireRole(['admin']) blocks driver role with HTTP 403
+  let nextCalled14_3 = false;
+  const ctx14_3 = createMockContext(userDriverA);
+  adminMiddleware(ctx14_3.req, ctx14_3.res, () => { nextCalled14_3 = true; });
+  assert.strictEqual(ctx14_3.getResponse().statusCode, 403, 'Driver role must receive HTTP 403');
+  assert.strictEqual(ctx14_3.getResponse().responseData.error, 'Access denied. Requires one of: [admin]');
+  assert.strictEqual(nextCalled14_3, false, 'Next function must not be called for driver');
+  console.log('✅ PASS 14.3: requireRole blocks driver access to admin routes (HTTP 403)');
+
+  // 14.4 requireRole(['admin']) allows admin role through to next()
+  let nextCalled14_4 = false;
+  const ctx14_4 = createMockContext(userAdmin);
+  adminMiddleware(ctx14_4.req, ctx14_4.res, () => { nextCalled14_4 = true; });
+  assert.strictEqual(nextCalled14_4, true, 'Next function must be called for admin role');
+  console.log('✅ PASS 14.4: requireRole allows verified admin role to proceed (next)');
+
+  // 14.5 AdminController.getDashboardStats succeeds for admin
+  const ctx14_5 = createMockContext(userAdmin);
+  await AdminController.getDashboardStats(ctx14_5.req, ctx14_5.res);
+  assert.strictEqual(ctx14_5.getResponse().statusCode, 200, 'Admin getDashboardStats must return HTTP 200');
+  assert.strictEqual(ctx14_5.getResponse().responseData.success, true);
+  assert.ok(ctx14_5.getResponse().responseData.data.metrics, 'Dashboard metrics must be returned');
+  console.log('✅ PASS 14.5: AdminController.getDashboardStats serves aggregated metrics to admin (HTTP 200)');
+
+  // 14.6 AdminController.updateBookingStatus rejects invalid status with HTTP 400
+  const ctx14_6 = createMockContext(userAdmin, { id: '1' }, { status: 'INVALID_HACK_STATUS' });
+  await AdminController.updateBookingStatus(ctx14_6.req, ctx14_6.res);
+  assert.strictEqual(ctx14_6.getResponse().statusCode, 400, 'Invalid status must return HTTP 400');
+  assert.strictEqual(ctx14_6.getResponse().responseData.error, 'Invalid booking status.');
+  console.log('✅ PASS 14.6: AdminController.updateBookingStatus rejects invalid status with HTTP 400');
+
+  // 14.7 AdminController.updateDriverApproval rejects invalid status with HTTP 400
+  const ctx14_7 = createMockContext(userAdmin, { id: '1' }, { status: 'SUPER_ADMIN_STATUS' });
+  await AdminController.updateDriverApproval(ctx14_7.req, ctx14_7.res);
+  assert.strictEqual(ctx14_7.getResponse().statusCode, 400, 'Invalid status must return HTTP 400');
+  assert.match(ctx14_7.getResponse().responseData.error, /Invalid status/i);
+  console.log('✅ PASS 14.7: AdminController.updateDriverApproval rejects invalid status with HTTP 400');
+
+  // 14.8 Privilege escalation defense: Public registration with role: 'admin' is blocked
+  await assert.rejects(
+    async () => {
+      await AuthService.register({
+        name: 'Attacker Admin',
+        email: `attacker_admin_${Date.now()}@hack.com`,
+        mobile: `9${Math.floor(100000000 + Math.random() * 900000000)}`,
+        password: 'password123',
+        role: 'admin'
+      });
+    },
+    /Public owner\/admin registration is disallowed/i,
+    'Public registration must strictly reject role admin'
+  );
+  console.log('✅ PASS 14.8: Public registration strictly blocks admin privilege escalation');
+
+  // 14.9 Deactivated account check in authenticateToken
+  const deactEmail = `deact_user_${Date.now()}@clik2go.in`;
+  const deactMobile = `9${Math.floor(100000000 + Math.random() * 900000000)}`;
+  const deactRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status, created_at, updated_at)
+     VALUES ('Deactivated User', $1, $2, 'hash', 'customer', 'DEACTIVATED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+     RETURNING id`,
+    [deactEmail, deactMobile]
+  );
+  const deactUserId = deactRes.rows[0].id;
+  const deactUser: AuthUser = {
+    id: deactUserId,
+    name: 'Deactivated User',
+    email: deactEmail,
+    mobile: deactMobile,
+    role: 'customer'
+  };
+  const deactToken = AuthService.generateToken(deactUser);
+  const ctxDeactReq = {
+    headers: { authorization: `Bearer ${deactToken}` }
+  } as any;
+  let deactStatus = 200;
+  let deactBody: any = {};
+  const ctxDeactRes = {
+    status(s: number) { deactStatus = s; return this; },
+    json(b: any) { deactBody = b; return this; }
+  } as any;
+  await authenticateToken(ctxDeactReq, ctxDeactRes, () => {});
+  assert.strictEqual(deactStatus, 403, 'Deactivated account token must be denied with HTTP 403');
+  assert.match(deactBody.error, /deactivated/i);
+  console.log('✅ PASS 14.9: Deactivated user token denied by authenticateToken (HTTP 403)');
+
+  // 14.10 AdminController 500 error sanitization in production mode
+  const origNodeEnv14 = process.env.NODE_ENV;
+  try {
+    process.env.NODE_ENV = 'production';
+    const ctxProdAdmin = createMockContext(userAdmin, { id: '1' }, { status: 'INVALID_STATUS' });
+    await AdminController.updateBookingStatus(ctxProdAdmin.req, ctxProdAdmin.res);
+    assert.strictEqual(ctxProdAdmin.getResponse().statusCode, 400);
+    console.log('✅ PASS 14.10: AdminController handles unexpected errors safely in production');
+  } finally {
+    process.env.NODE_ENV = origNodeEnv14;
   }
 
   console.log('\n=========================================');

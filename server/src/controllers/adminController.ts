@@ -62,7 +62,10 @@ export class AdminController {
         }
       });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Internal server error.' : err.message
+      });
     }
   }
 
@@ -88,7 +91,10 @@ export class AdminController {
 
       return res.json({ success: true, data: bookingsRes.rows });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Internal server error.' : err.message
+      });
     }
   }
 
@@ -153,7 +159,10 @@ export class AdminController {
       );
       return res.json({ success: true, data: drivers.rows });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Internal server error.' : err.message
+      });
     }
   }
 
@@ -190,7 +199,10 @@ export class AdminController {
         data: resUpdate.rows[0]
       });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Internal server error.' : err.message
+      });
     }
   }
 
@@ -211,7 +223,10 @@ export class AdminController {
       );
       return res.json({ success: true, data: customers.rows });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Internal server error.' : err.message
+      });
     }
   }
 
@@ -227,7 +242,10 @@ export class AdminController {
       );
       return res.json({ success: true, data: requests.rows });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Internal server error.' : err.message
+      });
     }
   }
 
@@ -292,7 +310,10 @@ export class AdminController {
           : 'Account deletion request rejected.'
       });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Internal server error.' : err.message
+      });
     }
   }
 
@@ -304,7 +325,10 @@ export class AdminController {
       const routes = await RouteService.getAllFareRoutes();
       return res.json({ success: true, data: routes });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Internal server error.' : err.message
+      });
     }
   }
 
@@ -370,7 +394,10 @@ export class AdminController {
       const commission = await PaymentService.getCommissionPerTrip();
       return res.json({ success: true, data: { commissionPerTrip: commission } });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Internal server error.' : err.message
+      });
     }
   }
 
@@ -402,7 +429,10 @@ export class AdminController {
       const financials = await PaymentService.getPlatformFinancials();
       return res.json({ success: true, data: financials });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Internal server error.' : err.message
+      });
     }
   }
   /**
@@ -415,7 +445,7 @@ public static async getDriverRatings(req: Request, res: Response) {
   } catch (err: any) {
     return res.status(500).json({
       success: false,
-      error: err.message
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error.' : err.message
     });
   }
 }
@@ -457,7 +487,10 @@ public static async getDriverRatings(req: Request, res: Response) {
         }
       });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Internal server error.' : err.message
+      });
     }
   }
 
