@@ -816,20 +816,10 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                   </p>
                 </div>
 
-                {/* PhonePe, Paytm & Other Apps Manual Fallback Guidance */}
-                <div className="p-3.5 bg-[#202023] rounded-2xl border border-[#303034] text-xs text-[#A1A1AA] space-y-2 leading-relaxed">
-                  <div className="font-bold text-white flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-[#C6FF3D]" />
-                    <span>PhonePe, Paytm & Other UPI Apps:</span>
-                  </div>
-                  <p className="text-[11px] text-[#D4D4D8]">
-                    PhonePe and Paytm require opening from your phone's home screen when paying without a pre-set link:
-                  </p>
-                  <ol className="list-decimal list-inside space-y-1.5 pl-1 text-[11px] text-[#D4D4D8]">
-                    <li>Open <strong className="text-white">PhonePe</strong>, <strong className="text-white">Paytm</strong>, or <strong className="text-white">BHIM</strong> directly from your phone's home screen.</li>
-                    <li>Pay the ride fare of <strong className="text-[#C6FF3D]">₹{booking.estimated_fare}</strong> to your driver.</li>
-                    <li>Your driver will verify the credit and confirm receipt on their device.</li>
-                  </ol>
+                {/* UPI App Guidance */}
+                <div className="p-3.5 bg-[#202023] rounded-2xl border border-[#303034] text-xs text-[#A1A1AA] flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#C6FF3D] flex-shrink-0" />
+                  <span className="font-bold text-white">Open your UPI app, scan it &amp; pay it</span>
                 </div>
 
                 {/* Driver Info Pill */}
