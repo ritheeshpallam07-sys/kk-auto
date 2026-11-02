@@ -2878,6 +2878,116 @@ async function runTests() {
   assert.strictEqual(ctxBadPaymentOrder.getResponse().responseData.error, 'Valid trip booking ID is required.');
   console.log('✅ PASS 12.6: TripBookingController routes reject non-integer IDs with HTTP 400');
 
+  // =========================================================================
+  // TEST SUITE 13: Release-Readiness & Duplicate Booking Prevention
+  // =========================================================================
+  console.log('\n--- TEST SUITE 13: Release-Readiness & Duplicate Booking Prevention ---');
+
+  // Create isolated customer for Suite 13
+  const suite13CustomerEmail = `suite13_cust_${Date.now()}@clik2go.in`;
+  const s13CustRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, terms_accepted_at, created_at, updated_at)
+     VALUES ('Suite 13 Customer', $1, '9900000099', 'hash', 'customer', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+     RETURNING id`,
+    [suite13CustomerEmail]
+  );
+  const s13CustomerId = s13CustRes.rows[0].id;
+  const userCustSuite13: AuthUser = {
+    id: s13CustomerId,
+    name: 'Suite 13 Customer',
+    email: suite13CustomerEmail,
+    mobile: '9900000099',
+    role: 'customer'
+  };
+
+  // 13.1 Create initial booking in 'Searching for Auto'
+  const ctxCreate1 = createMockContext(userCustSuite13, {}, {
+    pickupAddress: 'JNTUA',
+    destinationAddress: 'Cross',
+    passengers: 1
+  });
+  await BookingController.createBooking(ctxCreate1.req, ctxCreate1.res);
+  const resCreate1 = ctxCreate1.getResponse();
+  assert.strictEqual(resCreate1.statusCode, 201, 'First booking must succeed with HTTP 201');
+  assert.strictEqual(resCreate1.responseData.success, true);
+  const firstBookingId = resCreate1.responseData.data.id;
+  const firstBookingRef = resCreate1.responseData.data.booking_reference;
+  console.log('✅ PASS 13.1: Customer can create initial booking (HTTP 201)');
+
+  // 13.2 Customer cannot create duplicate concurrent booking while active ride is 'Searching for Auto' (HTTP 409)
+  const ctxCreate2 = createMockContext(userCustSuite13, {}, {
+    pickupAddress: 'Cross',
+    destinationAddress: 'JNTUA',
+    passengers: 2
+  });
+  await BookingController.createBooking(ctxCreate2.req, ctxCreate2.res);
+  const resCreate2 = ctxCreate2.getResponse();
+  assert.strictEqual(resCreate2.statusCode, 409, 'Duplicate booking must return HTTP 409 Conflict');
+  assert.strictEqual(resCreate2.responseData.success, false);
+  assert.match(resCreate2.responseData.error, new RegExp(firstBookingRef));
+  assert.match(resCreate2.responseData.error, /already have an active ride/i);
+  assert.strictEqual(resCreate2.responseData.data.id, firstBookingId);
+  console.log('✅ PASS 13.2: Duplicate concurrent booking blocked while active ride is Searching for Auto (HTTP 409)');
+
+  // 13.3 Progress active ride to 'Driver Assigned', verify duplicate is still blocked (HTTP 409)
+  await query(`UPDATE bookings SET status = 'Driver Assigned' WHERE id = $1`, [firstBookingId]);
+  const ctxCreate3 = createMockContext(userCustSuite13, {}, {
+    pickupAddress: 'Cross',
+    destinationAddress: 'JNTUA',
+    passengers: 1
+  });
+  await BookingController.createBooking(ctxCreate3.req, ctxCreate3.res);
+  assert.strictEqual(ctxCreate3.getResponse().statusCode, 409, 'Duplicate booking blocked while Driver Assigned (HTTP 409)');
+  console.log('✅ PASS 13.3: Duplicate concurrent booking blocked while active ride is Driver Assigned (HTTP 409)');
+
+  // 13.4 Progress active ride to 'Driver Arriving' and 'Ride Started', verify duplicate is still blocked
+  await query(`UPDATE bookings SET status = 'Driver Arriving' WHERE id = $1`, [firstBookingId]);
+  const ctxCreate4 = createMockContext(userCustSuite13, {}, { pickupAddress: 'Cross', destinationAddress: 'JNTUA' });
+  await BookingController.createBooking(ctxCreate4.req, ctxCreate4.res);
+  assert.strictEqual(ctxCreate4.getResponse().statusCode, 409, 'Duplicate booking blocked while Driver Arriving (HTTP 409)');
+
+  await query(`UPDATE bookings SET status = 'Ride Started' WHERE id = $1`, [firstBookingId]);
+  const ctxCreate5 = createMockContext(userCustSuite13, {}, { pickupAddress: 'Cross', destinationAddress: 'JNTUA' });
+  await BookingController.createBooking(ctxCreate5.req, ctxCreate5.res);
+  assert.strictEqual(ctxCreate5.getResponse().statusCode, 409, 'Duplicate booking blocked while Ride Started (HTTP 409)');
+  console.log('✅ PASS 13.4: Duplicate concurrent booking blocked across all active statuses (HTTP 409)');
+
+  // 13.5 Complete first booking, customer can now create a new booking
+  await query(`UPDATE bookings SET status = 'Ride Completed' WHERE id = $1`, [firstBookingId]);
+  const ctxCreate6 = createMockContext(userCustSuite13, {}, {
+    pickupAddress: 'JNTUA',
+    destinationAddress: 'Cross',
+    passengers: 1
+  });
+  await BookingController.createBooking(ctxCreate6.req, ctxCreate6.res);
+  assert.strictEqual(ctxCreate6.getResponse().statusCode, 201, 'Customer can book again once prior ride is Ride Completed');
+  const secondBookingId = ctxCreate6.getResponse().responseData.data.id;
+  console.log('✅ PASS 13.5: Customer can create new booking after prior ride is completed (HTTP 201)');
+
+  // 13.6 Cancel second booking, customer can create another booking
+  await query(`UPDATE bookings SET status = 'Cancelled' WHERE id = $1`, [secondBookingId]);
+  const ctxCreate7 = createMockContext(userCustSuite13, {}, {
+    pickupAddress: 'JNTUA',
+    destinationAddress: 'Cross',
+    passengers: 1
+  });
+  await BookingController.createBooking(ctxCreate7.req, ctxCreate7.res);
+  assert.strictEqual(ctxCreate7.getResponse().statusCode, 201, 'Customer can book again once prior ride is Cancelled');
+  console.log('✅ PASS 13.6: Customer can create new booking after prior ride is cancelled (HTTP 201)');
+
+  // 13.7 Production error sanitization on BookingController endpoints
+  const origNodeEnv13 = process.env.NODE_ENV;
+  try {
+    process.env.NODE_ENV = 'production';
+    const badUserCtx = createMockContext(undefined);
+    await BookingController.getMyBookings(badUserCtx.req, badUserCtx.res);
+    assert.strictEqual(badUserCtx.getResponse().statusCode, 500);
+    assert.strictEqual(badUserCtx.getResponse().responseData.error, 'Failed to fetch bookings.');
+    console.log('✅ PASS 13.7: BookingController 500 responses sanitized in production mode');
+  } finally {
+    process.env.NODE_ENV = origNodeEnv13;
+  }
+
   console.log('\n=========================================');
   console.log('🎉 ALL SECURITY PHASE 1 TESTS PASSED!');
   console.log('=========================================\n');

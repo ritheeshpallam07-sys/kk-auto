@@ -12,7 +12,10 @@ export class BookingController {
       const locations = await RouteService.getLocations();
       return res.json({ success: true, data: locations });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Failed to fetch locations.' : err.message
+      });
     }
   }
 
@@ -97,7 +100,10 @@ export class BookingController {
         error: 'Fare not configured for this route. Please contact the admin.'
       });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Failed to calculate fare estimate.' : err.message
+      });
     }
   }
 
@@ -109,6 +115,26 @@ export class BookingController {
       const customerId = req.user?.id;
       if (!customerId) {
         return res.status(401).json({ success: false, error: 'Customer login required to book an auto.' });
+      }
+
+      // Prevent duplicate concurrent active rides for the same customer
+      const activeBookingResult = await query(
+        `SELECT id, booking_reference, status, pickup_address, destination_address, created_at
+         FROM bookings
+         WHERE customer_id = $1
+           AND status IN ('Searching for Auto', 'Driver Assigned', 'Driver Arriving', 'Ride Started')
+         ORDER BY created_at DESC
+         LIMIT 1;`,
+        [customerId]
+      );
+
+      if (activeBookingResult.rows.length > 0) {
+        const activeRide = activeBookingResult.rows[0];
+        return res.status(409).json({
+          success: false,
+          error: `You already have an active ride (${activeRide.booking_reference}) with status "${activeRide.status}". Please complete or cancel it before booking another ride.`,
+          data: activeRide
+        });
       }
 
       const pickupAddress = (req.body.pickupAddress || req.body.fromLocation || '').trim();
@@ -268,7 +294,12 @@ const insertResult = await query(
       });
     } catch (err: any) {
       console.error('[CreateBooking Error]', err);
-      return res.status(500).json({ success: false, error: err.message || 'Failed to create booking.' });
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production'
+          ? 'Failed to create booking due to an internal server error.'
+          : (err.message || 'Failed to create booking.')
+      });
     }
   }
 
@@ -317,7 +348,10 @@ const insertResult = await query(
       const resBookings = await query(sql, params);
       return res.json({ success: true, data: resBookings.rows });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Failed to fetch bookings.' : err.message
+      });
     }
   }
 
@@ -389,7 +423,10 @@ const insertResult = await query(
 
       return res.json({ success: true, data: booking });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Failed to fetch booking details.' : err.message
+      });
     }
   }
 
@@ -580,7 +617,10 @@ const insertResult = await query(
         data: updatedRes.rows[0]
       });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Failed to cancel booking.' : err.message
+      });
     }
   }
 }

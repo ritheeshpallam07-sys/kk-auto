@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api, Booking, PaymentRecord, RatingRecord } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { StatusBadge } from '../components/StatusBadge';
 import { Modal } from '../components/Modal';
 import {
@@ -31,6 +32,7 @@ interface BookingStatusPageProps {
 }
 
 export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId, navigate }) => {
+  const { user } = useAuth();
   const [booking, setBooking] = useState<Booking | null>(null);
   const [payment, setPayment] = useState<PaymentRecord | null>(null);
   const [rating, setRating] = useState<RatingRecord | null>(null);
@@ -327,8 +329,8 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
             <span>View Receipt</span>
           </button>
 
-          {/* Review testing simulation helper */}
-          {!isCompleted && !isCancelled && (
+          {/* Review testing simulation helper (restricted to admin in development environment) */}
+          {user?.role === 'admin' && import.meta.env.DEV && !isCompleted && !isCancelled && (
             <button
               onClick={handleSimulateNextStatus}
               disabled={isSimulating}
