@@ -423,6 +423,19 @@ const driverAmount = Number((totalFare - ownerAmount).toFixed(2));
       );
     }
 
+    // Verify timestamp freshness (15-minute freshness window / replay protection)
+    const tsNum = Number(timestamp);
+    const parsedDateMs = !Number.isNaN(tsNum) && tsNum > 0
+      ? (tsNum < 1e11 ? tsNum * 1000 : tsNum)
+      : new Date(timestamp).getTime();
+
+    if (Number.isNaN(parsedDateMs) || Math.abs(Date.now() - parsedDateMs) > 15 * 60 * 1000) {
+      throw new WebhookValidationError(
+        'Cashfree webhook timestamp is expired or invalid.',
+        'TIMESTAMP_EXPIRED'
+      );
+    }
+
     const clientSecret = process.env.CASHFREE_SECRET_KEY;
     if (!clientSecret) {
       throw new Error('Cashfree secret key is not configured.');

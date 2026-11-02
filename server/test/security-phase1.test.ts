@@ -10,6 +10,7 @@ import { EmailService } from '../src/services/emailService';
 import { DriverController } from '../src/controllers/driverController';
 import { BookingController } from '../src/controllers/bookingController';
 import { PaymentController } from '../src/controllers/paymentController';
+import { TripBookingController } from '../src/controllers/tripBookingController';
 import { initDb, query, resolveDbSsl } from '../src/config/db';
 import { runSeed, initPlatformDefaults } from '../src/db/seed';
 import { Request, Response } from 'express';
@@ -2640,6 +2641,158 @@ async function runTests() {
   
   await query(`DELETE FROM users WHERE id = $1`, [testDriverUser.rows[0].id]);
   console.log('✅ PASS 10.10: Driver payout details and approval status are never modified by seed defaults');
+
+  // =========================================================================
+  // TEST SUITE 11: Phase 2 Security Hardening & Edge Cases
+  // =========================================================================
+  console.log('\n--- 11. Testing Phase 2 Security Hardening & Edge Cases ---');
+
+  // 11.1 Rate limiting on POST /api/auth/login
+  const testLoginIp = `192.0.2.${Math.floor(Math.random() * 200 + 10)}`;
+  let lastLoginRes: any = null;
+  for (let i = 0; i < 16; i++) {
+    const ctx = createMockContext(undefined, {}, { identifier: 'nonexistent@clik2go.in', password: 'wrong' }, testLoginIp);
+    await AuthController.login(ctx.req, ctx.res);
+    lastLoginRes = ctx.getResponse();
+  }
+  assert.strictEqual(lastLoginRes.statusCode, 429, '16th login attempt from same IP must return HTTP 429');
+  assert.strictEqual(lastLoginRes.responseData.success, false);
+  assert.strictEqual(lastLoginRes.responseData.error, 'Too many login attempts from this IP. Please try again later.');
+  assert.ok(lastLoginRes.headersSet['Retry-After'], 'Retry-After header must be set on 429 response');
+  console.log('✅ PASS 11.1: Persistent IP rate limiting on POST /api/auth/login (HTTP 429 & Retry-After)');
+
+  // 11.2 Driver ride status monotonicity: cannot update ride once Ride Completed or Cancelled
+  const bCompleted = await createTestBooking(custAUserId, driverAId, 'Ride Completed');
+  const ctxUpdateCompleted = createMockContext(userDriverA, { id: String(bCompleted.id) }, { status: 'Ride Started' });
+  await DriverController.updateRideStatus(ctxUpdateCompleted.req, ctxUpdateCompleted.res);
+  assert.strictEqual(ctxUpdateCompleted.getResponse().statusCode, 400, 'Cannot update completed ride');
+  assert.strictEqual(ctxUpdateCompleted.getResponse().responseData.success, false);
+  assert.ok(ctxUpdateCompleted.getResponse().responseData.error.includes('completed'));
+
+  const bCancelled = await createTestBooking(custAUserId, driverAId, 'Cancelled');
+  const ctxUpdateCancelled = createMockContext(userDriverA, { id: String(bCancelled.id) }, { status: 'Ride Started' });
+  await DriverController.updateRideStatus(ctxUpdateCancelled.req, ctxUpdateCancelled.res);
+  assert.strictEqual(ctxUpdateCancelled.getResponse().statusCode, 400, 'Cannot update cancelled ride');
+  assert.strictEqual(ctxUpdateCancelled.getResponse().responseData.success, false);
+  console.log('✅ PASS 11.2: Terminal ride states (Ride Completed, Cancelled) cannot be modified');
+
+  // 11.3 Driver cannot cancel ride once Ride Started via updateRideStatus
+  const bStarted = await createTestBooking(custAUserId, driverAId, 'Ride Started');
+  const ctxCancelStarted = createMockContext(userDriverA, { id: String(bStarted.id) }, { status: 'Cancelled' });
+  await DriverController.updateRideStatus(ctxCancelStarted.req, ctxCancelStarted.res);
+  assert.strictEqual(ctxCancelStarted.getResponse().statusCode, 400, 'Cannot cancel ride in progress');
+  assert.strictEqual(ctxCancelStarted.getResponse().responseData.error, 'Cannot cancel a ride that is already in progress.');
+  console.log('✅ PASS 11.3: Driver cannot cancel booking once Ride Started');
+
+  // 11.4 Driver cannot make backward transition (e.g. Ride Started -> Driver Arriving)
+  const ctxBackward = createMockContext(userDriverA, { id: String(bStarted.id) }, { status: 'Driver Arriving' });
+  await DriverController.updateRideStatus(ctxBackward.req, ctxBackward.res);
+  assert.strictEqual(ctxBackward.getResponse().statusCode, 400, 'Backward transitions are blocked');
+  console.log('✅ PASS 11.4: Monotonic forward ride status progression enforced');
+
+  // 11.5 & 11.6 Webhook timestamp freshness tests
+  const testSecret11 = 'cf_secret_test_key_phase2_sec_audit_12345';
+  const prevSecret11 = process.env.CASHFREE_SECRET_KEY;
+  const prevCashfreeClient11 = PaymentService.getCashfreeClient();
+  process.env.CASHFREE_SECRET_KEY = testSecret11;
+  PaymentService.setCashfreeClient({
+    XApiVersion: '2025-01-01',
+    PGOrderFetchPayments: async (_orderId: string) => {
+      return { data: mockCashfreePayments };
+    }
+  });
+
+  try {
+    // 11.5 Webhook with expired timestamp (>15 mins old) rejected with HTTP 400 (TIMESTAMP_EXPIRED)
+    const tripExpired = await createTestTripBooking(custAUserId, 500.0, 'PENDING');
+    const orderIdExpired = tripExpired.payment_reference;
+    const expiredPayload = {
+      data: {
+        order: { order_id: orderIdExpired },
+        payment: { cf_payment_id: `CF_EXP_${Date.now()}`, payment_status: 'SUCCESS' }
+      }
+    };
+    const rawBodyExpired = JSON.stringify(expiredPayload);
+    const oldTimestamp = String(Date.now() - 20 * 60 * 1000); // 20 minutes ago
+    const sigExpired = computeCfSignature(rawBodyExpired, oldTimestamp, testSecret11);
+    const ctxExpired = createWebhookContext({
+      body: expiredPayload,
+      rawBody: rawBodyExpired,
+      signature: sigExpired,
+      timestamp: oldTimestamp
+    });
+    await PaymentController.handleWebhook(ctxExpired.req, ctxExpired.res);
+    assert.strictEqual(ctxExpired.getResponse().statusCode, 400);
+    assert.strictEqual(ctxExpired.getResponse().responseData.error, 'Invalid webhook request.');
+    console.log('✅ PASS 11.5: Webhook with expired timestamp (>15 mins old) rejected with HTTP 400');
+
+    // 11.6 Webhook with fresh timestamp is accepted
+    const freshTimestamp = String(Date.now());
+    const sigFresh = computeCfSignature(rawBodyExpired, freshTimestamp, testSecret11);
+    const ctxFresh = createWebhookContext({
+      body: expiredPayload,
+      rawBody: rawBodyExpired,
+      signature: sigFresh,
+      timestamp: freshTimestamp
+    });
+    mockCashfreePayments = [
+      {
+        cf_payment_id: expiredPayload.data.payment.cf_payment_id,
+        order_id: orderIdExpired,
+        order_currency: 'INR',
+        order_amount: 500.0,
+        payment_amount: 500.0,
+        payment_status: 'SUCCESS',
+        payment_group: 'UPI'
+      }
+    ];
+    await PaymentController.handleWebhook(ctxFresh.req, ctxFresh.res);
+    assert.strictEqual(ctxFresh.getResponse().statusCode, 200);
+    assert.strictEqual(ctxFresh.getResponse().responseData.processed, true);
+    console.log('✅ PASS 11.6: Webhook with fresh timestamp processed successfully');
+  } finally {
+    process.env.CASHFREE_SECRET_KEY = prevSecret11;
+    PaymentService.setCashfreeClient(prevCashfreeClient11);
+  }
+
+  // 11.7 Parameter validation on confirmTrip
+  const ctxInvalidTripId = createMockContext(userCustA, { id: 'invalid-nan' });
+  await TripBookingController.confirmTrip(ctxInvalidTripId.req, ctxInvalidTripId.res);
+  assert.strictEqual(ctxInvalidTripId.getResponse().statusCode, 400);
+  assert.strictEqual(ctxInvalidTripId.getResponse().responseData.error, 'Valid trip booking ID is required.');
+
+  const ctxUnauthTrip = createMockContext(undefined, { id: '123' });
+  await TripBookingController.confirmTrip(ctxUnauthTrip.req, ctxUnauthTrip.res);
+  assert.strictEqual(ctxUnauthTrip.getResponse().statusCode, 401);
+  assert.strictEqual(ctxUnauthTrip.getResponse().responseData.error, 'Authentication required.');
+  console.log('✅ PASS 11.7: confirmTrip validates numeric ID and requires authentication');
+
+  // 11.8 Production error middleware sanitizes 500 error messages
+  let capturedStatus = 0;
+  let capturedJson: any = null;
+  const mockErrRes = {
+    status(code: number) {
+      capturedStatus = code;
+      return this;
+    },
+    json(data: any) {
+      capturedJson = data;
+      return this;
+    }
+  } as unknown as Response;
+
+  const origEnv = process.env.NODE_ENV;
+  try {
+    process.env.NODE_ENV = 'production';
+    const errorHandler = (app as any)._router.stack.find((layer: any) => layer.handle && layer.handle.length === 4)?.handle;
+    assert.ok(errorHandler, 'Express error handler middleware must exist');
+    errorHandler(new Error('Sensitive database column "secret_col" failed constraint'), {} as Request, mockErrRes, () => {});
+    assert.strictEqual(capturedStatus, 500);
+    assert.strictEqual(capturedJson.error, 'Internal server error.', 'Production error handler must not leak internal message');
+  } finally {
+    process.env.NODE_ENV = origEnv;
+  }
+  console.log('✅ PASS 11.8: Production error middleware sanitizes 500 error messages');
 
   console.log('\n=========================================');
   console.log('🎉 ALL SECURITY PHASE 1 TESTS PASSED!');

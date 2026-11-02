@@ -233,21 +233,39 @@ try {
       });
     }
   }
- public static async confirmTrip(req: Request, res: Response) {
-  try {
-    const tripBookingId = Number(req.params.id);
-    const customerId = Number(req.user?.id);
+  public static async confirmTrip(req: Request, res: Response) {
+    try {
+      const tripBookingId = Number(req.params.id);
+      if (!Number.isInteger(tripBookingId) || tripBookingId <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Valid trip booking ID is required.'
+        });
+      }
 
-    const trip = await TripBookingService.confirmTripBooking(
-      tripBookingId,
-      customerId
-    );
+      if (!req.user || !req.user.id) {
+        return res.status(401).json({
+          success: false,
+          error: 'Authentication required.'
+        });
+      }
+      const customerId = Number(req.user.id);
 
-    return res.json(trip);
-  } catch (error: any) {
-    return res.status(400).json({
-      message: error?.message || 'Unable to confirm trip'
-    });
+      const trip = await TripBookingService.confirmTripBooking(
+        tripBookingId,
+        customerId
+      );
+
+      return res.json({
+        success: true,
+        message: 'Trip booking confirmed successfully.',
+        data: trip
+      });
+    } catch (error: any) {
+      return res.status(400).json({
+        success: false,
+        error: error?.message || 'Unable to confirm trip'
+      });
+    }
   }
-}
 }

@@ -192,9 +192,15 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     });
   }
   console.error('[Unhandled Server Error]', err);
-  res.status(err.status || 500).json({
+  const status = err.status || 500;
+  const isProduction = process.env.NODE_ENV === 'production';
+  const errorMessage = status >= 500 && isProduction
+    ? 'Internal server error.'
+    : (err.message || 'Internal server error.');
+
+  res.status(status).json({
     success: false,
-    error: err.message || 'Internal server error.'
+    error: errorMessage
   });
 });
 

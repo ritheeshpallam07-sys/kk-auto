@@ -308,8 +308,27 @@ export class AuthController {
     }
   }
 
-    public static async login(req: Request, res: Response) {
+  public static async login(req: Request, res: Response) {
     try {
+      // CONF-07-D: IP-based rate limiting on login attempts
+      const clientIp = req.ip || req.socket?.remoteAddress || '127.0.0.1';
+      const ipLimit = await AuthService.checkRateLimit(`login_ip_${clientIp}`, 15, 900);
+      if (!ipLimit.allowed) {
+        if (ipLimit.isServiceUnavailable) {
+          return res.status(503).json({
+            success: false,
+            error: 'Authentication service temporarily unavailable. Please try again later.'
+          });
+        }
+        if (typeof res.set === 'function') {
+          res.set('Retry-After', String(ipLimit.retryAfterSeconds));
+        }
+        return res.status(429).json({
+          success: false,
+          error: 'Too many login attempts from this IP. Please try again later.'
+        });
+      }
+
       const { identifier, password } = req.body;
       const result = await AuthService.login(identifier, password);
 
@@ -319,7 +338,11 @@ export class AuthController {
         data: result
       });
     } catch (err: any) {
-      return res.status(401).json({ success: false, error: err.message || 'Login failed.' });
+      const statusCode = err.statusCode || 401;
+      if (err.retryAfterSeconds && typeof res.set === 'function') {
+        res.set('Retry-After', String(err.retryAfterSeconds));
+      }
+      return res.status(statusCode).json({ success: false, error: err.message || 'Login failed.' });
     }
   }
 

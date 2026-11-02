@@ -356,7 +356,11 @@ export class DriverController {
   public static async updateRideStatus(req: Request, res: Response) {
     try {
       const user = req.user!;
-      const { id } = req.params;
+      const rideId = Number(req.params.id);
+      if (!Number.isInteger(rideId) || rideId <= 0) {
+        return res.status(400).json({ success: false, error: 'Valid ride ID is required.' });
+      }
+
       const { status } = req.body;
 
       const validStatuses = ['Driver Assigned', 'Driver Arriving', 'Ride Started', 'Ride Completed', 'Cancelled'];
@@ -371,15 +375,47 @@ export class DriverController {
       }
       const driverId = driverRes.rows[0].id;
 
-      const bookingRes = await query('SELECT * FROM bookings WHERE id = $1 AND driver_id = $2 LIMIT 1', [id, driverId]);
+      const bookingRes = await query('SELECT * FROM bookings WHERE id = $1 AND driver_id = $2 LIMIT 1', [rideId, driverId]);
       if (bookingRes.rows.length === 0) {
         return res.status(404).json({ success: false, error: 'Assigned booking not found.' });
       }
       const booking = bookingRes.rows[0];
 
+      // Enforce status monotonicity and terminal state safeguards (Phase 2 Hardening)
+      if (booking.status === 'Ride Completed' || booking.status === 'Cancelled') {
+        return res.status(400).json({
+          success: false,
+          error: `Cannot update a ride that is already ${booking.status.toLowerCase()}.`
+        });
+      }
+
+      // Disallow cancelling once ride is in progress
+      if (status === 'Cancelled' && booking.status === 'Ride Started') {
+        return res.status(400).json({
+          success: false,
+          error: 'Cannot cancel a ride that is already in progress.'
+        });
+      }
+
+      // Validate monotonic forward progression
+      const allowedTransitions: Record<string, string[]> = {
+        'Searching for Auto': ['Driver Assigned', 'Driver Arriving', 'Ride Started', 'Cancelled'],
+        'Driver Assigned': ['Driver Assigned', 'Driver Arriving', 'Ride Started', 'Cancelled'],
+        'Driver Arriving': ['Driver Arriving', 'Ride Started', 'Cancelled'],
+        'Ride Started': ['Ride Started', 'Ride Completed']
+      };
+
+      const allowedNext = allowedTransitions[booking.status] || [];
+      if (!allowedNext.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          error: `Cannot transition ride status from "${booking.status}" to "${status}".`
+        });
+      }
+
       await query(
         `UPDATE bookings SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-        [status, id]
+        [status, rideId]
       );
 
       // If ride completed or cancelled, make driver available again
@@ -398,7 +434,7 @@ export class DriverController {
          LEFT JOIN drivers d ON b.driver_id = d.id
          LEFT JOIN users du ON d.user_id = du.id
          WHERE b.id = $1 LIMIT 1`,
-        [id]
+        [rideId]
       );
 
       return res.json({
