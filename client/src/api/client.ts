@@ -3,6 +3,12 @@ export interface ApiResponse<T = any> {
   success: boolean;
   message?: string;
   data?: T;
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
   error?: string;
   status?: number;
 }
@@ -32,6 +38,28 @@ export interface AccountDeletionRequest {
 export interface DeletionRequestResponse {
   hasPendingRequest: boolean;
   request: AccountDeletionRequest | null;
+}
+
+export interface AdminAuditLog {
+  id: number;
+  admin_id?: number | null;
+  admin_email: string;
+  action: string;
+  target_type?: string | null;
+  target_id?: string | null;
+  details?: Record<string, any> | null;
+  client_ip?: string | null;
+  created_at: string;
+}
+
+export interface AuditLogsResponse {
+  data: AdminAuditLog[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 export interface FareEstimate {
@@ -502,7 +530,19 @@ savePushSubscription: (subscription: {
       request<{ success: boolean; message: string }>(`/admin/deletion-requests/${id}/process`, {
         method: 'PATCH',
         body: JSON.stringify(data)
-      })
+      }),
+    getAuditLogs: (params?: { page?: number; limit?: number; action?: string; admin?: string; targetId?: string; startDate?: string; endDate?: string }) => {
+      const q = new URLSearchParams();
+      if (params?.page) q.set('page', String(params.page));
+      if (params?.limit) q.set('limit', String(params.limit));
+      if (params?.action) q.set('action', params.action);
+      if (params?.admin) q.set('admin', params.admin);
+      if (params?.targetId) q.set('targetId', params.targetId);
+      if (params?.startDate) q.set('startDate', params.startDate);
+      if (params?.endDate) q.set('endDate', params.endDate);
+      const qs = q.toString();
+      return request<AdminAuditLog[]>(`/admin/audit-logs${qs ? '?' + qs : ''}`);
+    }
   },
   tripBookings: {
     create: (data: {

@@ -3,6 +3,8 @@ import { query, withTransaction } from '../config/db';
 import { RouteService } from '../services/routeService';
 import { PaymentService } from '../services/paymentService';
 import { AuthService } from '../services/authService';
+import { AuditService } from '../services/auditService';
+import { getClientIp } from './authController';
 
 export class AdminController {
   /**
@@ -120,16 +122,33 @@ export class AdminController {
           return res.status(400).json({ success: false, error: 'Invalid booking status.' });
         }
 
+        const currentRes = await query(`SELECT id, booking_reference, status FROM bookings WHERE id = $1`, [id]);
+        if (currentRes.rows.length === 0) {
+          return res.status(404).json({ success: false, error: 'Booking not found.' });
+        }
+        const prevBooking = currentRes.rows[0];
+
         const updateRes = await query(
           `UPDATE bookings SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
           [status, id]
         );
 
-        if (updateRes.rows.length === 0) {
-          return res.status(404).json({ success: false, error: 'Booking not found.' });
-        }
-
         const booking = updateRes.rows[0];
+
+        // Audit log successful administrative override
+        await AuditService.logAction({
+          adminId: req.user?.id,
+          adminEmail: req.user?.email || 'admin@clik2go.in',
+          action: 'UPDATE_BOOKING_STATUS',
+          targetType: 'booking',
+          targetId: id,
+          details: {
+            bookingReference: booking.booking_reference,
+            previousStatus: prevBooking.status,
+            newStatus: status
+          },
+          clientIp: getClientIp(req)
+        });
 
         return res.json({
           success: true,
@@ -185,14 +204,40 @@ export class AdminController {
         });
       }
 
+      const currentDriverRes = await query(
+        `SELECT d.id, d.approval_status, d.auto_number, u.name, u.email
+         FROM drivers d
+         JOIN users u ON d.user_id = u.id
+         WHERE d.id = $1`,
+        [id]
+      );
+
+      if (currentDriverRes.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Driver not found.' });
+      }
+      const prevDriver = currentDriverRes.rows[0];
+
       const resUpdate = await query(
         `UPDATE drivers SET approval_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
         [normStatus, id]
       );
 
-      if (resUpdate.rows.length === 0) {
-        return res.status(404).json({ success: false, error: 'Driver not found.' });
-      }
+      // Audit log successful driver status change
+      await AuditService.logAction({
+        adminId: req.user?.id,
+        adminEmail: req.user?.email || 'admin@clik2go.in',
+        action: 'UPDATE_DRIVER_APPROVAL',
+        targetType: 'driver',
+        targetId: id,
+        details: {
+          driverName: prevDriver.name,
+          driverEmail: prevDriver.email,
+          autoNumber: prevDriver.auto_number,
+          previousApprovalStatus: prevDriver.approval_status,
+          newApprovalStatus: normStatus
+        },
+        clientIp: getClientIp(req)
+      });
 
       return res.json({
         success: true,
@@ -307,6 +352,24 @@ export class AdminController {
                 [adminNotes || null, requestId]
               );
 
+              // Log audit action inside transaction
+              await AuditService.logAction(
+                {
+                  adminId: req.user?.id,
+                  adminEmail: req.user?.email || 'admin@clik2go.in',
+                  action: 'REJECT_ACCOUNT_DELETION',
+                  targetType: 'account_deletion_request',
+                  targetId: requestId,
+                  details: {
+                    userId: delReq.user_id,
+                    userRole: delReq.user_role,
+                    adminNotes: adminNotes || null
+                  },
+                  clientIp: getClientIp(req)
+                },
+                tx
+              );
+
               return {
                 status: 200,
                 success: true,
@@ -370,6 +433,25 @@ export class AdminController {
               );
             }
 
+            // Log audit action inside transaction
+            await AuditService.logAction(
+              {
+                adminId: req.user?.id,
+                adminEmail: req.user?.email || 'admin@clik2go.in',
+                action: 'APPROVE_ACCOUNT_DELETION',
+                targetType: 'user',
+                targetId: delReq.user_id,
+                details: {
+                  requestId,
+                  userRole: delReq.user_role,
+                  userEmail: delReq.user_email,
+                  adminNotes: adminNotes || null
+                },
+                clientIp: getClientIp(req)
+              },
+              tx
+            );
+
             return {
               status: 200,
               success: true,
@@ -431,6 +513,23 @@ export class AdminController {
         return res.status(400).json({ success: false, error: 'Route ID and fare are required.' });
       }
       const updated = await RouteService.updateRouteFare(Number(id), Number(fare));
+
+      // Audit log successful fare modification
+      await AuditService.logAction({
+        adminId: req.user?.id,
+        adminEmail: req.user?.email || 'admin@clik2go.in',
+        action: 'UPDATE_FARE_CONFIG',
+        targetType: 'fare_route',
+        targetId: id,
+        details: {
+          routeId: Number(id),
+          newFare: Number(fare),
+          fromLocation: updated?.from_location,
+          toLocation: updated?.to_location
+        },
+        clientIp: getClientIp(req)
+      });
+
       return res.json({
         success: true,
         message: 'Route fare updated successfully.',
@@ -448,6 +547,23 @@ export class AdminController {
     try {
       const { id } = req.params;
       const updated = await RouteService.toggleRouteActive(Number(id));
+
+      // Audit log successful route toggle
+      await AuditService.logAction({
+        adminId: req.user?.id,
+        adminEmail: req.user?.email || 'admin@clik2go.in',
+        action: 'TOGGLE_ROUTE',
+        targetType: 'fare_route',
+        targetId: id,
+        details: {
+          routeId: Number(id),
+          isActive: updated.is_active,
+          fromLocation: updated.from_location,
+          toLocation: updated.to_location
+        },
+        clientIp: getClientIp(req)
+      });
+
       return res.json({
         success: true,
         message: `Route status updated to ${updated.is_active ? 'Active' : 'Inactive'}`,
@@ -465,6 +581,23 @@ export class AdminController {
     try {
       const { fromLocation, toLocation, fare } = req.body;
       const newRoute = await RouteService.addRoute(fromLocation, toLocation, Number(fare));
+
+      // Audit log successful route addition
+      await AuditService.logAction({
+        adminId: req.user?.id,
+        adminEmail: req.user?.email || 'admin@clik2go.in',
+        action: 'ADD_ROUTE',
+        targetType: 'fare_route',
+        targetId: newRoute.id,
+        details: {
+          routeId: newRoute.id,
+          fromLocation,
+          toLocation,
+          fare: Number(fare)
+        },
+        clientIp: getClientIp(req)
+      });
+
       return res.status(201).json({
         success: true,
         message: 'New fixed route added successfully.',
@@ -500,6 +633,20 @@ export class AdminController {
         return res.status(400).json({ success: false, error: 'Valid commission amount is required.' });
       }
       const updated = await PaymentService.updateCommissionPerTrip(Number(commission));
+
+      // Audit log successful commission update
+      await AuditService.logAction({
+        adminId: req.user?.id,
+        adminEmail: req.user?.email || 'admin@clik2go.in',
+        action: 'UPDATE_COMMISSION',
+        targetType: 'platform_config',
+        targetId: 'commission_per_trip',
+        details: {
+          newCommissionPerTrip: updated
+        },
+        clientIp: getClientIp(req)
+      });
+
       return res.json({
         success: true,
         message: `Platform commission updated to ₹${updated} per trip.`,
@@ -594,6 +741,22 @@ public static async getDriverRatings(req: Request, res: Response) {
         paymentId ? Number(paymentId) : undefined
       );
 
+      // Audit log successful driver settlement
+      await AuditService.logAction({
+        adminId: req.user?.id,
+        adminEmail: req.user?.email || 'admin@clik2go.in',
+        action: 'SETTLE_PAYOUTS',
+        targetType: 'settlement',
+        targetId: driverId ? String(driverId) : 'ALL',
+        details: {
+          driverId: driverId ? Number(driverId) : null,
+          paymentId: paymentId ? Number(paymentId) : null,
+          settledCount: result.settledCount,
+          settledAmount: result.settledAmount
+        },
+        clientIp: getClientIp(req)
+      });
+
       return res.json({
         success: true,
         message: `Successfully marked ${result.settledCount} payment(s) as SETTLED (Total: ₹${result.settledAmount}).`,
@@ -601,6 +764,56 @@ public static async getDriverRatings(req: Request, res: Response) {
       });
     } catch (err: any) {
       return res.status(400).json({ success: false, error: err.message });
+    }
+  }
+
+  /**
+   * Read-only administrative activity audit logs with pagination and filters
+   */
+  public static async getAuditLogs(req: Request, res: Response) {
+    try {
+      const { page, limit, action, admin, targetId, targetType, startDate, endDate } = req.query;
+
+      const pageNum = page ? parseInt(String(page), 10) : 1;
+      const limitNum = limit ? parseInt(String(limit), 10) : 20;
+
+      if (isNaN(pageNum) || pageNum <= 0) {
+        return res.status(400).json({ success: false, error: 'Invalid page parameter. Must be a positive integer.' });
+      }
+
+      if (isNaN(limitNum) || limitNum <= 0 || limitNum > 100) {
+        return res.status(400).json({ success: false, error: 'Invalid limit parameter. Must be between 1 and 100.' });
+      }
+
+      if (startDate && isNaN(Date.parse(String(startDate)))) {
+        return res.status(400).json({ success: false, error: 'Invalid startDate parameter. Must be a valid date format.' });
+      }
+
+      if (endDate && isNaN(Date.parse(String(endDate)))) {
+        return res.status(400).json({ success: false, error: 'Invalid endDate parameter. Must be a valid date format.' });
+      }
+
+      const result = await AuditService.getLogs({
+        page: pageNum,
+        limit: limitNum,
+        action: action ? String(action) : undefined,
+        admin: admin ? String(admin) : undefined,
+        targetId: targetId ? String(targetId) : undefined,
+        targetType: targetType ? String(targetType) : undefined,
+        startDate: startDate ? String(startDate) : undefined,
+        endDate: endDate ? String(endDate) : undefined
+      });
+
+      return res.json({
+        success: true,
+        data: result.logs,
+        pagination: result.pagination
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Internal server error.' : err.message
+      });
     }
   }
 }

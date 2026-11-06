@@ -8,7 +8,8 @@ import {
   SettlementOverview, 
   PlatformFinancials,
   TripBooking,
-  RatingRecord
+  RatingRecord,
+  AdminAuditLog
 } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
 import { 
@@ -29,7 +30,8 @@ import {
   Calendar,
   Layers,
   Percent,
-  Trash2
+  Trash2,
+  ClipboardList
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -37,7 +39,7 @@ interface AdminDashboardProps {
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'drivers' | 'settlements' | 'routes' | 'commission' | 'bookings' | 'tripBookings' | 'ratings' | 'deletions'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'drivers' | 'settlements' | 'routes' | 'commission' | 'bookings' | 'tripBookings' | 'ratings' | 'deletions' | 'auditLogs'>('overview');
   
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [financials, setFinancials] = useState<PlatformFinancials | null>(null);
@@ -68,6 +70,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
     admin_notes?: string | null;
   }>>([]);
   const [isProcessingDeletion, setIsProcessingDeletion] = useState<number | null>(null);
+
+  // Activity Audit Log state
+  const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditTotalPages, setAuditTotalPages] = useState(1);
+  const [auditTotalCount, setAuditTotalCount] = useState(0);
+  const [auditActionFilter, setAuditActionFilter] = useState('');
+  const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+
+  const loadAuditLogs = async (page = 1, actionFilter = auditActionFilter) => {
+    setIsLoadingAudit(true);
+    try {
+      const res = await api.admin.getAuditLogs({
+        page,
+        limit: 15,
+        action: actionFilter || undefined
+      });
+      if (res && res.data) {
+        setAuditLogs(res.data);
+      }
+      if (res && res.pagination) {
+        setAuditPage(res.pagination.page);
+        setAuditTotalPages(res.pagination.totalPages);
+        setAuditTotalCount(res.pagination.total);
+      }
+    } catch (err) {
+      console.error('Failed to load audit logs:', err);
+    } finally {
+      setIsLoadingAudit(false);
+    }
+  };
 
   // Route editing state
   const [editingFares, setEditingFares] = useState<Record<number, number>>({});
@@ -458,6 +491,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
               {pendingDeletionsCount}
             </span>
           )}
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('auditLogs');
+            loadAuditLogs(1);
+          }}
+          className={`px-3.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'auditLogs' ? 'bg-[#C6FF3D] text-[#0B0B0D] font-black shadow-glow-lime' : 'text-[#A1A1AA] hover:text-white'
+          }`}
+        >
+          <ClipboardList className="w-3.5 h-3.5" />
+          <span>Audit Trail</span>
         </button>
       </div>
 
@@ -1417,6 +1463,149 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 9: ACTIVITY AUDIT TRAIL */}
+      {activeTab === 'auditLogs' && (
+        <div className="bg-[#171719] rounded-3xl p-6 sm:p-8 border border-[#303034] shadow-card space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-[#303034]">
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                <ClipboardList className="w-5 h-5 text-[#C6FF3D]" />
+                <span>Administrative Activity Audit Trail</span>
+              </h2>
+              <p className="text-xs text-[#A1A1AA] mt-0.5">
+                Tamper-evident record of all administrative operations, overrides, and settlements.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <select
+                value={auditActionFilter}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setAuditActionFilter(val);
+                  loadAuditLogs(1, val);
+                }}
+                className="bg-[#202023] border border-[#303034] text-xs text-white rounded-xl px-3 py-1.5 focus:outline-none focus:border-[#C6FF3D]"
+              >
+                <option value="">All Actions</option>
+                <option value="UPDATE_DRIVER_APPROVAL">Driver Approvals</option>
+                <option value="UPDATE_BOOKING_STATUS">Booking Status</option>
+                <option value="UPDATE_FARE_CONFIG">Fare Config</option>
+                <option value="ADD_ROUTE">Added Routes</option>
+                <option value="TOGGLE_ROUTE">Route Status</option>
+                <option value="UPDATE_COMMISSION">Commission Rates</option>
+                <option value="SETTLE_PAYOUTS">Settlements</option>
+                <option value="APPROVE_ACCOUNT_DELETION">Deletion Approvals</option>
+                <option value="REJECT_ACCOUNT_DELETION">Deletion Rejections</option>
+                <option value="UPDATE_TRIP_BOOKING_BY_OWNER">Trip Bookings</option>
+              </select>
+              <button
+                onClick={() => loadAuditLogs(auditPage)}
+                disabled={isLoadingAudit}
+                className="p-1.5 bg-[#202023] hover:bg-[#28282C] border border-[#303034] rounded-xl text-[#A1A1AA] hover:text-white transition-all disabled:opacity-50"
+                title="Refresh audit logs"
+              >
+                <RefreshCw className={`w-4 h-4 ${isLoadingAudit ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+
+          {isLoadingAudit && auditLogs.length === 0 ? (
+            <div className="py-12 text-center text-sm text-[#A1A1AA] bg-[#202023] rounded-2xl border border-[#303034]">
+              Loading audit logs...
+            </div>
+          ) : auditLogs.length === 0 ? (
+            <div className="py-12 text-center text-sm text-[#A1A1AA] bg-[#202023] rounded-2xl border border-[#303034]">
+              No audit logs found for the selected filter.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="overflow-x-auto rounded-2xl border border-[#303034] bg-[#202023]">
+                <table className="w-full text-left text-xs text-white min-w-[760px]">
+                  <thead className="bg-[#171719] text-[#A1A1AA] border-b border-[#303034]">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Timestamp</th>
+                      <th className="px-4 py-3 font-semibold">Administrator</th>
+                      <th className="px-4 py-3 font-semibold">Action</th>
+                      <th className="px-4 py-3 font-semibold">Target</th>
+                      <th className="px-4 py-3 font-semibold">Details</th>
+                      <th className="px-4 py-3 font-semibold text-right">Client IP</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#303034]">
+                    {auditLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-[#28282C] transition-colors">
+                        <td className="px-4 py-3.5 whitespace-nowrap text-[#A1A1AA]">
+                          <div>{new Date(log.created_at).toLocaleDateString()}</div>
+                          <div className="text-[10px] text-[#71717A]">{new Date(log.created_at).toLocaleTimeString()}</div>
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <div className="font-bold text-white">{log.admin_email}</div>
+                          {log.admin_id && <div className="text-[10px] text-[#A1A1AA]">ID: #{log.admin_id}</div>}
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold tracking-wider bg-[#171719] border border-[#303034] text-[#C6FF3D]">
+                            {log.action.replace(/_/g, ' ')}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <div className="capitalize text-[#E4E4E7]">{log.target_type || '—'}</div>
+                          {log.target_id && <div className="text-[10px] text-[#A1A1AA]">ID: {log.target_id}</div>}
+                        </td>
+                        <td className="px-4 py-3.5 max-w-sm">
+                          {log.details && Object.keys(log.details).length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {Object.entries(log.details)
+                                .filter(([k]) => !/password|hash|token|secret|otp|jwt|key|cvv/i.test(k))
+                                .slice(0, 3)
+                                .map(([k, v]) => (
+                                  <span key={k} className="inline-block px-1.5 py-0.5 rounded bg-[#171719] border border-[#303034] text-[10px] text-[#E4E4E7]">
+                                    <span className="text-[#A1A1AA]">{k}:</span> {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                                  </span>
+                                ))}
+                            </div>
+                          ) : (
+                            <span className="text-[#71717A] italic">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5 text-right font-mono text-[11px] text-[#A1A1AA]">
+                          {log.client_ip || '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination Controls */}
+              <div className="flex items-center justify-between text-xs text-[#A1A1AA] pt-2">
+                <div>
+                  Showing {auditLogs.length} of {auditTotalCount} audit record{auditTotalCount === 1 ? '' : 's'}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => loadAuditLogs(auditPage - 1)}
+                    disabled={auditPage <= 1 || isLoadingAudit}
+                    className="px-3 py-1.5 rounded-xl bg-[#202023] hover:bg-[#28282C] border border-[#303034] text-white disabled:opacity-40 disabled:hover:bg-[#202023] transition-all font-bold"
+                  >
+                    Previous
+                  </button>
+                  <span className="px-2 font-medium">
+                    Page {auditPage} of {auditTotalPages || 1}
+                  </span>
+                  <button
+                    onClick={() => loadAuditLogs(auditPage + 1)}
+                    disabled={auditPage >= auditTotalPages || isLoadingAudit}
+                    className="px-3 py-1.5 rounded-xl bg-[#202023] hover:bg-[#28282C] border border-[#303034] text-white disabled:opacity-40 disabled:hover:bg-[#202023] transition-all font-bold"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

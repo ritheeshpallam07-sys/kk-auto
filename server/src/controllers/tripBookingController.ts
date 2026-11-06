@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { TripBookingService } from '../services/tripBookingService';
+import { AuditService } from '../services/auditService';
+import { getClientIp } from './authController';
 
 export class TripBookingController {
   /**
@@ -121,6 +123,21 @@ export class TripBookingController {
       const updated = await TripBookingService.updateTripBookingByOwner(tripId, {
         quotedPrice,
         status
+      });
+
+      // Audit log successful trip booking update
+      await AuditService.logAction({
+        adminId: req.user?.id,
+        adminEmail: req.user?.email || 'admin@clik2go.in',
+        action: 'UPDATE_TRIP_BOOKING_BY_OWNER',
+        targetType: 'trip_booking',
+        targetId: tripId,
+        details: {
+          tripId,
+          quotedPrice: quotedPrice !== undefined ? Number(quotedPrice) : undefined,
+          status
+        },
+        clientIp: getClientIp(req)
       });
 
       return res.json({

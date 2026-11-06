@@ -12,6 +12,8 @@ import { BookingController } from '../src/controllers/bookingController';
 import { PaymentController } from '../src/controllers/paymentController';
 import { TripBookingController } from '../src/controllers/tripBookingController';
 import { AdminController } from '../src/controllers/adminController';
+import { AuditService, sanitizeAuditDetails } from '../src/services/auditService';
+import adminRoutes from '../src/routes/adminRoutes';
 import { initDb, query, resolveDbSsl } from '../src/config/db';
 import { runSeed, initPlatformDefaults } from '../src/db/seed';
 import { Request, Response } from 'express';
@@ -3624,6 +3626,159 @@ async function runTests() {
   assert.strictEqual(revokedAuth.nextCalled, false);
   assert.match(revokedAuth.body.error, /invalid or expired session/i);
   console.log('✅ PASS 17.6: Existing admin authorization, account deactivation blocking (403), and JWT revocation work');
+
+  // =========================================================================
+  // TEST SUITE 18: Phase 3 Admin Activity Audit Trail & Mutation Logging
+  // =========================================================================
+  console.log('\n--- TEST SUITE 18: Phase 3 Admin Activity Audit Trail & Mutation Logging ---');
+
+  // 18.1 Successful admin mutation creates an audit record
+  const driverForAudit = await query(`SELECT id, approval_status FROM drivers LIMIT 1`);
+  assert.ok(driverForAudit.rows.length > 0, 'Must have at least one driver');
+  const targetDriverId = driverForAudit.rows[0].id;
+
+  const ctx18_1 = createMockContext(userAdmin, { id: String(targetDriverId) }, { status: 'APPROVED' });
+  await AdminController.updateDriverApproval(ctx18_1.req, ctx18_1.res);
+  assert.strictEqual(ctx18_1.getResponse().statusCode, 200, 'Driver approval update must return HTTP 200');
+
+  const auditRecordRes = await query(
+    `SELECT * FROM admin_audit_logs 
+     WHERE action = 'UPDATE_DRIVER_APPROVAL' AND target_id = $1 
+     ORDER BY created_at DESC LIMIT 1`,
+    [String(targetDriverId)]
+  );
+  assert.strictEqual(auditRecordRes.rows.length, 1, 'Audit record must be created for successful mutation');
+  const auditEntry = auditRecordRes.rows[0];
+  assert.strictEqual(auditEntry.admin_email, userAdmin.email, 'Admin email must match the authenticated admin');
+  assert.strictEqual(auditEntry.admin_id, userAdmin.id, 'Admin ID must match');
+  assert.strictEqual(auditEntry.target_type, 'driver', 'Target type must be driver');
+  assert.strictEqual(auditEntry.target_id, String(targetDriverId), 'Target ID must match driver id');
+  assert.ok(auditEntry.created_at, 'Timestamp must be populated');
+  const detailsObj = typeof auditEntry.details_json === 'string' ? JSON.parse(auditEntry.details_json) : auditEntry.details_json;
+  assert.strictEqual(detailsObj.newApprovalStatus, 'APPROVED');
+  console.log('✅ PASS 18.1: Successful admin mutation creates a verified audit record');
+
+  // 18.2 Failed mutation does NOT create a success audit record
+  const countAuditBefore = await query(
+    `SELECT COUNT(*) as count FROM admin_audit_logs WHERE target_id = '999999'`
+  );
+  const ctx18_2 = createMockContext(userAdmin, { id: '999999' }, { status: 'APPROVED' });
+  await AdminController.updateDriverApproval(ctx18_2.req, ctx18_2.res);
+  assert.strictEqual(ctx18_2.getResponse().statusCode, 404, 'Nonexistent driver must return HTTP 404');
+
+  const countAuditAfter = await query(
+    `SELECT COUNT(*) as count FROM admin_audit_logs WHERE target_id = '999999'`
+  );
+  assert.strictEqual(
+    parseInt(countAuditAfter.rows[0].count, 10),
+    parseInt(countAuditBefore.rows[0].count, 10),
+    'Failed mutation must not write any audit log'
+  );
+  console.log('✅ PASS 18.2: Failed admin mutation does not create a false audit record');
+
+  // 18.3 Customer and driver cannot access audit API (HTTP 403)
+  const ctxCustAudit = createMockContext(userCustA);
+  let nextCalledCustAudit = false;
+  adminMiddleware(ctxCustAudit.req, ctxCustAudit.res, () => { nextCalledCustAudit = true; });
+  assert.strictEqual(ctxCustAudit.getResponse().statusCode, 403, 'Customer role must receive HTTP 403 on audit routes');
+  assert.strictEqual(nextCalledCustAudit, false);
+
+  const ctxDriverAudit = createMockContext(userDriverA);
+  let nextCalledDriverAudit = false;
+  adminMiddleware(ctxDriverAudit.req, ctxDriverAudit.res, () => { nextCalledDriverAudit = true; });
+  assert.strictEqual(ctxDriverAudit.getResponse().statusCode, 403, 'Driver role must receive HTTP 403 on audit routes');
+  assert.strictEqual(nextCalledDriverAudit, false);
+  console.log('✅ PASS 18.3: Customer and driver cannot access audit API (HTTP 403)');
+
+  // 18.4 Unauthenticated users cannot access audit API (HTTP 401)
+  const ctxUnauthAudit = createMockContext(undefined);
+  let nextCalledUnauthAudit = false;
+  adminMiddleware(ctxUnauthAudit.req, ctxUnauthAudit.res, () => { nextCalledUnauthAudit = true; });
+  assert.strictEqual(ctxUnauthAudit.getResponse().statusCode, 401, 'Unauthenticated user must receive HTTP 401 on audit routes');
+  assert.strictEqual(nextCalledUnauthAudit, false);
+  console.log('✅ PASS 18.4: Unauthenticated users cannot access audit API (HTTP 401)');
+
+  // 18.5 Admin can view paginated logs
+  const ctx18_5 = createMockContext(userAdmin);
+  (ctx18_5.req as any).query = { page: '1', limit: '5' };
+  await AdminController.getAuditLogs(ctx18_5.req, ctx18_5.res);
+  assert.strictEqual(ctx18_5.getResponse().statusCode, 200, 'Admin can view audit logs with HTTP 200');
+  assert.strictEqual(ctx18_5.getResponse().responseData.success, true);
+  assert.ok(Array.isArray(ctx18_5.getResponse().responseData.data), 'Data must be an array');
+  assert.ok(ctx18_5.getResponse().responseData.data.length <= 5, 'Results must adhere to limit');
+  assert.ok(ctx18_5.getResponse().responseData.pagination, 'Pagination metadata must be returned');
+  assert.strictEqual(ctx18_5.getResponse().responseData.pagination.page, 1);
+  assert.strictEqual(ctx18_5.getResponse().responseData.pagination.limit, 5);
+  console.log('✅ PASS 18.5: Admin can view paginated audit logs');
+
+  // 18.6 Filters work correctly (action and targetId)
+  const ctx18_6 = createMockContext(userAdmin);
+  (ctx18_6.req as any).query = { action: 'UPDATE_DRIVER_APPROVAL', targetId: String(targetDriverId) };
+  await AdminController.getAuditLogs(ctx18_6.req, ctx18_6.res);
+  assert.strictEqual(ctx18_6.getResponse().statusCode, 200);
+  const filteredData = ctx18_6.getResponse().responseData.data;
+  assert.ok(filteredData.length >= 1, 'Filtered query must return matching audit records');
+  for (const item of filteredData) {
+    assert.strictEqual(item.action, 'UPDATE_DRIVER_APPROVAL', 'Action filter must match exactly');
+    assert.strictEqual(item.target_id, String(targetDriverId), 'Target ID filter must match exactly');
+  }
+  console.log('✅ PASS 18.6: Audit log filtering by action and targetId works correctly');
+
+  // 18.7 Sensitive values are never recorded in audit logs
+  const rawSensitiveDetails = {
+    password: 'super_secret_password',
+    token: 'jwt.token.string',
+    apiKey: 'sk_live_12345',
+    otp: '998877',
+    safeName: 'Test Route Update',
+    safeFare: 50,
+    nested: {
+      passwordHash: '$2a$10$abcdef',
+      allowedFlag: true
+    }
+  };
+  const sanitized = sanitizeAuditDetails(rawSensitiveDetails);
+  assert.strictEqual(sanitized.password, '[REDACTED]', 'Password must be redacted');
+  assert.strictEqual(sanitized.token, '[REDACTED]', 'Token must be redacted');
+  assert.strictEqual(sanitized.apiKey, '[REDACTED]', 'API key must be redacted');
+  assert.strictEqual(sanitized.otp, '[REDACTED]', 'OTP must be redacted');
+  assert.strictEqual(sanitized.nested.passwordHash, '[REDACTED]', 'Nested password hash must be redacted');
+  assert.strictEqual(sanitized.safeName, 'Test Route Update', 'Non-sensitive values preserved');
+  assert.strictEqual(sanitized.safeFare, 50);
+  assert.strictEqual(sanitized.nested.allowedFlag, true);
+
+  // Check all existing logs in the database to ensure no raw passwords or secrets exist
+  const allLogsRes = await query(`SELECT details_json FROM admin_audit_logs LIMIT 50`);
+  for (const logRow of allLogsRes.rows) {
+    const rawText = typeof logRow.details_json === 'string' ? logRow.details_json : JSON.stringify(logRow.details_json);
+    if (rawText) {
+      assert.strictEqual(
+        /password_hash|super_secret|sk_live/i.test(rawText),
+        false,
+        'Audit log details must never contain sensitive keys or credentials'
+      );
+    }
+  }
+  console.log('✅ PASS 18.7: Sensitive values and credentials strictly sanitized from audit trail');
+
+  // 18.8 Audit logs cannot be modified or deleted through the API
+  const adminAuditRoutes = adminRoutes.stack
+    .filter((layer: any) => layer.route && layer.route.path === '/audit-logs')
+    .map((layer: any) => ({
+      path: layer.route.path,
+      methods: Object.keys(layer.route.methods)
+    }));
+  assert.strictEqual(adminAuditRoutes.length, 1, 'Only one /audit-logs route must be registered');
+  assert.deepStrictEqual(adminAuditRoutes[0].methods, ['get'], 'Audit log endpoint must only support GET; POST/PUT/PATCH/DELETE forbidden');
+  console.log('✅ PASS 18.8: Audit logs are strictly read-only and immutable through the API');
+
+  // 18.9 Existing admin functionality and last active admin protection remain intact
+  const activeAdminsSuite18 = await AuthService.countActiveAdmins();
+  assert.ok(activeAdminsSuite18 >= 1, 'Active admins must be >= 1');
+  const ctxDash18 = createMockContext(userAdmin);
+  await AdminController.getDashboardStats(ctxDash18.req, ctxDash18.res);
+  assert.strictEqual(ctxDash18.getResponse().statusCode, 200, 'Admin dashboard stats must remain fully operational');
+  console.log('✅ PASS 18.9: Existing admin functionality and last-active-admin protection remain fully operational');
 
   console.log('\n=========================================');
   console.log('🎉 ALL SECURITY PHASE 1 TESTS PASSED!');

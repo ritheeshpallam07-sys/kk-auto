@@ -39,4 +39,7 @@ router.patch('/commission', AdminController.updateCommission);
 router.get('/settlements', AdminController.getSettlements);
 router.post('/settlements/settle', AdminController.settlePayouts);
 
+// Activity Audit Logs (Read-only)
+router.get('/audit-logs', AdminController.getAuditLogs);
+
 export default router;
