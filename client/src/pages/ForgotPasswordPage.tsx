@@ -50,8 +50,8 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ navigate
           <h2 className="text-2xl font-black text-white tracking-tight">
             Account Recovery
           </h2>
-          <p className="text-xs text-[#A1A1AA] mt-1">
-            Reset your password using your verified email address
+          <p className="text-xs text-[#A1A1AA] mt-1 leading-relaxed">
+            Enter your registered email address. We'll send you a secure password reset link to recover your account.
           </p>
         </div>
 
