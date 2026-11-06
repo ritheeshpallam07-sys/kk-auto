@@ -4017,6 +4017,66 @@ async function runTests() {
   assert.strictEqual(custAuditCheck.rows.length, 0, 'Customer password change must not create admin audit logs');
   console.log('✅ PASS 19.11: Customer password change does not populate admin audit log');
 
+  // 19.12 Driver role can successfully change password
+  const driverInitialPwd = 'DriverSecurePass2026!';
+  const driverHash = await AuthService.hashPassword(driverInitialPwd);
+  const driverTestEmail = `driver_pwd_${Date.now()}@test.com`;
+  const insertDriverRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status, token_version)
+     VALUES ($1, $2, $3, $4, 'driver', 'ACTIVE', 1)
+     RETURNING id, name, email, mobile, role, token_version`,
+    ['Driver Pwd Test', driverTestEmail, `9873${Math.floor(Math.random() * 899999 + 100000)}`, driverHash]
+  );
+  const suite19DriverUser: AuthUser = {
+    id: insertDriverRes.rows[0].id,
+    name: insertDriverRes.rows[0].name,
+    email: insertDriverRes.rows[0].email,
+    mobile: insertDriverRes.rows[0].mobile,
+    role: 'driver',
+    token_version: 1
+  };
+  const driverToken = AuthService.generateToken(suite19DriverUser);
+  const newDriverPwd = 'NewSuperSecureDriverPassword2026!';
+  const driverChangeRes = await testChangePassword(driverToken, {
+    currentPassword: driverInitialPwd,
+    newPassword: newDriverPwd,
+    confirmPassword: newDriverPwd
+  });
+  assert.strictEqual(driverChangeRes.status, 200, 'Driver password change must return HTTP 200');
+  assert.strictEqual(driverChangeRes.body.success, true);
+
+  // Old driver token must now be revoked
+  const driverOldAuth = await testAuthMiddleware(driverToken);
+  assert.strictEqual(driverOldAuth.status, 403, 'Old driver token must be revoked with HTTP 403');
+
+  // Driver can log in with new password
+  const driverNewLogin = await testLogin(driverTestEmail, newDriverPwd);
+  assert.strictEqual(driverNewLogin.status, 200, 'Driver new login must succeed with HTTP 200');
+  assert.ok(driverNewLogin.body.data.token);
+  console.log('✅ PASS 19.12: Driver role can change password, revokes session, and logs in with new password');
+
+  // 19.13 Unrelated role-based permissions remain strictly enforced across all roles
+  // Customer blocked from admin endpoint
+  const custCtxAdminTest = createMockContext(suite19User);
+  let nextCalledCust = false;
+  requireRole(['admin'])(custCtxAdminTest.req, custCtxAdminTest.res, () => { nextCalledCust = true; });
+  assert.strictEqual(nextCalledCust, false);
+  assert.strictEqual(custCtxAdminTest.getResponse().statusCode, 403, 'Customer must be blocked from admin route with 403');
+
+  // Driver blocked from admin endpoint
+  const driverCtxAdminTest = createMockContext(suite19DriverUser);
+  let nextCalledDriver = false;
+  requireRole(['admin'])(driverCtxAdminTest.req, driverCtxAdminTest.res, () => { nextCalledDriver = true; });
+  assert.strictEqual(nextCalledDriver, false);
+  assert.strictEqual(driverCtxAdminTest.getResponse().statusCode, 403, 'Driver must be blocked from admin route with 403');
+
+  // Admin allowed on admin endpoint
+  const adminCtxAdminTest = createMockContext(suite19AdminUser);
+  let nextCalledAdmin = false;
+  requireRole(['admin'])(adminCtxAdminTest.req, adminCtxAdminTest.res, () => { nextCalledAdmin = true; });
+  assert.strictEqual(nextCalledAdmin, true, 'Admin must be permitted on admin route');
+  console.log('✅ PASS 19.13: Unrelated role restrictions remain strictly enforced (customer 403, driver 403, admin 200)');
+
   console.log('\n=========================================');
   console.log('🎉 ALL SECURITY PHASE 1 TESTS PASSED!');
   console.log('=========================================\n');

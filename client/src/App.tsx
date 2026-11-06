@@ -179,7 +179,7 @@ export const App: React.FC = () => {
     if (currentPath === '/profile') {
       return (
         <ProtectedRoute
-          allowedRoles={['customer', 'driver']}
+          allowedRoles={['customer', 'driver', 'admin']}
           navigate={navigate}
         >
           <ProfilePage navigate={navigate} />

@@ -200,11 +200,21 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate }) => {
       {/* Back button */}
       <div className="flex items-center justify-between">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => {
+            if (user.role === 'admin') navigate('/owner/dashboard');
+            else if (user.role === 'driver') navigate('/driver');
+            else navigate('/');
+          }}
           className="inline-flex items-center gap-2 text-xs font-bold text-white hover:text-[#C6FF3D] transition-colors min-h-[36px] px-3 py-1.5 rounded-xl bg-[#171719] border border-[#303034]"
         >
           <ArrowLeft className="w-4 h-4 text-[#C6FF3D]" />
-          <span>Back to Home</span>
+          <span>
+            {user.role === 'admin'
+              ? 'Back to Owner Console'
+              : user.role === 'driver'
+                ? 'Back to Driver Console'
+                : 'Back to Home'}
+          </span>
         </button>
 
         <div className="flex items-center gap-3 text-xs">
@@ -366,12 +376,28 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate }) => {
 
         {/* Primary Actions */}
         <div className="pt-4 border-t border-[#303034] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          <button
-            onClick={() => navigate('/my-rides')}
-            className="w-full sm:w-auto px-5 py-3 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs rounded-xl shadow-glow-lime text-center justify-center min-h-[44px]"
-          >
-            View Ride History
-          </button>
+          {user.role === 'admin' ? (
+            <button
+              onClick={() => navigate('/owner/dashboard')}
+              className="w-full sm:w-auto px-5 py-3 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs rounded-xl shadow-glow-lime text-center justify-center min-h-[44px]"
+            >
+              Go to Owner Console
+            </button>
+          ) : user.role === 'driver' ? (
+            <button
+              onClick={() => navigate('/driver')}
+              className="w-full sm:w-auto px-5 py-3 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs rounded-xl shadow-glow-lime text-center justify-center min-h-[44px]"
+            >
+              Go to Driver Console
+            </button>
+          ) : (
+            <button
+              onClick={() => navigate('/my-rides')}
+              className="w-full sm:w-auto px-5 py-3 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs rounded-xl shadow-glow-lime text-center justify-center min-h-[44px]"
+            >
+              View Ride History
+            </button>
+          )}
 
           <button
             onClick={() => {
