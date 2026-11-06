@@ -3,6 +3,13 @@ import crypto from 'crypto';
 import { AuthService } from '../services/authService';
 import { AuditService } from '../services/auditService';
 import { query, withTransaction } from '../config/db';
+import {
+  getCookieOptions,
+  getCsrfCookieOptions,
+  getClearCookieOptions,
+  generateCsrfToken,
+  parseCookies
+} from '../middleware/auth';
 
 /**
  * Safely resolves the connecting client IP behind reverse proxies (Cloudflare + Render).
@@ -305,12 +312,18 @@ export class AuthController {
       // Generate JWT only after commit succeeds
       const token = AuthService.generateToken(txResult.user!);
 
+      // SEC-05: Issue JWT session cookie and CSRF token
+      if (typeof res.cookie === 'function') {
+        res.cookie('kk_token', token, getCookieOptions(txResult.user!.role));
+        res.cookie('kk_csrf', generateCsrfToken(), getCsrfCookieOptions());
+      }
+
       return res.status(201).json({
         success: true,
         message: txResult.role === 'driver'
           ? 'Email verified. Driver account created and awaiting Owner/Admin approval.'
           : 'Email verified successfully. Account created.',
-        data: { user: txResult.user, token }
+        data: { user: txResult.user }
       });
     } catch (err: any) {
       // Rollback on every failure; never expose SQL errors or sensitive values to clients
@@ -324,6 +337,35 @@ export class AuthController {
 
   public static async login(req: Request, res: Response) {
     try {
+      // SEC-04: Strict request body and parameter validation
+      if (!req.body || typeof req.body !== 'object') {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid request body.'
+        });
+      }
+
+      const { identifier, password } = req.body;
+
+      if (
+        typeof identifier !== 'string' ||
+        typeof password !== 'string' ||
+        identifier.trim().length === 0 ||
+        password.length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: 'Identifier and password are required.'
+        });
+      }
+
+      if (identifier.trim().length > 254 || password.length > 256) {
+        return res.status(400).json({
+          success: false,
+          error: 'Identifier or password exceeds maximum allowed length.'
+        });
+      }
+
       // CONF-07-D: IP-based rate limiting on login attempts
       const clientIp = getClientIp(req);
       const ipLimit = await AuthService.checkRateLimit(`login_ip_${clientIp}`, 15, 900);
@@ -343,38 +385,61 @@ export class AuthController {
         });
       }
 
-      const { identifier, password } = req.body;
-      const cleanIdentifier = typeof identifier === 'string' ? identifier.trim().toLowerCase() : '';
+      const cleanIdentifier = identifier.trim().toLowerCase();
+      const idHash = crypto.createHash('sha256').update(cleanIdentifier).digest('hex').slice(0, 32);
+      const accFailKey = `login_fail_acc_${idHash}`;
 
-      // Account-level brute-force protection (5 attempts per 15 minutes)
-      // SHA-256 digest prevents sensitive identifier exposure in rate-limit storage
-      if (cleanIdentifier) {
-        const idHash = crypto.createHash('sha256').update(cleanIdentifier).digest('hex').slice(0, 32);
-        const accLimit = await AuthService.checkRateLimit(`login_acc_${idHash}`, 5, 900);
-        if (!accLimit.allowed) {
-          if (accLimit.isServiceUnavailable) {
+      try {
+        const result = await AuthService.login(identifier, password);
+
+        // SEC-01: Authentication succeeded! Reset failed attempt counter so legitimate user is never locked out
+        await AuthService.resetRateLimit(accFailKey);
+
+        // SEC-05: Issue session token through Secure HttpOnly cookie
+        if (typeof res.cookie === 'function') {
+          res.cookie('kk_token', result.token, getCookieOptions(result.user.role));
+          res.cookie('kk_csrf', generateCsrfToken(), getCsrfCookieOptions());
+        }
+
+        // Return user data; never expose raw JWT in JSON response body
+        return res.status(200).json({
+          success: true,
+          message: 'Logged in successfully.',
+          data: { user: result.user }
+        });
+      } catch (authErr: any) {
+        // If account is deactivated (credentials were correct), return 403 directly
+        if (authErr.statusCode === 403) {
+          return res.status(403).json({
+            success: false,
+            error: authErr.message
+          });
+        }
+
+        // Failed authentication: record failed attempt against the target account (SEC-01)
+        const accFailLimit = await AuthService.checkRateLimit(accFailKey, 5, 900);
+        if (!accFailLimit.allowed) {
+          if (accFailLimit.isServiceUnavailable) {
             return res.status(503).json({
               success: false,
               error: 'Authentication service temporarily unavailable. Please try again later.'
             });
           }
           if (typeof res.set === 'function') {
-            res.set('Retry-After', String(accLimit.retryAfterSeconds));
+            res.set('Retry-After', String(accFailLimit.retryAfterSeconds));
           }
+          // Generic rate-limit response: prevents account enumeration (SEC-02)
           return res.status(429).json({
             success: false,
-            error: 'Too many failed login attempts for this account. Please try again later.'
+            error: 'Too many failed login attempts. Please try again later.'
           });
         }
+
+        return res.status(401).json({
+          success: false,
+          error: 'Invalid email/mobile or password.'
+        });
       }
-
-      const result = await AuthService.login(identifier, password);
-
-      return res.status(200).json({
-        success: true,
-        message: 'Logged in successfully.',
-        data: result
-      });
     } catch (err: any) {
       const statusCode = err.statusCode || 401;
       if (err.retryAfterSeconds && typeof res.set === 'function') {
@@ -393,10 +458,25 @@ export class AuthController {
       if (!user) {
         return res.status(404).json({ success: false, error: 'User not found.' });
       }
+
+      // Ensure CSRF cookie is initialized if missing
+      const cookies = req.cookies || parseCookies(req.headers.cookie);
+      if (!cookies['kk_csrf'] && typeof res.cookie === 'function') {
+        res.cookie('kk_csrf', generateCsrfToken(), getCsrfCookieOptions());
+      }
+
       return res.json({ success: true, data: user });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message });
     }
+  }
+
+  public static async getCsrfToken(req: Request, res: Response) {
+    const token = generateCsrfToken();
+    if (typeof res.cookie === 'function') {
+      res.cookie('kk_csrf', token, getCsrfCookieOptions());
+    }
+    return res.json({ success: true, csrfToken: token });
   }
 
   public static async acceptTerms(req: Request, res: Response) {
@@ -426,17 +506,33 @@ export class AuthController {
 
   public static async logout(req: Request, res: Response) {
     try {
-      const authHeader = req.headers['authorization'];
-      const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+      const cookies = req.cookies || parseCookies(req.headers.cookie);
+      let token = cookies['kk_token'];
+
+      if (!token) {
+        const authHeader = req.headers['authorization'];
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          token = authHeader.split(' ')[1];
+        }
+      }
 
       if (token) {
         await AuthService.revokeToken(token);
+      }
+
+      if (typeof res.clearCookie === 'function') {
+        res.clearCookie('kk_token', getClearCookieOptions());
+        res.clearCookie('kk_csrf', getClearCookieOptions());
       }
 
       return res.json({ success: true, message: 'Logged out successfully.' });
     } catch (err: any) {
       // Logout must be idempotent and resilient: always return success to the client
       console.error('[Auth] Error during token revocation on logout:', err?.message || err);
+      if (typeof res.clearCookie === 'function') {
+        res.clearCookie('kk_token', getClearCookieOptions());
+        res.clearCookie('kk_csrf', getClearCookieOptions());
+      }
       return res.json({ success: true, message: 'Logged out successfully.' });
     }
   }
@@ -493,6 +589,11 @@ export class AuthController {
         } catch (auditErr: any) {
           console.error('[Audit] Failed to log admin change password action:', auditErr?.message || auditErr);
         }
+      }
+
+      if (typeof res.clearCookie === 'function') {
+        res.clearCookie('kk_token', getClearCookieOptions());
+        res.clearCookie('kk_csrf', getClearCookieOptions());
       }
 
       return res.json({
@@ -668,6 +769,11 @@ export class AuthController {
         } catch (auditErr: any) {
           console.error('[Audit] Failed to log admin reset password action:', auditErr?.message || auditErr);
         }
+      }
+
+      if (typeof res.clearCookie === 'function') {
+        res.clearCookie('kk_token', getClearCookieOptions());
+        res.clearCookie('kk_csrf', getClearCookieOptions());
       }
 
       return res.status(200).json({

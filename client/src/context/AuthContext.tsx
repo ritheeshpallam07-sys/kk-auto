@@ -12,7 +12,6 @@ interface AuthContextType {
     error?: string;
     data?: {
       user: User;
-      token: string;
     };
   }>;
   register: (data: any) => Promise<{
@@ -34,21 +33,11 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('kk_token'));
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const isCheckingRef = React.useRef(false);
 
   const checkSession = async () => {
-    const storedToken = localStorage.getItem('kk_token');
-    if (!storedToken) {
-      setUser(null);
-      setToken(null);
-      setSessionError(null);
-      setIsLoading(false);
-      return;
-    }
-
     if (isCheckingRef.current) return;
     isCheckingRef.current = true;
     setIsLoading(true);
@@ -57,21 +46,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await api.auth.me();
       if (res.success && res.data) {
         setUser(res.data);
-        setToken(storedToken);
         setSessionError(null);
       } else if (res.status === 401 || res.status === 403) {
-        // Token invalid, expired, or deactivated by admin - clean logout
-        localStorage.removeItem('kk_token');
-        setToken(null);
+        // No active session or deactivated - clean unauthenticated state
         setUser(null);
         setSessionError(null);
       } else {
-        // Network failure, timeout, or 5xx server issue - preserve token and show retryable state
+        // Network failure, timeout, or 5xx server issue - show retryable state
         setSessionError(res.error || 'Server temporarily unreachable. Please check connection and retry.');
       }
     } catch (err: any) {
       setSessionError(err.message || 'Connection error');
     } finally {
+      // Proactively scrub any legacy localStorage token during session check
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('kk_token')) {
+        localStorage.removeItem('kk_token');
+      }
       isCheckingRef.current = false;
       setIsLoading(false);
     }
@@ -89,30 +79,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (res.success && res.data) {
       setUser(res.data.user);
-      setToken(res.data.token);
-      localStorage.setItem('kk_token', res.data.token);
       return { success: true, data: res.data };
     }
     return { success: false, error: res.error || 'Login failed' };
   };
 
   const register = async (data: any) => {
-  setIsLoading(true);
+    setIsLoading(true);
 
-  try {
-    const res = await api.auth.register(data);
+    try {
+      const res = await api.auth.register(data);
 
-    if (!res.success || !res.data) {
-      return {
-        success: false,
-        error: res.error || 'Registration failed'
-      };
-    }
+      if (!res.success || !res.data) {
+        return {
+          success: false,
+          error: res.error || 'Registration failed'
+        };
+      }
 
-    // Customer: OTP verification required
-    if (
-      'requiresVerification' in res.data &&
-      res.data.requiresVerification === true
+      // Customer: OTP verification required
+      if (
+        'requiresVerification' in res.data &&
+        res.data.requiresVerification === true
       ) {
         return {
           success: true,
@@ -121,37 +109,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
+      // Driver or direct registration:
+      if ('user' in res.data) {
+        setUser(res.data.user);
+        return { success: true };
+      }
 
-    // Driver: keep existing registration flow
-    if ('user' in res.data && 'token' in res.data) {
-      setUser(res.data.user);
-      setToken(res.data.token);
-      localStorage.setItem('kk_token', res.data.token);
-
-      return { success: true };
+      return {
+        success: false,
+        error: 'Unexpected registration response.'
+      };
+    } catch {
+      return {
+        success: false,
+        error: 'Registration failed. Please try again.'
+      };
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    return {
-      success: false,
-      error: 'Unexpected registration response.'
-    };
-  } catch {
-    return {
-      success: false,
-      error: 'Registration failed. Please try again.'
-    };
-  } finally {
-    setIsLoading(false);
-  }
-};
   const logout = async () => {
     try {
       await api.auth.logout();
     } catch (err) {
       console.error('[Auth] Server logout notification failed:', err);
     } finally {
-      localStorage.removeItem('kk_token');
-      setToken(null);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('kk_token');
+      }
       setUser(null);
       setSessionError(null);
     }
@@ -213,7 +199,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider
       value={{
         user,
-        token,
+        token: null, // Tokens are now securely held in HttpOnly cookies; no JavaScript exposure (SEC-05)
         isLoading,
         hasAcceptedTerms,
         acceptTerms,

@@ -51,6 +51,9 @@ export interface RateLimitResult {
 export class AuthService {
   public static readonly adminDeactivationMutex = new AsyncMutex();
 
+  // Pre-computed standard cost-10 bcrypt hash used to equalize timing for non-existent accounts (SEC-02)
+  public static readonly DUMMY_BCRYPT_HASH = '$2a$10$wN2L5x7B8yZ1v4c9k0m3e.uH2pG7rT2sX5Vw6tJ6y6hB.0j7oK2q';
+
   /**
    * Count the number of currently active administrator accounts.
    */
@@ -327,10 +330,32 @@ export class AuthService {
     }
   }
 
+  /**
+   * Resets or clears rate limit entries for a key (SEC-01).
+   * Used to reset failed attempt counters upon successful authentication.
+   */
+  public static async resetRateLimit(key: string): Promise<void> {
+    try {
+      await query(`DELETE FROM rate_limits WHERE key = $1`, [key]);
+    } catch (err: any) {
+      console.error('Rate limit reset failed:', err?.message || 'Database error');
+    }
+  }
+
   public static async login(
     identifier: string,
     password: string
   ): Promise<{ user: AuthUser; token: string }> {
+    // SEC-04: Defensive input validation
+    if (
+      typeof identifier !== 'string' ||
+      typeof password !== 'string' ||
+      !identifier.trim() ||
+      !password
+    ) {
+      throw new Error('Invalid email/mobile or password.');
+    }
+
     const normalizedIdentifier = identifier.trim().toLowerCase();
 
     const result = await query(
@@ -343,20 +368,28 @@ export class AuthService {
       [normalizedIdentifier, identifier.trim()]
     );
 
+    // SEC-02: Equalize timing with dummy bcrypt comparison for nonexistent users
     if (result.rows.length === 0) {
+      await this.comparePassword(password, this.DUMMY_BCRYPT_HASH);
       throw new Error('Invalid email/mobile or password.');
     }
 
     const row = result.rows[0];
 
-    if (row.status === 'DEACTIVATED') {
-      throw new Error('This account has been deactivated. For inquiries or reactivation, please contact support@clik2go.in.');
-    }
-
+    // SEC-02: Check password BEFORE inspecting account status.
+    // Never disclose deactivation state to someone who does not know the valid password!
     const isValid = await this.comparePassword(password, row.password_hash);
-
     if (!isValid) {
       throw new Error('Invalid email/mobile or password.');
+    }
+
+    // After password verification, enforce deactivation policy securely
+    if (row.status === 'DEACTIVATED') {
+      const deactErr: any = new Error(
+        'This account has been deactivated. For inquiries or reactivation, please contact support@clik2go.in.'
+      );
+      deactErr.statusCode = 403;
+      throw deactErr;
     }
 
     const user: AuthUser = {

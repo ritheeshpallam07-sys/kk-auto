@@ -9,7 +9,7 @@ dotenv.config();
 
 import { initDb } from './config/db';
 import { initPlatformDefaults } from './db/seed';
-import { getJwtSecret } from './middleware/auth';
+import { getJwtSecret, parseCookies, csrfProtection } from './middleware/auth';
 import { AuthService } from './services/authService';
 import authRoutes from './routes/authRoutes';
 import bookingRoutes from './routes/bookingRoutes';
@@ -77,7 +77,9 @@ export const corsOptions: cors.CorsOptions = {
     'Accept',
     'Origin',
     'x-webhook-signature',
-    'x-webhook-timestamp'
+    'x-webhook-timestamp',
+    'x-csrf-token',
+    'X-CSRF-Token'
   ],
   exposedHeaders: ['Retry-After']
 };
@@ -141,6 +143,12 @@ app.use(express.json({
     }
   }
 }));
+// Parse cookies before routing
+app.use((req, _res, next) => {
+  (req as any).cookies = parseCookies(req.headers.cookie);
+  next();
+});
+
 // Request logger
 app.use((req, res, next) => {
   const start = Date.now();
@@ -163,6 +171,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // API Routes
+app.use('/api', csrfProtection);
 app.use('/api/auth', authRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/drivers', driverRoutes);

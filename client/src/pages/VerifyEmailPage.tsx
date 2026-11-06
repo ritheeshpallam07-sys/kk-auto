@@ -33,7 +33,6 @@ export const VerifyEmailPage: React.FC<VerifyEmailPageProps> = ({ navigate }) =>
 
       if (res.success && res.data) {
         setMessage('Email verified successfully! Proceeding to Terms...');
-        localStorage.setItem('kk_token', res.data.token);
 
         setTimeout(() => {
           navigate('/accept-terms');

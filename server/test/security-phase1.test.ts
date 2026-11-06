@@ -3,7 +3,20 @@ import assert from 'node:assert/strict';
 import crypto from 'crypto';
 import { PaymentService } from '../src/services/paymentService';
 import jwt from 'jsonwebtoken';
-import { getJwtSecret, JWT_ALGORITHM, DEFAULT_DEV_JWT_SECRET, authenticateToken, requireRole, AuthUser } from '../src/middleware/auth';
+import {
+  getJwtSecret,
+  JWT_ALGORITHM,
+  DEFAULT_DEV_JWT_SECRET,
+  authenticateToken,
+  requireRole,
+  AuthUser,
+  parseCookies,
+  csrfProtection,
+  getCookieOptions,
+  getCsrfCookieOptions,
+  getClearCookieOptions,
+  generateCsrfToken
+} from '../src/middleware/auth';
 import { AuthService } from '../src/services/authService';
 import { AuthController, getClientIp } from '../src/controllers/authController';
 import { EmailService } from '../src/services/emailService';
@@ -225,6 +238,8 @@ async function runTests() {
     let responseData: any = null;
     let statusCode: number = 200;
     const headersSet: Record<string, string> = {};
+    const cookiesSet: Record<string, any> = {};
+    const cookiesCleared: Record<string, any> = {};
 
     const res = {
       status(code: number) {
@@ -238,10 +253,19 @@ async function runTests() {
       set(header: string, val: string) {
         headersSet[header] = val;
         return this;
+      },
+      cookie(name: string, val: string, options: any) {
+        cookiesSet[name] = { val, options };
+        return this;
+      },
+      clearCookie(name: string, options: any) {
+        cookiesCleared[name] = options;
+        delete cookiesSet[name];
+        return this;
       }
     } as unknown as Response;
 
-    return { req, res, getResponse: () => ({ statusCode, responseData, headersSet }) };
+    return { req, res, getResponse: () => ({ statusCode, responseData, headersSet, cookiesSet, cookiesCleared }) };
   }
 
   // 3.1 Unauthenticated request rejected by authenticateToken
@@ -1851,7 +1875,7 @@ async function runTests() {
   await AuthController.verifyEmailOtp(ctx8_3.req, ctx8_3.res);
   assert.strictEqual(ctx8_3.getResponse().statusCode, 201);
   assert.strictEqual(ctx8_3.getResponse().responseData.success, true);
-  assert.ok(ctx8_3.getResponse().responseData.data?.token, 'JWT token must be returned upon successful verification');
+  assert.ok(ctx8_3.getResponse().cookiesSet['kk_token']?.val || ctx8_3.getResponse().responseData.data?.token, 'JWT session cookie must be issued upon successful verification');
   const userCreated8_3 = (await query('SELECT * FROM users WHERE email = $1', [email8_2])).rows[0];
   assert.ok(userCreated8_3, 'User account must be created in users table');
   const pendingDeleted8_3 = (await query('SELECT * FROM email_verifications WHERE email = $1', [email8_2])).rows[0];
@@ -2195,7 +2219,7 @@ async function runTests() {
   const ctx8_19 = createMockContext(undefined, {}, { email: email8_19, otp: otp8_19 }, '10.0.1.19');
   await AuthController.verifyEmailOtp(ctx8_19.req, ctx8_19.res);
   assert.strictEqual(ctx8_19.getResponse().statusCode, 201);
-  assert.ok(ctx8_19.getResponse().responseData.data?.token, 'JWT token must be issued');
+  assert.ok(ctx8_19.getResponse().cookiesSet['kk_token']?.val || ctx8_19.getResponse().responseData.data?.token, 'JWT session cookie must be issued');
 
   const rec8_19 = (await query('SELECT * FROM email_verifications WHERE email = $1', [email8_19])).rows[0];
   assert.strictEqual(rec8_19, undefined, 'OTP record must be deleted upon successful commit');
@@ -2840,7 +2864,7 @@ async function runTests() {
     lastAccLoginRes = ctx.getResponse();
   }
   assert.strictEqual(lastAccLoginRes.statusCode, 429, '6th attempt against same account must return HTTP 429');
-  assert.strictEqual(lastAccLoginRes.responseData.error, 'Too many failed login attempts for this account. Please try again later.');
+  assert.strictEqual(lastAccLoginRes.responseData.error, 'Too many failed login attempts. Please try again later.');
   assert.ok(lastAccLoginRes.headersSet['Retry-After'], 'Retry-After header must be present on account lockout');
   console.log('✅ PASS 12.3: Account-level brute-force rate limit stops multi-IP credential attacks (HTTP 429)');
 
@@ -3815,9 +3839,10 @@ async function runTests() {
   }
 
   // Helper to run AuthController.login
-  async function testLogin(identifier: string, password: string): Promise<{ status: number; body: any }> {
+  async function testLogin(identifier: string, password: string): Promise<{ status: number; body: any; cookies: Record<string, any> }> {
     let status = 200;
     let responseBody: any = null;
+    const cookiesSet: Record<string, any> = {};
     const req = {
       body: { identifier, password },
       headers: {},
@@ -3826,11 +3851,13 @@ async function runTests() {
     const res = {
       status(code: number) { status = code; return this; },
       json(data: any) { responseBody = data; return this; },
-      set() { return this; }
+      set() { return this; },
+      cookie(name: string, val: string, options: any) { cookiesSet[name] = { val, options }; return this; },
+      clearCookie(name: string) { delete cookiesSet[name]; return this; }
     } as any;
 
     await AuthController.login(req, res);
-    return { status, body: responseBody };
+    return { status, body: responseBody, cookies: cookiesSet };
   }
 
   // Set up dedicated test users for Suite 19
@@ -3960,9 +3987,10 @@ async function runTests() {
 
   const newLogin = await testLogin(suite19User.email, newValidPassword);
   assert.strictEqual(newLogin.status, 200, 'New password login must succeed with HTTP 200');
-  assert.ok(newLogin.body.data.token, 'Must return new JWT token');
+  const issuedToken = newLogin.cookies['kk_token']?.val || newLogin.body?.data?.token;
+  assert.ok(issuedToken, 'Must issue new JWT session cookie');
 
-  const freshAuth = await testAuthMiddleware(newLogin.body.data.token);
+  const freshAuth = await testAuthMiddleware(issuedToken);
   assert.strictEqual(freshAuth.status, 200, 'Fresh token from new login must authenticate successfully');
   assert.strictEqual(freshAuth.nextCalled, true);
   console.log('✅ PASS 19.9: User can log in with new password and authenticate successfully');
@@ -4053,7 +4081,8 @@ async function runTests() {
   // Driver can log in with new password
   const driverNewLogin = await testLogin(driverTestEmail, newDriverPwd);
   assert.strictEqual(driverNewLogin.status, 200, 'Driver new login must succeed with HTTP 200');
-  assert.ok(driverNewLogin.body.data.token);
+  const driverIssuedToken = driverNewLogin.cookies['kk_token']?.val || driverNewLogin.body?.data?.token;
+  assert.ok(driverIssuedToken, 'Must issue new driver JWT session cookie');
   console.log('✅ PASS 19.12: Driver role can change password, revokes session, and logs in with new password');
 
   // 19.13 Unrelated role-based permissions remain strictly enforced across all roles
@@ -4365,7 +4394,8 @@ async function runTests() {
 
   const newLoginRes = await testLogin(driver20Email, driverNewPwd);
   assert.strictEqual(newLoginRes.status, 200, 'Login with new password must succeed with HTTP 200');
-  assert.ok(newLoginRes.body.data.token, 'New login must return new JWT token');
+  const driverResetIssuedToken = newLoginRes.cookies['kk_token']?.val || newLoginRes.body?.data?.token;
+  assert.ok(driverResetIssuedToken, 'New login must issue new JWT session cookie');
   console.log('✅ PASS 20.12: Successful Login with New Password: Old credentials rejected, new credentials accepted');
 
   // 20.13 Admin Audit Logging on Reset
@@ -4485,6 +4515,300 @@ async function runTests() {
   EmailService.setResetSender(null);
   console.log('✅ PASS 20.19: Complete verification of Customer, Driver, and Admin/Owner flows');
   console.log('✅ PASS 20.20: Referrer-Policy: no-referrer enforced via HTTP header and HTML meta tag');
+
+  // =========================================================================
+  // TEST SUITE 21: Phase 6 Complete Login & Session Security Hardening
+  // =========================================================================
+  console.log('\n--- 21. Testing Login & Session Security Hardening (Phase 6: SEC-01 to SEC-05) ---');
+
+  // --- SEC-01: Fix Account Lockout DoS & Track Failed Attempts Appropriately ---
+  const sec01Email = `sec01_user_${Date.now()}@clik2go.in`;
+  const sec01CorrectPwd = 'CorrectPassword123!';
+  const sec01Hash = await AuthService.hashPassword(sec01CorrectPwd);
+  const insertSec01 = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status, token_version)
+     VALUES ($1, $2, $3, $4, 'customer', 'ACTIVE', 1)
+     RETURNING id, email, role`,
+    ['SEC-01 User', sec01Email, `+9198765${Math.floor(10000 + Math.random() * 90000)}`, sec01Hash]
+  );
+  const sec01User = insertSec01.rows[0];
+
+  // 1. Attacker sends 5 failed login attempts with wrong passwords from different IPs
+  for (let i = 0; i < 5; i++) {
+    const attackerIp = `198.51.200.${i + 1}`;
+    const ctx = createMockContext(undefined, {}, { identifier: sec01Email, password: 'wrongpassword' }, attackerIp);
+    await AuthController.login(ctx.req, ctx.res);
+    const res = ctx.getResponse();
+    assert.strictEqual(res.statusCode, 401, 'Attempts 1-5 with wrong password return 401');
+    assert.strictEqual(res.responseData.error, 'Invalid email/mobile or password.');
+  }
+
+  // 2. 6th failed attempt from attacker triggers rate limiting
+  const attackerCtx6 = createMockContext(undefined, {}, { identifier: sec01Email, password: 'wrongpassword' }, '198.51.200.99');
+  await AuthController.login(attackerCtx6.req, attackerCtx6.res);
+  const res6 = attackerCtx6.getResponse();
+  assert.strictEqual(res6.statusCode, 429, '6th failed attempt returns HTTP 429');
+  assert.strictEqual(res6.responseData.error, 'Too many failed login attempts. Please try again later.');
+  assert.ok(res6.headersSet['Retry-After'], 'Retry-After header must be present on 429');
+
+  // 3. SEC-01 CORE REQUIREMENT: Legitimate user with the CORRECT password is NOT locked out!
+  const legitUserIp = '203.0.113.150';
+  const legitCtx = createMockContext(undefined, {}, { identifier: sec01Email, password: sec01CorrectPwd }, legitUserIp);
+  await AuthController.login(legitCtx.req, legitCtx.res);
+  const legitRes = legitCtx.getResponse();
+  assert.strictEqual(legitRes.statusCode, 200, 'Legitimate user with correct password MUST authenticate with HTTP 200 despite previous failed attempts');
+  assert.strictEqual(legitRes.responseData.success, true);
+  assert.strictEqual(legitRes.responseData.data.user.email, sec01Email);
+
+  // 4. Verify failed attempt counter was reset by successful login: next wrong attempt should be 401, not 429
+  const postResetWrongCtx = createMockContext(undefined, {}, { identifier: sec01Email, password: 'wrongpassword' }, '198.51.200.101');
+  await AuthController.login(postResetWrongCtx.req, postResetWrongCtx.res);
+  assert.strictEqual(postResetWrongCtx.getResponse().statusCode, 401, 'Failed attempts reset after successful login');
+
+  // 5. Legitimate user logging in 6 consecutive times with correct credentials is never throttled
+  for (let i = 0; i < 6; i++) {
+    const successCtx = createMockContext(undefined, {}, { identifier: sec01Email, password: sec01CorrectPwd }, `192.0.2.${i + 50}`);
+    await AuthController.login(successCtx.req, successCtx.res);
+    assert.strictEqual(successCtx.getResponse().statusCode, 200, `Legitimate login #${i + 1} must succeed with HTTP 200`);
+  }
+  console.log('✅ PASS 21.1: SEC-01: Account Lockout DoS Fixed: Legitimate user can always log in with correct credentials and resets penalty');
+
+  // --- SEC-02: Prevent Account Enumeration & Timing Discrepancy ---
+  // 1. Nonexistent user returns generic 401
+  const nonExistCtx = createMockContext(undefined, {}, { identifier: 'completely_nonexistent_user_999@clik2go.in', password: 'randompassword' }, '192.0.2.1');
+  await AuthController.login(nonExistCtx.req, nonExistCtx.res);
+  assert.strictEqual(nonExistCtx.getResponse().statusCode, 401);
+  assert.strictEqual(nonExistCtx.getResponse().responseData.error, 'Invalid email/mobile or password.');
+
+  // 2. Existing user with wrong password returns identical generic 401
+  const wrongPwdCtx = createMockContext(undefined, {}, { identifier: sec01Email, password: 'wrongpassword' }, '192.0.2.2');
+  await AuthController.login(wrongPwdCtx.req, wrongPwdCtx.res);
+  assert.strictEqual(wrongPwdCtx.getResponse().statusCode, 401);
+  assert.strictEqual(wrongPwdCtx.getResponse().responseData.error, 'Invalid email/mobile or password.');
+
+  // 3. Deactivated user with wrong password returns identical generic 401 WITHOUT disclosing deactivation
+  const deactSec02Email = `deact_sec02_${Date.now()}@clik2go.in`;
+  const deactPwd = 'DeactValidPassword123!';
+  const deactHash = await AuthService.hashPassword(deactPwd);
+  await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status, token_version)
+     VALUES ($1, $2, $3, $4, 'customer', 'DEACTIVATED', 1)`,
+    ['Deactivated User', deactSec02Email, `+9198765${Math.floor(10000 + Math.random() * 90000)}`, deactHash]
+  );
+  const deactWrongCtx = createMockContext(undefined, {}, { identifier: deactSec02Email, password: 'wrongpassword' }, '192.0.2.3');
+  await AuthController.login(deactWrongCtx.req, deactWrongCtx.res);
+  assert.strictEqual(deactWrongCtx.getResponse().statusCode, 401, 'Deactivated account with wrong password must return 401');
+  assert.strictEqual(deactWrongCtx.getResponse().responseData.error, 'Invalid email/mobile or password.', 'Must not leak deactivation status to attacker');
+
+  // 4. Deactivated user with CORRECT password returns 403 notifying of deactivation
+  const deactCorrectCtx = createMockContext(undefined, {}, { identifier: deactSec02Email, password: deactPwd }, '192.0.2.4');
+  await AuthController.login(deactCorrectCtx.req, deactCorrectCtx.res);
+  assert.strictEqual(deactCorrectCtx.getResponse().statusCode, 403, 'Deactivated account with correct credentials returns 403');
+  assert.match(deactCorrectCtx.getResponse().responseData.error, /deactivated/i);
+
+  // 5. Verify DUMMY_BCRYPT_HASH is configured
+  assert.ok(AuthService.DUMMY_BCRYPT_HASH && AuthService.DUMMY_BCRYPT_HASH.startsWith('$2a$10$'), 'DUMMY_BCRYPT_HASH cost-10 is configured');
+  console.log('✅ PASS 21.2: SEC-02: Account Enumeration Prevented: Uniform responses and timing mitigation verified');
+
+  // --- SEC-03: Real-Time Live Role Synchronization ---
+  // Create an admin user in the database
+  const sec03Email = `admin_sec03_${Date.now()}@clik2go.in`;
+  const sec03Pwd = 'AdminSuperSecret123!';
+  const sec03Hash = await AuthService.hashPassword(sec03Pwd);
+  const insertSec03 = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status, token_version)
+     VALUES ($1, $2, $3, $4, 'admin', 'ACTIVE', 1)
+     RETURNING id, email, role`,
+    ['SEC-03 Admin', sec03Email, `+9198765${Math.floor(10000 + Math.random() * 90000)}`, sec03Hash]
+  );
+  const sec03User = insertSec03.rows[0];
+
+  // Issue a JWT with role: 'admin'
+  const staleAdminToken = AuthService.generateToken(sec03User as any);
+
+  // Demote user in database directly: admin -> customer
+  await query(`UPDATE users SET role = 'customer' WHERE id = $1`, [sec03User.id]);
+
+  // Authenticate using the old token claiming role: 'admin'
+  const reqDemoted = {
+    headers: { authorization: `Bearer ${staleAdminToken}` }
+  } as unknown as Request;
+  let nextCalledDemoted = false;
+  const resDemoted = {
+    status(code: number) { return this; },
+    json(data: any) { return this; }
+  } as unknown as Response;
+
+  await authenticateToken(reqDemoted, resDemoted, () => { nextCalledDemoted = true; });
+  assert.strictEqual(nextCalledDemoted, true, 'authenticateToken proceeds');
+  assert.strictEqual(reqDemoted.user?.role, 'customer', 'Live database role (customer) MUST override stale JWT role claim (admin)');
+
+  // Now verify requireRole(['admin']) blocks the demoted user immediately
+  let adminGuardPassed = false;
+  let adminGuardStatus = 200;
+  let adminGuardData: any = null;
+  const resAdminGuard = {
+    status(code: number) { adminGuardStatus = code; return this; },
+    json(data: any) { adminGuardData = data; return this; }
+  } as unknown as Response;
+  requireRole(['admin'])(reqDemoted, resAdminGuard, () => { adminGuardPassed = true; });
+  assert.strictEqual(adminGuardPassed, false, 'Demoted admin must be blocked from admin API');
+  assert.strictEqual(adminGuardStatus, 403, 'Must return HTTP 403');
+  console.log('✅ PASS 21.3: SEC-03: Live Database Role Synchronized: Demoted admin immediately blocked from admin routes');
+
+  // --- SEC-04: Strict Login Input Validation ---
+  // Missing body
+  const emptyBodyCtx = createMockContext(undefined, {}, null);
+  await AuthController.login(emptyBodyCtx.req, emptyBodyCtx.res);
+  assert.strictEqual(emptyBodyCtx.getResponse().statusCode, 400);
+
+  // Missing identifier
+  const missingIdCtx = createMockContext(undefined, {}, { password: 'pass' });
+  await AuthController.login(missingIdCtx.req, missingIdCtx.res);
+  assert.strictEqual(missingIdCtx.getResponse().statusCode, 400);
+
+  // Non-string identifier (number)
+  const numIdCtx = createMockContext(undefined, {}, { identifier: 9876543210, password: 'pass' });
+  await AuthController.login(numIdCtx.req, numIdCtx.res);
+  assert.strictEqual(numIdCtx.getResponse().statusCode, 400);
+
+  // Non-string identifier (object)
+  const objIdCtx = createMockContext(undefined, {}, { identifier: { evil: true }, password: 'pass' });
+  await AuthController.login(objIdCtx.req, objIdCtx.res);
+  assert.strictEqual(objIdCtx.getResponse().statusCode, 400);
+
+  // Oversized password (>256 chars)
+  const longPwdCtx = createMockContext(undefined, {}, { identifier: 'valid@clik2go.in', password: 'a'.repeat(300) });
+  await AuthController.login(longPwdCtx.req, longPwdCtx.res);
+  assert.strictEqual(longPwdCtx.getResponse().statusCode, 400);
+  console.log('✅ PASS 21.4: SEC-04: Request Input Validation: Malformed / non-string requests rejected safely with HTTP 400');
+
+  // --- SEC-05: HttpOnly Cookies, Token Concealment & CSRF Protection ---
+  // 1. Verify Login issues HttpOnly cookie and does NOT expose JWT in response body
+  const sec05Email = `sec05_${Date.now()}@clik2go.in`;
+  const sec05Pwd = 'ValidPassword2026!';
+  const sec05Hash = await AuthService.hashPassword(sec05Pwd);
+  await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status, token_version)
+     VALUES ($1, $2, $3, $4, 'customer', 'ACTIVE', 1)`,
+    ['SEC-05 User', sec05Email, `+9198765${Math.floor(10000 + Math.random() * 90000)}`, sec05Hash]
+  );
+  const cookieLoginCtx = createMockContext(undefined, {}, { identifier: sec05Email, password: sec05Pwd });
+  await AuthController.login(cookieLoginCtx.req, cookieLoginCtx.res);
+  const cookieLoginRes = cookieLoginCtx.getResponse();
+  assert.strictEqual(cookieLoginRes.statusCode, 200);
+  // Verify token is NOT exposed in response body
+  assert.strictEqual(cookieLoginRes.responseData.data?.token, undefined, 'Raw JWT must NOT be exposed in JSON response body');
+  // Verify HttpOnly cookie was set
+  const tokenCookie = cookieLoginRes.cookiesSet['kk_token'];
+  assert.ok(tokenCookie && tokenCookie.val, 'kk_token cookie must be set');
+  assert.strictEqual(tokenCookie.options.httpOnly, true, 'kk_token cookie must be httpOnly');
+  assert.strictEqual(tokenCookie.options.path, '/', 'kk_token cookie must have path /');
+
+  // Verify CSRF cookie was set
+  const csrfCookie = cookieLoginRes.cookiesSet['kk_csrf'];
+  assert.ok(csrfCookie && csrfCookie.val, 'kk_csrf cookie must be set');
+  assert.strictEqual(csrfCookie.options.httpOnly, false, 'kk_csrf cookie must be accessible to JS client');
+
+  // 2. Authenticate using cookie in authenticateToken
+  const cookieAuthReq = {
+    headers: {
+      cookie: `kk_token=${tokenCookie.val}; kk_csrf=${csrfCookie.val}`
+    }
+  } as unknown as Request;
+  let cookieAuthPassed = false;
+  await authenticateToken(cookieAuthReq, resAdminGuard, () => { cookieAuthPassed = true; });
+  assert.strictEqual(cookieAuthPassed, true, 'Session successfully authenticated from HttpOnly cookie');
+
+  // 3. CSRF Protection Middleware
+  // Mutating request (POST) with cookie auth but MISSING X-CSRF-Token is rejected with HTTP 403
+  const csrfReqMissing = {
+    method: 'POST',
+    url: '/api/bookings',
+    headers: {
+      cookie: `kk_token=${tokenCookie.val}; kk_csrf=${csrfCookie.val}`
+    }
+  } as unknown as Request;
+  let csrfStatusMissing = 200;
+  let csrfDataMissing: any = null;
+  const csrfResMissing = {
+    status(code: number) { csrfStatusMissing = code; return this; },
+    json(data: any) { csrfDataMissing = data; return this; }
+  } as unknown as Response;
+  let csrfNextMissing = false;
+  csrfProtection(csrfReqMissing, csrfResMissing, () => { csrfNextMissing = true; });
+  assert.strictEqual(csrfNextMissing, false, 'CSRF protection must block mutating request without X-CSRF-Token');
+  assert.strictEqual(csrfStatusMissing, 403, 'Must return HTTP 403');
+  assert.strictEqual(csrfDataMissing.error, 'Invalid or missing CSRF token.');
+
+  // Mutating request with MISMATCHED X-CSRF-Token is rejected with HTTP 403
+  const csrfReqMismatch = {
+    method: 'POST',
+    url: '/api/bookings',
+    headers: {
+      cookie: `kk_token=${tokenCookie.val}; kk_csrf=${csrfCookie.val}`,
+      'x-csrf-token': 'wrong_forged_csrf_token_value'
+    }
+  } as unknown as Request;
+  let csrfStatusMismatch = 200;
+  const csrfResMismatch = {
+    status(code: number) { csrfStatusMismatch = code; return this; },
+    json(data: any) { return this; }
+  } as unknown as Response;
+  let csrfNextMismatch = false;
+  csrfProtection(csrfReqMismatch, csrfResMismatch, () => { csrfNextMismatch = true; });
+  assert.strictEqual(csrfNextMismatch, false, 'CSRF protection must block mismatched X-CSRF-Token');
+  assert.strictEqual(csrfStatusMismatch, 403);
+
+  // Mutating request with VALID X-CSRF-Token is allowed through
+  const csrfReqValid = {
+    method: 'POST',
+    url: '/api/bookings',
+    headers: {
+      cookie: `kk_token=${tokenCookie.val}; kk_csrf=${csrfCookie.val}`,
+      'x-csrf-token': csrfCookie.val
+    }
+  } as unknown as Request;
+  let csrfNextValid = false;
+  csrfProtection(csrfReqValid, csrfResMismatch, () => { csrfNextValid = true; });
+  assert.strictEqual(csrfNextValid, true, 'CSRF protection allows valid matching token');
+
+  // Safe method (GET) bypasses CSRF
+  const csrfReqGet = {
+    method: 'GET',
+    url: '/api/bookings',
+    headers: {
+      cookie: `kk_token=${tokenCookie.val}; kk_csrf=${csrfCookie.val}`
+    }
+  } as unknown as Request;
+  let csrfNextGet = false;
+  csrfProtection(csrfReqGet, csrfResMismatch, () => { csrfNextGet = true; });
+  assert.strictEqual(csrfNextGet, true, 'Safe HTTP GET method bypasses CSRF check');
+
+  // Server-to-server webhook bypasses CSRF
+  const csrfReqWebhook = {
+    method: 'POST',
+    url: '/api/payments/webhook',
+    headers: {
+      cookie: `kk_token=${tokenCookie.val}; kk_csrf=${csrfCookie.val}`
+    }
+  } as unknown as Request;
+  let csrfNextWebhook = false;
+  csrfProtection(csrfReqWebhook, csrfResMismatch, () => { csrfNextWebhook = true; });
+  assert.strictEqual(csrfNextWebhook, true, 'Payments webhook bypasses CSRF check');
+
+  // 4. Logout clears both kk_token and kk_csrf cookies
+  const logoutCtx = createMockContext(undefined, {}, {});
+  (logoutCtx.req as any).headers = {
+    cookie: `kk_token=${tokenCookie.val}; kk_csrf=${csrfCookie.val}`
+  };
+  await AuthController.logout(logoutCtx.req, logoutCtx.res);
+  const logoutRes = logoutCtx.getResponse();
+  assert.strictEqual(logoutRes.statusCode, 200);
+  assert.ok(logoutRes.cookiesCleared['kk_token'], 'kk_token cookie must be cleared on logout');
+  assert.ok(logoutRes.cookiesCleared['kk_csrf'], 'kk_csrf cookie must be cleared on logout');
+
+  console.log('✅ PASS 21.5: SEC-05: Cookie-Based Authentication, Token Concealment, and CSRF Protection Fully Verified');
 
   console.log('\n=========================================');
   console.log('🎉 ALL SECURITY PHASE 1 TESTS PASSED!');

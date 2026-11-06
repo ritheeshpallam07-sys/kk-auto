@@ -281,19 +281,34 @@ export interface RatingRecord {
   booking_reference?: string;
 }
 
+function getCsrfTokenFromCookie(): string | null {
+  if (typeof document === 'undefined' || !document.cookie) return null;
+  const match = document.cookie.match(/(?:^|;\s*)kk_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 async function request<T>(
   endpoint: string,
   options: RequestInit = {},
   timeoutMs: number = 10000
 ): Promise<ApiResponse<T>> {
-  const token = localStorage.getItem('kk_token');
+  // Proactive migration safeguard: scrub any legacy localStorage token
+  if (typeof localStorage !== 'undefined' && localStorage.getItem('kk_token')) {
+    localStorage.removeItem('kk_token');
+  }
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {})
   };
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+  // SEC-05: Attach CSRF token on state-changing requests when available
+  const method = (options.method || 'GET').toUpperCase();
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+    const csrfToken = getCsrfTokenFromCookie();
+    if (csrfToken) {
+      headers['X-CSRF-Token'] = csrfToken;
+    }
   }
 
   const controller = new AbortController();
@@ -303,6 +318,7 @@ async function request<T>(
     const res = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
       headers,
+      credentials: 'include',
       cache: 'no-store',
       signal: options.signal || controller.signal
     });
@@ -343,22 +359,23 @@ async function request<T>(
 
 export const api = {
   auth: {
-    register: (data: any) =>request<
-  | { requiresVerification: true; email: string }
-  | { user: User; token: string }
->('/auth/register', {
+    register: (data: any) => request<
+      | { requiresVerification: true; email: string }
+      | { user: User }
+    >('/auth/register', {
       method: 'POST',
       body: JSON.stringify(data)
     }),
     verifyEmailOtp: (email: string, otp: string) =>
-  request<{ user: User; token: string }>('/auth/verify-email-otp', {
-    method: 'POST',
-    body: JSON.stringify({ email, otp })
-  }),
-    login: (identifier: string, password: string) => request<{ user: User; token: string }>('/auth/login', {
+      request<{ user: User }>('/auth/verify-email-otp', {
+        method: 'POST',
+        body: JSON.stringify({ email, otp })
+      }),
+    login: (identifier: string, password: string) => request<{ user: User }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ identifier, password })
     }),
+    getCsrfToken: () => request<{ csrfToken: string }>('/auth/csrf-token'),
     logout: () => request('/auth/logout', { method: 'POST' }),
     forgotPassword: (email: string) =>
       request<{ message: string }>('/auth/forgot-password', {

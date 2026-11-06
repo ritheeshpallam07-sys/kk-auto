@@ -4,6 +4,7 @@ import { authenticateToken } from '../middleware/auth';
 
 const router = Router();
 
+router.get('/csrf-token', AuthController.getCsrfToken);
 router.post('/register', AuthController.register);
 router.post('/verify-email-otp', AuthController.verifyEmailOtp);
 router.post('/login', AuthController.login);

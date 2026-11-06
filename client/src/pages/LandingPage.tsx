@@ -41,7 +41,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ navigate }) => {
         </h2>
 
         <p className="text-sm text-[#A1A1AA] max-w-md mb-6 leading-relaxed">
-          {sessionError}. Your login token is saved, but we could not reach the Clik2Go servers.
+          {sessionError}. Your session is saved, but we could not reach the Clik2Go servers.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center gap-3">
