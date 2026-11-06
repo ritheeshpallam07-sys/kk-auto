@@ -336,6 +336,8 @@ CREATE INDEX IF NOT EXISTS idx_deletion_requests_status ON account_deletion_requ
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_requested_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1;
 
 -- CONF-07: OTP Security, Rate Limiting, and Brute-Force Protection
 ALTER TABLE email_verifications

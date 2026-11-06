@@ -15,7 +15,11 @@ import {
   AlertCircle,
   X,
   Clock,
-  ExternalLink
+  ExternalLink,
+  Key,
+  Lock,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 interface ProfilePageProps {
@@ -38,6 +42,70 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate }) => {
   const [isCancellingDelete, setIsCancellingDelete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteSuccessMessage, setDeleteSuccessMessage] = useState<string | null>(null);
+
+  // Change password state
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordChangeError, setPasswordChangeError] = useState<string | null>(null);
+  const [passwordChangeSuccess, setPasswordChangeSuccess] = useState<string | null>(null);
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordChangeError(null);
+    setPasswordChangeSuccess(null);
+
+    if (!currentPassword) {
+      setPasswordChangeError('Current password is required.');
+      return;
+    }
+    if (!newPassword) {
+      setPasswordChangeError('New password is required.');
+      return;
+    }
+    if (newPassword.length < 12) {
+      setPasswordChangeError('New password must be at least 12 characters long.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordChangeError('New password and confirmation do not match.');
+      return;
+    }
+    if (newPassword === currentPassword) {
+      setPasswordChangeError('New password cannot be the same as your current password.');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const res = await api.auth.changePassword({
+        currentPassword,
+        newPassword,
+        confirmPassword
+      });
+
+      if (res.success) {
+        setPasswordChangeSuccess('Password changed successfully. Existing sessions have been revoked. Redirecting to login...');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        setTimeout(() => {
+          logout();
+          navigate('/login');
+        }, 1500);
+      } else {
+        setPasswordChangeError(res.error || 'Failed to change password. Please check your current password.');
+      }
+    } catch (err: any) {
+      setPasswordChangeError(err.message || 'An unexpected error occurred. Please try again.');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -316,6 +384,155 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate }) => {
             <span>Sign Out</span>
           </button>
         </div>
+      </div>
+
+      {/* Change Password Card */}
+      <div className="bg-[#171719] rounded-3xl p-6 sm:p-8 shadow-card border border-[#303034] space-y-6">
+        <div className="flex items-center gap-3.5 pb-4 border-b border-[#303034]">
+          <div className="w-10 h-10 rounded-2xl bg-[#202023] border border-[#303034] text-[#C6FF3D] flex items-center justify-center flex-shrink-0">
+            <Key className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-white">Change Password</h2>
+            <p className="text-xs text-[#A1A1AA]">
+              Update your account password securely. Minimum 12 characters required.
+            </p>
+          </div>
+        </div>
+
+        {passwordChangeSuccess && (
+          <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-800 text-emerald-300 text-xs flex items-start gap-2.5 animate-fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+            <p className="leading-relaxed">{passwordChangeSuccess}</p>
+          </div>
+        )}
+
+        {passwordChangeError && (
+          <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-800 text-rose-300 text-xs flex items-start justify-between gap-3 animate-fade-in">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
+              <p className="leading-relaxed">{passwordChangeError}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPasswordChangeError(null)}
+              className="text-rose-400 hover:text-white p-0.5"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        <form onSubmit={handleChangePassword} className="space-y-4">
+          {/* Current Password */}
+          <div>
+            <label className="block text-xs font-bold text-[#A1A1AA] uppercase mb-1.5">
+              Current Password
+            </label>
+            <div className="relative">
+              <input
+                type={showCurrentPassword ? 'text' : 'password'}
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Enter your current password"
+                required
+                className="w-full px-4 py-3 bg-[#202023] border border-[#303034] rounded-xl text-white text-xs placeholder-[#71717A] focus:outline-none focus:border-[#C6FF3D] pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-white"
+                title={showCurrentPassword ? 'Hide password' : 'Show password'}
+              >
+                {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* New Password */}
+          <div>
+            <label className="block text-xs font-bold text-[#A1A1AA] uppercase mb-1.5">
+              New Password
+            </label>
+            <div className="relative">
+              <input
+                type={showNewPassword ? 'text' : 'password'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="At least 12 characters"
+                minLength={12}
+                required
+                className="w-full px-4 py-3 bg-[#202023] border border-[#303034] rounded-xl text-white text-xs placeholder-[#71717A] focus:outline-none focus:border-[#C6FF3D] pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPassword(!showNewPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-white"
+                title={showNewPassword ? 'Hide password' : 'Show password'}
+              >
+                {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <div className="flex items-center gap-2 mt-1.5 text-[11px]">
+              <span className={newPassword.length >= 12 ? 'text-emerald-400 font-medium' : 'text-[#A1A1AA]'}>
+                {newPassword.length >= 12 ? '✓ Minimum 12 characters met' : '• Minimum 12 characters required'}
+              </span>
+              {newPassword && currentPassword && newPassword === currentPassword && (
+                <span className="text-amber-400">• Cannot be identical to current password</span>
+              )}
+            </div>
+          </div>
+
+          {/* Confirm New Password */}
+          <div>
+            <label className="block text-xs font-bold text-[#A1A1AA] uppercase mb-1.5">
+              Confirm New Password
+            </label>
+            <div className="relative">
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter your new password"
+                minLength={12}
+                required
+                className="w-full px-4 py-3 bg-[#202023] border border-[#303034] rounded-xl text-white text-xs placeholder-[#71717A] focus:outline-none focus:border-[#C6FF3D] pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-white"
+                title={showConfirmPassword ? 'Hide password' : 'Show password'}
+              >
+                {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            {confirmPassword && newPassword !== confirmPassword && (
+              <p className="text-[11px] text-rose-400 mt-1.5">
+                Passwords do not match
+              </p>
+            )}
+            {confirmPassword && newPassword === confirmPassword && (
+              <p className="text-[11px] text-emerald-400 mt-1.5">
+                ✓ Passwords match
+              </p>
+            )}
+          </div>
+
+          <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <p className="text-[11px] text-[#71717A] leading-relaxed">
+              Changing your password revokes all active sessions on other devices for security.
+            </p>
+            <button
+              type="submit"
+              disabled={isChangingPassword || !currentPassword || !newPassword || !confirmPassword || newPassword.length < 12 || newPassword !== confirmPassword || newPassword === currentPassword}
+              className="px-6 py-2.5 rounded-xl bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-bold text-xs shadow-glow-lime transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 flex-shrink-0 min-h-[40px]"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>{isChangingPassword ? 'Updating Password...' : 'Update Password'}</span>
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Danger Zone: Account Deletion */}

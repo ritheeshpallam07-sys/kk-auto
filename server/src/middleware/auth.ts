@@ -39,6 +39,8 @@ export interface AuthUser {
   status?: string | null;
   jti?: string;
   exp?: number;
+  iat?: number;
+  token_version?: number;
 }
 
 declare global {
@@ -65,9 +67,11 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
 
     const tokenIdentifier = decoded.jti || crypto.createHash('sha256').update(token).digest('hex');
 
-    // Single unified query: checks user active status AND token revocation status in one roundtrip
+    // Single unified query: checks user active status, token_version, password_changed_at, AND token revocation status
     const userRes = await query(
       `SELECT u.status,
+              COALESCE(u.token_version, 1) as token_version,
+              u.password_changed_at,
               EXISTS(
                 SELECT 1 FROM revoked_tokens rt
                 WHERE rt.token_identifier = $2
@@ -90,6 +94,26 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
         success: false,
         error: 'Invalid or expired session. Please log in again.'
       });
+    }
+
+    // Revoke token if user has changed password (token_version incremented or password_changed_at updated)
+    const currentTokenVersion = Number(userRes.rows[0].token_version) || 1;
+    const tokenVersion = Number(decoded.token_version) || 1;
+    if (tokenVersion < currentTokenVersion) {
+      return res.status(403).json({
+        success: false,
+        error: 'Invalid or expired session. Please log in again.'
+      });
+    }
+
+    if (userRes.rows[0].password_changed_at && decoded.iat) {
+      const pwdChangedSec = Math.floor(new Date(userRes.rows[0].password_changed_at).getTime() / 1000);
+      if (decoded.iat < pwdChangedSec) {
+        return res.status(403).json({
+          success: false,
+          error: 'Invalid or expired session. Please log in again.'
+        });
+      }
     }
 
     req.user = decoded;

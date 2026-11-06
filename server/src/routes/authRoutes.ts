@@ -8,6 +8,7 @@ router.post('/register', AuthController.register);
 router.post('/verify-email-otp', AuthController.verifyEmailOtp);
 router.post('/login', AuthController.login);
 router.post('/logout', AuthController.logout);
+router.post('/change-password', authenticateToken, AuthController.changePassword);
 router.get('/me', authenticateToken, AuthController.getMe);
 router.post('/accept-terms', authenticateToken, AuthController.acceptTerms);
 router.get('/deletion-request', authenticateToken, AuthController.getDeletionRequest);

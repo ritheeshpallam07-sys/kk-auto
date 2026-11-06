@@ -360,6 +360,11 @@ export const api = {
       body: JSON.stringify({ identifier, password })
     }),
     logout: () => request('/auth/logout', { method: 'POST' }),
+    changePassword: (data: { currentPassword: string; newPassword: string; confirmPassword: string }) =>
+      request<{ message: string }>('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
     me: () => request<User>('/auth/me'),
     acceptTerms: (version = '1.0') =>
       request<User>('/auth/accept-terms', {

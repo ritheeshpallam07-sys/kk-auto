@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { AuthService } from '../services/authService';
+import { AuditService } from '../services/auditService';
 import { query, withTransaction } from '../config/db';
 
 /**
@@ -8,7 +9,7 @@ import { query, withTransaction } from '../config/db';
  * Prioritizes verified CF-Connecting-IP if present and valid; otherwise relies on Express req.ip (trust proxy: 1).
  */
 export function getClientIp(req: Request): string {
-  const cfIp = req.headers['cf-connecting-ip'];
+  const cfIp = req.headers ? req.headers['cf-connecting-ip'] : undefined;
   if (typeof cfIp === 'string' && cfIp.trim() && /^[a-fA-F0-9:.]+$/.test(cfIp.trim())) {
     return cfIp.trim();
   }
@@ -437,6 +438,76 @@ export class AuthController {
       // Logout must be idempotent and resilient: always return success to the client
       console.error('[Auth] Error during token revocation on logout:', err?.message || err);
       return res.json({ success: true, message: 'Logged out successfully.' });
+    }
+  }
+
+  public static async changePassword(req: Request, res: Response) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: 'Authentication required. Please log in.' });
+      }
+
+      // Rate limit password change attempts per user and IP (10 attempts per 15 minutes)
+      const clientIp = getClientIp(req);
+      const rateLimitKey = `pwd_change_${req.user.id}_${clientIp}`;
+      const rateLimit = await AuthService.checkRateLimit(rateLimitKey, 10, 900);
+      if (!rateLimit.allowed) {
+        if (typeof res.set === 'function') {
+          res.set('Retry-After', String(rateLimit.retryAfterSeconds));
+        }
+        return res.status(429).json({
+          success: false,
+          error: 'Too many password change attempts. Please try again later.'
+        });
+      }
+
+      const { currentPassword, newPassword, confirmPassword } = req.body;
+
+      await AuthService.changePassword(
+        req.user.id,
+        currentPassword,
+        newPassword,
+        confirmPassword
+      );
+
+      // Invalidate current Bearer token in revoked_tokens
+      const authHeader = req.headers['authorization'];
+      const currentToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+      if (currentToken) {
+        await AuthService.revokeToken(currentToken);
+      }
+
+      // If account is an admin, record audit log in admin_audit_logs
+      // Password, hash, or tokens must NEVER be logged or stored in audit details!
+      if (req.user.role === 'admin') {
+        try {
+          await AuditService.logAction({
+            adminId: req.user.id,
+            adminEmail: req.user.email,
+            action: 'CHANGE_PASSWORD',
+            targetType: 'USER',
+            targetId: req.user.id,
+            details: { success: true },
+            clientIp
+          });
+        } catch (auditErr: any) {
+          console.error('[Audit] Failed to log admin change password action:', auditErr?.message || auditErr);
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: 'Password changed successfully. Please log in again with your new password.'
+      });
+    } catch (err: any) {
+      const statusCode = err.statusCode || 500;
+      const errorMessage = statusCode === 500
+        ? 'Failed to change password. Please try again.'
+        : (err.message || 'Failed to change password.');
+      return res.status(statusCode).json({
+        success: false,
+        error: errorMessage
+      });
     }
   }
 

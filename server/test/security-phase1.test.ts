@@ -688,6 +688,8 @@ async function runTests() {
     `UPDATE drivers SET availability_status = 'available', approval_status = 'APPROVED' WHERE id = $1`,
     [driverAId]
   );
+  // Clean up any stale searching bookings from prior runs so LIMIT 20 queue includes this test booking
+  await query(`DELETE FROM bookings WHERE status = 'Searching for Auto'`);
   // Create an unassigned booking in 'Searching for Auto'
   const bConf4_9 = await createTestBooking(custAUserId, null, 'Searching for Auto');
   const ctx5_9 = createMockContext(userDriverA);
@@ -3779,6 +3781,241 @@ async function runTests() {
   await AdminController.getDashboardStats(ctxDash18.req, ctxDash18.res);
   assert.strictEqual(ctxDash18.getResponse().statusCode, 200, 'Admin dashboard stats must remain fully operational');
   console.log('✅ PASS 18.9: Existing admin functionality and last-active-admin protection remain fully operational');
+
+  // =========================================================================
+  // TEST SUITE 19: Phase 4 Secure Authenticated Change Password & Session Invalidation
+  // =========================================================================
+  console.log('\n--- TEST SUITE 19: Phase 4 Secure Authenticated Change Password & Session Invalidation ---');
+
+  // Helper to run AuthController.changePassword
+  async function testChangePassword(token?: string, body: any = {}, ip = '127.0.0.1'): Promise<{ status: number; body: any }> {
+    let status = 200;
+    let responseBody: any = null;
+    const req = {
+      user: undefined,
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+      body,
+      ip
+    } as any;
+    const res = {
+      status(code: number) { status = code; return this; },
+      json(data: any) { responseBody = data; return this; },
+      set() { return this; }
+    } as any;
+
+    let authPassed = false;
+    await authenticateToken(req, res, () => { authPassed = true; });
+    if (!authPassed) {
+      return { status, body: responseBody };
+    }
+
+    await AuthController.changePassword(req, res);
+    return { status, body: responseBody };
+  }
+
+  // Helper to run AuthController.login
+  async function testLogin(identifier: string, password: string): Promise<{ status: number; body: any }> {
+    let status = 200;
+    let responseBody: any = null;
+    const req = {
+      body: { identifier, password },
+      headers: {},
+      ip: `127.0.0.${Math.floor(Math.random() * 200) + 10}`
+    } as any;
+    const res = {
+      status(code: number) { status = code; return this; },
+      json(data: any) { responseBody = data; return this; },
+      set() { return this; }
+    } as any;
+
+    await AuthController.login(req, res);
+    return { status, body: responseBody };
+  }
+
+  // Set up dedicated test users for Suite 19
+  const initialPwd = 'InitialPassword123!';
+  const initialHash = await AuthService.hashPassword(initialPwd);
+  const suite19UserEmail = `pwd_user_${Date.now()}@test.com`;
+  const insertUserRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status, token_version)
+     VALUES ($1, $2, $3, $4, 'customer', 'ACTIVE', 1)
+     RETURNING id, name, email, mobile, role, token_version`,
+    ['Suite 19 User', suite19UserEmail, `9870${Math.floor(Math.random() * 899999 + 100000)}`, initialHash]
+  );
+  const suite19User: AuthUser = {
+    id: insertUserRes.rows[0].id,
+    name: insertUserRes.rows[0].name,
+    email: insertUserRes.rows[0].email,
+    mobile: insertUserRes.rows[0].mobile,
+    role: insertUserRes.rows[0].role,
+    token_version: insertUserRes.rows[0].token_version
+  };
+
+  const otherUserEmail = `other_user_${Date.now()}@test.com`;
+  const insertOtherRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status, token_version)
+     VALUES ($1, $2, $3, $4, 'customer', 'ACTIVE', 1)
+     RETURNING id, name, email, mobile, role, token_version`,
+    ['Other User', otherUserEmail, `9871${Math.floor(Math.random() * 899999 + 100000)}`, initialHash]
+  );
+  const otherUser: AuthUser = {
+    id: insertOtherRes.rows[0].id,
+    name: insertOtherRes.rows[0].name,
+    email: insertOtherRes.rows[0].email,
+    mobile: insertOtherRes.rows[0].mobile,
+    role: insertOtherRes.rows[0].role,
+    token_version: insertOtherRes.rows[0].token_version
+  };
+
+  // 19.1 Unauthenticated requests are rejected (HTTP 401)
+  const unauthRes19 = await testChangePassword(undefined, {
+    currentPassword: initialPwd,
+    newPassword: 'BrandNewSecurePassword2026!',
+    confirmPassword: 'BrandNewSecurePassword2026!'
+  });
+  assert.strictEqual(unauthRes19.status, 401, 'Unauthenticated change password must return HTTP 401');
+  console.log('✅ PASS 19.1: Unauthenticated request rejected (HTTP 401)');
+
+  // 19.2 Incorrect current password is rejected (HTTP 400)
+  const userToken1 = AuthService.generateToken(suite19User);
+  const wrongCurrRes = await testChangePassword(userToken1, {
+    currentPassword: 'WrongPassword999!',
+    newPassword: 'BrandNewSecurePassword2026!',
+    confirmPassword: 'BrandNewSecurePassword2026!'
+  });
+  assert.strictEqual(wrongCurrRes.status, 400, 'Incorrect current password must return HTTP 400');
+  assert.match(wrongCurrRes.body.error, /current password is incorrect/i);
+  console.log('✅ PASS 19.2: Incorrect current password rejected (HTTP 400)');
+
+  // 19.3 Passwords shorter than 12 characters are rejected (HTTP 400)
+  const shortPwdRes = await testChangePassword(userToken1, {
+    currentPassword: initialPwd,
+    newPassword: 'Short12345!',
+    confirmPassword: 'Short12345!'
+  });
+  assert.strictEqual(shortPwdRes.status, 400, 'Password shorter than 12 chars must return HTTP 400');
+  assert.match(shortPwdRes.body.error, /at least 12 characters/i);
+  console.log('✅ PASS 19.3: Passwords shorter than 12 characters rejected (HTTP 400)');
+
+  // 19.4 Confirmation mismatch is rejected (HTTP 400)
+  const mismatchRes = await testChangePassword(userToken1, {
+    currentPassword: initialPwd,
+    newPassword: 'BrandNewSecurePassword2026!',
+    confirmPassword: 'DifferentSecurePassword2026!'
+  });
+  assert.strictEqual(mismatchRes.status, 400, 'Confirmation mismatch must return HTTP 400');
+  assert.match(mismatchRes.body.error, /do not match/i);
+  console.log('✅ PASS 19.4: Confirmation mismatch rejected (HTTP 400)');
+
+  // 19.5 Reusing the current password is rejected (HTTP 400)
+  const reuseRes = await testChangePassword(userToken1, {
+    currentPassword: initialPwd,
+    newPassword: initialPwd,
+    confirmPassword: initialPwd
+  });
+  assert.strictEqual(reuseRes.status, 400, 'Reusing current password must return HTTP 400');
+  assert.match(reuseRes.body.error, /cannot be the same/i);
+  console.log('✅ PASS 19.5: Reusing current password rejected (HTTP 400)');
+
+  // 19.6 Correct current password allows change & revokes existing sessions
+  const deviceAToken = AuthService.generateToken(suite19User);
+  const deviceBToken = AuthService.generateToken(suite19User);
+  const otherUserToken = AuthService.generateToken(otherUser);
+
+  // Verify all tokens are valid before password change
+  assert.strictEqual((await testAuthMiddleware(deviceAToken)).status, 200);
+  assert.strictEqual((await testAuthMiddleware(deviceBToken)).status, 200);
+  assert.strictEqual((await testAuthMiddleware(otherUserToken)).status, 200);
+
+  const newValidPassword = 'BrandNewSecurePassword2026!';
+  const changeSuccessRes = await testChangePassword(deviceAToken, {
+    currentPassword: initialPwd,
+    newPassword: newValidPassword,
+    confirmPassword: newValidPassword
+  });
+  assert.strictEqual(changeSuccessRes.status, 200, 'Valid password change must return HTTP 200');
+  assert.strictEqual(changeSuccessRes.body.success, true);
+  console.log('✅ PASS 19.6: Correct current password allows change (HTTP 200)');
+
+  // 19.7 Existing sessions for the user are revoked immediately
+  const devAAuth = await testAuthMiddleware(deviceAToken);
+  assert.strictEqual(devAAuth.status, 403, 'Device A token must be rejected with HTTP 403');
+  assert.strictEqual(devAAuth.nextCalled, false);
+
+  const devBAuth = await testAuthMiddleware(deviceBToken);
+  assert.strictEqual(devBAuth.status, 403, 'Device B token must be rejected with HTTP 403');
+  assert.strictEqual(devBAuth.nextCalled, false);
+  console.log('✅ PASS 19.7: All existing sessions of the user revoked immediately (HTTP 403)');
+
+  // 19.8 Other users sessions remain unaffected
+  const otherAuth = await testAuthMiddleware(otherUserToken);
+  assert.strictEqual(otherAuth.status, 200, 'Other user token must remain completely valid');
+  assert.strictEqual(otherAuth.nextCalled, true);
+  console.log('✅ PASS 19.8: Other users sessions remain unaffected (HTTP 200)');
+
+  // 19.9 User can log in with new password and authenticate successfully
+  const oldLogin = await testLogin(suite19User.email, initialPwd);
+  assert.ok(oldLogin.status === 400 || !oldLogin.body.success, 'Old password must be rejected on login');
+
+  const newLogin = await testLogin(suite19User.email, newValidPassword);
+  assert.strictEqual(newLogin.status, 200, 'New password login must succeed with HTTP 200');
+  assert.ok(newLogin.body.data.token, 'Must return new JWT token');
+
+  const freshAuth = await testAuthMiddleware(newLogin.body.data.token);
+  assert.strictEqual(freshAuth.status, 200, 'Fresh token from new login must authenticate successfully');
+  assert.strictEqual(freshAuth.nextCalled, true);
+  console.log('✅ PASS 19.9: User can log in with new password and authenticate successfully');
+
+  // 19.10 Admin password change creates verified, sanitized audit entry
+  const adminInitialPwd = 'AdminSuperSecret2026!';
+  const adminHash = await AuthService.hashPassword(adminInitialPwd);
+  const adminTestEmail = `admin_pwd_${Date.now()}@test.com`;
+  const insertAdminRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status, token_version)
+     VALUES ($1, $2, $3, $4, 'admin', 'ACTIVE', 1)
+     RETURNING id, name, email, mobile, role, token_version`,
+    ['Admin Pwd Test', adminTestEmail, `9872${Math.floor(Math.random() * 899999 + 100000)}`, adminHash]
+  );
+  const suite19AdminUser: AuthUser = {
+    id: insertAdminRes.rows[0].id,
+    name: insertAdminRes.rows[0].name,
+    email: insertAdminRes.rows[0].email,
+    mobile: insertAdminRes.rows[0].mobile,
+    role: 'admin',
+    token_version: 1
+  };
+
+  const suite19AdminToken = AuthService.generateToken(suite19AdminUser);
+  const newAdminPwd = 'NewSuperSecureAdminPassword2026!';
+  const adminChangeRes = await testChangePassword(suite19AdminToken, {
+    currentPassword: adminInitialPwd,
+    newPassword: newAdminPwd,
+    confirmPassword: newAdminPwd
+  });
+  assert.strictEqual(adminChangeRes.status, 200, 'Admin password change must return HTTP 200');
+
+  const adminAuditRes = await query(
+    `SELECT * FROM admin_audit_logs
+     WHERE admin_email = $1 AND action = 'CHANGE_PASSWORD'
+     ORDER BY created_at DESC LIMIT 1`,
+    [adminTestEmail]
+  );
+  assert.strictEqual(adminAuditRes.rows.length, 1, 'Audit log entry must be created for admin change password');
+  const logDetails = typeof adminAuditRes.rows[0].details_json === 'string'
+    ? JSON.parse(adminAuditRes.rows[0].details_json)
+    : adminAuditRes.rows[0].details_json;
+
+  const detailsStr = JSON.stringify(logDetails);
+  assert.strictEqual(/password|hash|secret|token|2026/i.test(detailsStr), false, 'No passwords or tokens allowed in audit details');
+  console.log('✅ PASS 19.10: Admin password change creates verified, sanitized audit entry');
+
+  // 19.11 Customer password change does not create admin audit entry
+  const custAuditCheck = await query(
+    `SELECT * FROM admin_audit_logs WHERE admin_email = $1`,
+    [suite19UserEmail]
+  );
+  assert.strictEqual(custAuditCheck.rows.length, 0, 'Customer password change must not create admin audit logs');
+  console.log('✅ PASS 19.11: Customer password change does not populate admin audit log');
 
   console.log('\n=========================================');
   console.log('🎉 ALL SECURITY PHASE 1 TESTS PASSED!');

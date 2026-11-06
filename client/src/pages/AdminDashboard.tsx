@@ -31,7 +31,8 @@ import {
   Layers,
   Percent,
   Trash2,
-  ClipboardList
+  ClipboardList,
+  Key
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -375,13 +376,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
           </p>
         </div>
 
-        <button
-          onClick={loadAllData}
-          className="px-4 py-2 bg-[#171719] hover:bg-[#26262A] text-white text-xs font-bold rounded-xl border border-[#303034] flex items-center gap-1.5 transition-colors self-start sm:self-auto min-h-[40px] shadow-xs"
-        >
-          <RefreshCw className="w-3.5 h-3.5 text-[#C6FF3D]" />
-          <span>Refresh Data</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={() => navigate('/profile')}
+            className="px-4 py-2 bg-[#171719] hover:bg-[#26262A] text-white text-xs font-bold rounded-xl border border-[#303034] hover:border-[#C6FF3D]/40 flex items-center gap-1.5 transition-colors min-h-[40px] shadow-xs"
+            title="Manage admin account security and change password"
+          >
+            <Key className="w-3.5 h-3.5 text-[#C6FF3D]" />
+            <span>Change Password</span>
+          </button>
+
+          <button
+            onClick={loadAllData}
+            className="px-4 py-2 bg-[#171719] hover:bg-[#26262A] text-white text-xs font-bold rounded-xl border border-[#303034] flex items-center gap-1.5 transition-colors min-h-[40px] shadow-xs"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-[#C6FF3D]" />
+            <span>Refresh Data</span>
+          </button>
+        </div>
       </div>
 
       {/* Global Toast Message */}

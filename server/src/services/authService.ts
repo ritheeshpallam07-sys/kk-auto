@@ -108,7 +108,8 @@ export class AuthService {
         email: user.email,
         mobile: user.mobile,
         role: user.role,
-        terms_version: user.terms_version || null
+        terms_version: user.terms_version || null,
+        token_version: user.token_version || 1
       },
       secret,
       { expiresIn, algorithm: JWT_ALGORITHM, jwtid: crypto.randomUUID() }
@@ -334,7 +335,8 @@ export class AuthService {
 
     const result = await query(
       `SELECT id, name, email, mobile, password_hash, role, terms_version, terms_accepted_at,
-              COALESCE(status, 'ACTIVE') as status
+              COALESCE(status, 'ACTIVE') as status,
+              COALESCE(token_version, 1) as token_version
        FROM users
        WHERE LOWER(email) = $1 OR mobile = $2
        LIMIT 1`,
@@ -365,7 +367,8 @@ export class AuthService {
       role: row.role,
       terms_version: row.terms_version || null,
       terms_accepted_at: row.terms_accepted_at ? new Date(row.terms_accepted_at).toISOString() : null,
-      status: row.status
+      status: row.status,
+      token_version: Number(row.token_version) || 1
     };
 
     return {
@@ -377,7 +380,8 @@ export class AuthService {
   public static async getUserById(id: number): Promise<AuthUser | null> {
     const result = await query(
       `SELECT id, name, email, mobile, role, terms_version, terms_accepted_at,
-              COALESCE(status, 'ACTIVE') as status
+              COALESCE(status, 'ACTIVE') as status,
+              COALESCE(token_version, 1) as token_version
        FROM users
        WHERE id = $1
        LIMIT 1`,
@@ -402,7 +406,122 @@ export class AuthService {
       role: row.role,
       terms_version: row.terms_version || null,
       terms_accepted_at: row.terms_accepted_at ? new Date(row.terms_accepted_at).toISOString() : null,
-      status: row.status
+      status: row.status,
+      token_version: Number(row.token_version) || 1
+    };
+  }
+
+  /**
+   * Securely changes the user's password.
+   * Validates current password, enforces minimum 12-char length, enforces confirmation match,
+   * rejects identical password reuse, hashes the new password with bcrypt, updates password_hash,
+   * sets password_changed_at = CURRENT_TIMESTAMP, and increments token_version to invalidate previous sessions.
+   */
+  public static async changePassword(
+    userId: number,
+    currentPassword: string,
+    newPassword: string,
+    confirmPassword: string
+  ): Promise<{ success: boolean; user: AuthUser }> {
+    if (!currentPassword || typeof currentPassword !== 'string') {
+      const err: any = new Error('Current password is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (!newPassword || typeof newPassword !== 'string') {
+      const err: any = new Error('New password is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (!confirmPassword || typeof confirmPassword !== 'string') {
+      const err: any = new Error('Password confirmation is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (newPassword.length < 12) {
+      const err: any = new Error('New password must be at least 12 characters long.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (newPassword !== confirmPassword) {
+      const err: any = new Error('New password and confirmation do not match.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Fetch user with current password hash
+    const userRes = await query(
+      `SELECT id, name, email, mobile, role, password_hash, status,
+              terms_version, terms_accepted_at, COALESCE(token_version, 1) as token_version
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [userId]
+    );
+
+    if (userRes.rows.length === 0) {
+      const err: any = new Error('User account not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const userRow = userRes.rows[0];
+
+    if (userRow.status === 'DEACTIVATED') {
+      const err: any = new Error('This account has been deactivated. Access is denied.');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // Verify current password
+    const isCurrentValid = await this.comparePassword(currentPassword, userRow.password_hash);
+    if (!isCurrentValid) {
+      const err: any = new Error('Current password is incorrect.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Reject reusing the current password
+    const isSamePassword = await this.comparePassword(newPassword, userRow.password_hash);
+    if (isSamePassword) {
+      const err: any = new Error('New password cannot be the same as your current password.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Hash new password using bcrypt (salt rounds: 10)
+    const newHash = await this.hashPassword(newPassword);
+
+    // Atomically update password, increment token_version, and update timestamp
+    const updatedRes = await query(
+      `UPDATE users
+       SET password_hash = $1,
+           password_changed_at = CURRENT_TIMESTAMP,
+           token_version = COALESCE(token_version, 1) + 1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING id, name, email, mobile, role, terms_version, terms_accepted_at, status, token_version`,
+      [newHash, userId]
+    );
+
+    const updatedUser = updatedRes.rows[0];
+    return {
+      success: true,
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        mobile: updatedUser.mobile,
+        role: updatedUser.role,
+        terms_version: updatedUser.terms_version || null,
+        terms_accepted_at: updatedUser.terms_accepted_at ? new Date(updatedUser.terms_accepted_at).toISOString() : null,
+        status: updatedUser.status,
+        token_version: Number(updatedUser.token_version)
+      }
     };
   }
 
