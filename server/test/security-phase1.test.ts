@@ -3351,6 +3351,280 @@ async function runTests() {
   }
   console.log('✅ PASS 16.5: Demo credentials UI strictly suppressed and omitted from production build');
 
+  // =========================================================================
+  // TEST SUITE 17: Phase 2 Last Active Admin Protection & Concurrency Invariants
+  // =========================================================================
+  console.log('\n--- TEST SUITE 17: Phase 2 Last Active Admin Protection & Concurrency Invariants ---');
+
+  // 17.1 Deleting a customer works normally
+  const custUserRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status)
+     VALUES ($1, $2, $3, 'hash', 'customer', 'ACTIVE')
+     RETURNING id`,
+    [`Test Deletion Cust ${Date.now()}`, `cust_del_${Date.now()}@test.com`, `9911${Math.floor(100000 + Math.random() * 900000)}`]
+  );
+  const custUserId = custUserRes.rows[0].id;
+
+  const custReqRes = await query(
+    `INSERT INTO account_deletion_requests (user_id, user_role, user_email, user_mobile, reason, status)
+     VALUES ($1, 'customer', 'cust_del@test.com', '9911000001', 'Leaving platform', 'PENDING')
+     RETURNING id`,
+    [custUserId]
+  );
+  const custReqId = custReqRes.rows[0].id;
+
+  const ctx17_1 = createMockContext(userAdmin, { id: String(custReqId) }, { action: 'APPROVE', adminNotes: 'Approved customer deletion' });
+  await AdminController.processDeletionRequest(ctx17_1.req, ctx17_1.res);
+  assert.strictEqual(ctx17_1.getResponse().statusCode, 200, 'Customer deletion request approval must return HTTP 200');
+  assert.strictEqual(ctx17_1.getResponse().responseData.success, true);
+  assert.match(ctx17_1.getResponse().responseData.message, /approved.*deactivated/i);
+
+  // Verify customer is deactivated in database
+  const checkCustUser = await query(`SELECT status FROM users WHERE id = $1`, [custUserId]);
+  assert.strictEqual(checkCustUser.rows[0].status, 'DEACTIVATED', 'Customer account status must be DEACTIVATED');
+
+  const checkCustReq = await query(`SELECT status, admin_notes FROM account_deletion_requests WHERE id = $1`, [custReqId]);
+  assert.strictEqual(checkCustReq.rows[0].status, 'PROCESSED', 'Deletion request status must be PROCESSED');
+  assert.strictEqual(checkCustReq.rows[0].admin_notes, 'Approved customer deletion');
+  console.log('✅ PASS 17.1: Deleting a customer works normally and sets status to DEACTIVATED');
+
+  // 17.2 Deleting a driver works normally
+  const driverUserRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status)
+     VALUES ($1, $2, $3, 'hash', 'driver', 'ACTIVE')
+     RETURNING id`,
+    [`Test Deletion Driver ${Date.now()}`, `driver_del_${Date.now()}@test.com`, `9922${Math.floor(100000 + Math.random() * 900000)}`]
+  );
+  const driverUserId = driverUserRes.rows[0].id;
+
+  await query(
+    `INSERT INTO drivers (user_id, auto_number, availability_status, approval_status)
+     VALUES ($1, 'AP-02-DEL-1234', 'available', 'APPROVED')
+     RETURNING id`,
+    [driverUserId]
+  );
+
+  const driverReqRes = await query(
+    `INSERT INTO account_deletion_requests (user_id, user_role, user_email, user_mobile, reason, status)
+     VALUES ($1, 'driver', 'driver_del@test.com', '9922000001', 'Retiring', 'PENDING')
+     RETURNING id`,
+    [driverUserId]
+  );
+  const driverReqId = driverReqRes.rows[0].id;
+
+  const ctx17_2 = createMockContext(userAdmin, { id: String(driverReqId) }, { action: 'APPROVE' });
+  await AdminController.processDeletionRequest(ctx17_2.req, ctx17_2.res);
+  assert.strictEqual(ctx17_2.getResponse().statusCode, 200, 'Driver deletion request approval must return HTTP 200');
+
+  // Verify driver is deactivated and taken offline/suspended
+  const checkDriverUser = await query(`SELECT status FROM users WHERE id = $1`, [driverUserId]);
+  assert.strictEqual(checkDriverUser.rows[0].status, 'DEACTIVATED');
+
+  const checkDriverRec = await query(`SELECT availability_status, approval_status FROM drivers WHERE user_id = $1`, [driverUserId]);
+  assert.strictEqual(checkDriverRec.rows[0].availability_status, 'offline', 'Driver availability must be set to offline');
+  assert.strictEqual(checkDriverRec.rows[0].approval_status, 'SUSPENDED', 'Driver approval must be set to SUSPENDED');
+  console.log('✅ PASS 17.2: Deleting a driver works normally (status DEACTIVATED, driver offline, approval SUSPENDED)');
+
+  // 17.3 Deactivating the only active admin is rejected
+  const allActiveAdmins = await query(
+    `SELECT id FROM users WHERE role = 'admin' AND COALESCE(status, 'ACTIVE') != 'DEACTIVATED'`
+  );
+  const soloAdminId = allActiveAdmins.rows[0].id;
+  const tempDeactivatedIds: number[] = [];
+  for (let i = 1; i < allActiveAdmins.rows.length; i++) {
+    const otherId = allActiveAdmins.rows[i].id;
+    await query(`UPDATE users SET status = 'DEACTIVATED' WHERE id = $1`, [otherId]);
+    tempDeactivatedIds.push(otherId);
+  }
+
+  const activeCount = await AuthService.countActiveAdmins();
+  assert.strictEqual(activeCount, 1, 'Active admin count must be exactly 1 for solo admin test');
+
+  // Create deletion request for the solo admin
+  const soloReqRes = await query(
+    `INSERT INTO account_deletion_requests (user_id, user_role, user_email, user_mobile, reason, status)
+     VALUES ($1, 'admin', 'solo_admin@test.com', '9933000001', 'Leaving', 'PENDING')
+     RETURNING id`,
+    [soloAdminId]
+  );
+  const soloReqId = soloReqRes.rows[0].id;
+
+  const ctx17_3 = createMockContext(userAdmin, { id: String(soloReqId) }, { action: 'APPROVE' });
+  await AdminController.processDeletionRequest(ctx17_3.req, ctx17_3.res);
+  assert.strictEqual(ctx17_3.getResponse().statusCode, 400, 'Deactivating last active admin must return HTTP 400');
+  assert.strictEqual(ctx17_3.getResponse().responseData.success, false);
+  assert.match(
+    ctx17_3.getResponse().responseData.error,
+    /Cannot deactivate the last remaining active administrator account/i,
+    'Error message must clearly state last active administrator protection'
+  );
+
+  // Verify solo admin remains ACTIVE in database
+  const checkSoloUser = await query(`SELECT status FROM users WHERE id = $1`, [soloAdminId]);
+  assert.strictEqual(checkSoloUser.rows[0].status, 'ACTIVE', 'Last active admin must remain ACTIVE');
+
+  // Verify deletion request was NOT processed
+  const checkSoloReq = await query(`SELECT status FROM account_deletion_requests WHERE id = $1`, [soloReqId]);
+  assert.strictEqual(checkSoloReq.rows[0].status, 'PENDING', 'Deletion request must remain PENDING');
+  console.log('✅ PASS 17.3: Deactivating the only active admin is strictly rejected with HTTP 400');
+
+  // 17.4 Deactivating one admin when another active admin exists works according to existing policy
+  for (const tempId of tempDeactivatedIds) {
+    await query(`UPDATE users SET status = 'ACTIVE' WHERE id = $1`, [tempId]);
+  }
+  const adminTwoRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status)
+     VALUES ($1, $2, $3, 'hash', 'admin', 'ACTIVE')
+     RETURNING id`,
+    [`Admin Two ${Date.now()}`, `admin_two_${Date.now()}@test.com`, `9944${Math.floor(100000 + Math.random() * 900000)}`]
+  );
+  const adminTwoId = adminTwoRes.rows[0].id;
+
+  const adminCountBefore = await AuthService.countActiveAdmins();
+  assert.ok(adminCountBefore >= 2, 'Must have at least 2 active admins');
+
+  const adminTwoReqRes = await query(
+    `INSERT INTO account_deletion_requests (user_id, user_role, user_email, user_mobile, reason, status)
+     VALUES ($1, 'admin', 'admin_two@test.com', '9944000001', 'Stepping down', 'PENDING')
+     RETURNING id`,
+    [adminTwoId]
+  );
+  const adminTwoReqId = adminTwoReqRes.rows[0].id;
+
+  const ctx17_4 = createMockContext(userAdmin, { id: String(adminTwoReqId) }, { action: 'APPROVE' });
+  await AdminController.processDeletionRequest(ctx17_4.req, ctx17_4.res);
+  assert.strictEqual(ctx17_4.getResponse().statusCode, 200, 'Deactivating admin when another active admin exists must succeed');
+  assert.strictEqual(ctx17_4.getResponse().responseData.success, true);
+
+  const checkAdminTwo = await query(`SELECT status FROM users WHERE id = $1`, [adminTwoId]);
+  assert.strictEqual(checkAdminTwo.rows[0].status, 'DEACTIVATED');
+
+  const checkSoloAfter = await query(`SELECT status FROM users WHERE id = $1`, [soloAdminId]);
+  assert.strictEqual(checkSoloAfter.rows[0].status, 'ACTIVE');
+  console.log('✅ PASS 17.4: Deactivating one admin when another active admin exists succeeds normally');
+
+  // 17.5 Concurrent deletion requests cannot deactivate all active admins
+  const currentAdmins = await query(
+    `SELECT id FROM users WHERE role = 'admin' AND COALESCE(status, 'ACTIVE') != 'DEACTIVATED'`
+  );
+  for (const r of currentAdmins.rows) {
+    await query(`UPDATE users SET status = 'DEACTIVATED' WHERE id = $1`, [r.id]);
+  }
+
+  const concAdminARes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status)
+     VALUES ($1, $2, $3, 'hash', 'admin', 'ACTIVE')
+     RETURNING id`,
+    [`Conc Admin A ${Date.now()}`, `conc_admin_a_${Date.now()}@test.com`, `9955${Math.floor(100000 + Math.random() * 900000)}`]
+  );
+  const concAdminAId = concAdminARes.rows[0].id;
+
+  const concAdminBRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status)
+     VALUES ($1, $2, $3, 'hash', 'admin', 'ACTIVE')
+     RETURNING id`,
+    [`Conc Admin B ${Date.now()}`, `conc_admin_b_${Date.now()}@test.com`, `9966${Math.floor(100000 + Math.random() * 900000)}`]
+  );
+  const concAdminBId = concAdminBRes.rows[0].id;
+
+  const countConc = await AuthService.countActiveAdmins();
+  assert.strictEqual(countConc, 2, 'Exactly two active admins must exist before concurrent requests');
+
+  const reqConcARes = await query(
+    `INSERT INTO account_deletion_requests (user_id, user_role, user_email, user_mobile, reason, status)
+     VALUES ($1, 'admin', 'conc_a@test.com', '9955000001', 'Retiring', 'PENDING')
+     RETURNING id`,
+    [concAdminAId]
+  );
+  const reqConcAId = reqConcARes.rows[0].id;
+
+  const reqConcBRes = await query(
+    `INSERT INTO account_deletion_requests (user_id, user_role, user_email, user_mobile, reason, status)
+     VALUES ($1, 'admin', 'conc_b@test.com', '9966000001', 'Retiring', 'PENDING')
+     RETURNING id`,
+    [concAdminBId]
+  );
+  const reqConcBId = reqConcBRes.rows[0].id;
+
+  const ctxConcA = createMockContext(userAdmin, { id: String(reqConcAId) }, { action: 'APPROVE' });
+  const ctxConcB = createMockContext(userAdmin, { id: String(reqConcBId) }, { action: 'APPROVE' });
+
+  await Promise.all([
+    AdminController.processDeletionRequest(ctxConcA.req, ctxConcA.res),
+    AdminController.processDeletionRequest(ctxConcB.req, ctxConcB.res)
+  ]);
+
+  const statusA = ctxConcA.getResponse().statusCode;
+  const statusB = ctxConcB.getResponse().statusCode;
+
+  const concStatuses = [statusA, statusB].sort();
+  assert.deepStrictEqual(concStatuses, [200, 400], 'One request must succeed (200) and the other must be rejected (400)');
+
+  const failedCtx = statusA === 400 ? ctxConcA : ctxConcB;
+  assert.match(
+    failedCtx.getResponse().responseData.error,
+    /Cannot deactivate the last remaining active administrator account/i,
+    'The rejected request must cite the last active admin protection policy'
+  );
+
+  const checkConcA = await query(`SELECT status FROM users WHERE id = $1`, [concAdminAId]);
+  const checkConcB = await query(`SELECT status FROM users WHERE id = $1`, [concAdminBId]);
+  const concUserStatuses = [checkConcA.rows[0].status, checkConcB.rows[0].status].sort();
+  assert.deepStrictEqual(concUserStatuses, ['ACTIVE', 'DEACTIVATED'], 'System must retain exactly one active admin');
+
+  const remainingAdmins = await AuthService.countActiveAdmins();
+  assert.strictEqual(remainingAdmins, 1, 'System is NEVER left without an active admin');
+  console.log('✅ PASS 17.5: Concurrent deletion requests safely serialized; system retains active admin (1 200, 1 400)');
+
+  for (const r of currentAdmins.rows) {
+    await query(`UPDATE users SET status = 'ACTIVE' WHERE id = $1`, [r.id]);
+  }
+
+  // 17.6 Existing admin authorization and JWT revocation still work
+  const ctxAuthAdmin = createMockContext(userAdmin);
+  await AdminController.getDashboardStats(ctxAuthAdmin.req, ctxAuthAdmin.res);
+  assert.strictEqual(ctxAuthAdmin.getResponse().statusCode, 200, 'Active admin must have access to admin routes');
+
+  const testRevokeCustRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status)
+     VALUES ($1, $2, $3, 'hash', 'customer', 'ACTIVE')
+     RETURNING id`,
+    [`Revoke Cust ${Date.now()}`, `rev_cust_${Date.now()}@test.com`, `9977${Math.floor(100000 + Math.random() * 900000)}`]
+  );
+  const revCustUser: AuthUser = {
+    id: testRevokeCustRes.rows[0].id,
+    name: 'Revoke Cust',
+    email: `rev_cust_${Date.now()}@test.com`,
+    mobile: '9977000001',
+    role: 'customer'
+  };
+  const revCustToken = AuthService.generateToken(revCustUser);
+
+  await query(`UPDATE users SET status = 'DEACTIVATED' WHERE id = $1`, [revCustUser.id]);
+
+  // authenticateToken blocks deactivated user token with HTTP 403
+  const suite17DeactAuth = await testAuthMiddleware(revCustToken);
+  assert.strictEqual(suite17DeactAuth.status, 403, 'Deactivated user token must be denied with HTTP 403');
+  assert.strictEqual(suite17DeactAuth.nextCalled, false);
+  assert.match(suite17DeactAuth.body.error, /deactivated/i);
+
+  // Explicit logout / token revocation works
+  const activeCustUser: AuthUser = {
+    id: custUserId,
+    name: 'Active Cust',
+    email: `act_cust_${Date.now()}@test.com`,
+    mobile: '9988000001',
+    role: 'customer'
+  };
+  await query(`UPDATE users SET status = 'ACTIVE' WHERE id = $1`, [custUserId]);
+  const activeCustToken = AuthService.generateToken(activeCustUser);
+  await AuthService.revokeToken(activeCustToken);
+  const revokedAuth = await testAuthMiddleware(activeCustToken);
+  assert.strictEqual(revokedAuth.status, 403, 'Revoked token must be denied with HTTP 403');
+  assert.strictEqual(revokedAuth.nextCalled, false);
+  assert.match(revokedAuth.body.error, /invalid or expired session/i);
+  console.log('✅ PASS 17.6: Existing admin authorization, account deactivation blocking (403), and JWT revocation work');
+
   console.log('\n=========================================');
   console.log('🎉 ALL SECURITY PHASE 1 TESTS PASSED!');
   console.log('=========================================\n');

@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
-import { query } from '../config/db';
+import { query, withTransaction } from '../config/db';
 import { RouteService } from '../services/routeService';
 import { PaymentService } from '../services/paymentService';
+import { AuthService } from '../services/authService';
 
 export class AdminController {
   /**
@@ -254,6 +255,14 @@ export class AdminController {
       const { id } = req.params;
       const { action, adminNotes } = req.body; // action: 'APPROVE' | 'REJECT'
 
+      const requestId = parseInt(id, 10);
+      if (isNaN(requestId) || requestId <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid deletion request ID.'
+        });
+      }
+
       if (!action || !['APPROVE', 'REJECT'].includes(action)) {
         return res.status(400).json({
           success: false,
@@ -261,53 +270,133 @@ export class AdminController {
         });
       }
 
-      const reqRes = await query(
-        `SELECT id, user_id, user_role, status
-         FROM account_deletion_requests
-         WHERE id = $1
-         LIMIT 1`,
-        [id]
-      );
+      let txResult: any;
+      try {
+        txResult = await AuthService.adminDeactivationMutex.runExclusive(async () => {
+          return await withTransaction(async (tx) => {
+            // 1. Fetch deletion request with row-level lock
+            const reqRes = await tx.query(
+              `SELECT id, user_id, user_role, status
+               FROM account_deletion_requests
+               WHERE id = $1
+               FOR UPDATE`,
+              [requestId]
+            );
 
-      if (reqRes.rows.length === 0) {
-        return res.status(404).json({ success: false, error: 'Account deletion request not found.' });
-      }
+            if (reqRes.rows.length === 0) {
+              return {
+                status: 404,
+                error: 'Account deletion request not found.'
+              };
+            }
 
-      const delReq = reqRes.rows[0];
-      const newStatus = action === 'APPROVE' ? 'PROCESSED' : 'REJECTED';
+            const delReq = reqRes.rows[0];
 
-      await query(
-        `UPDATE account_deletion_requests
-         SET status = $1, processed_at = CURRENT_TIMESTAMP, admin_notes = $2
-         WHERE id = $3`,
-        [newStatus, adminNotes || null, id]
-      );
+            if (delReq.status !== 'PENDING') {
+              return {
+                status: 400,
+                error: `Account deletion request has already been ${delReq.status.toLowerCase()}.`
+              };
+            }
 
-      if (action === 'APPROVE') {
-        // Deactivate user account so they can no longer log in or access protected features
-        await query(
-          `UPDATE users
-           SET status = 'DEACTIVATED', updated_at = CURRENT_TIMESTAMP
-           WHERE id = $1`,
-          [delReq.user_id]
-        );
+            if (action === 'REJECT') {
+              await tx.query(
+                `UPDATE account_deletion_requests
+                 SET status = 'REJECTED', processed_at = CURRENT_TIMESTAMP, admin_notes = $1
+                 WHERE id = $2`,
+                [adminNotes || null, requestId]
+              );
 
-        // If driver, take offline and suspend approval
-        if (delReq.user_role === 'driver') {
-          await query(
-            `UPDATE drivers
-             SET availability_status = 'offline', approval_status = 'SUSPENDED', updated_at = CURRENT_TIMESTAMP
-             WHERE user_id = $1`,
-            [delReq.user_id]
-          );
+              return {
+                status: 200,
+                success: true,
+                message: 'Account deletion request rejected.'
+              };
+            }
+
+            // action === 'APPROVE'
+            // 2. Fetch target user record with row-level lock
+            const userRes = await tx.query(
+              `SELECT id, role, COALESCE(status, 'ACTIVE') as status
+               FROM users
+               WHERE id = $1
+               FOR UPDATE`,
+              [delReq.user_id]
+            );
+
+            if (userRes.rows.length === 0) {
+              return {
+                status: 404,
+                error: 'Target user account not found.'
+              };
+            }
+
+            const targetUser = userRes.rows[0];
+            const isTargetAdmin =
+              (targetUser.role && targetUser.role.toLowerCase() === 'admin') ||
+              (delReq.user_role && delReq.user_role.toLowerCase() === 'admin');
+
+            // 3. Last Active Admin Protection
+            if (isTargetAdmin) {
+              await AuthService.assertNotLastActiveAdmin(targetUser.id, tx);
+            }
+
+            // 4. Deactivate user account so they can no longer log in or access protected features
+            await tx.query(
+              `UPDATE users
+               SET status = 'DEACTIVATED', updated_at = CURRENT_TIMESTAMP
+               WHERE id = $1`,
+              [delReq.user_id]
+            );
+
+            // 5. Update deletion request status to PROCESSED
+            await tx.query(
+              `UPDATE account_deletion_requests
+               SET status = 'PROCESSED', processed_at = CURRENT_TIMESTAMP, admin_notes = $1
+               WHERE id = $2`,
+              [adminNotes || null, requestId]
+            );
+
+            // 6. If driver, take offline and suspend approval
+            if (
+              (targetUser.role && targetUser.role.toLowerCase() === 'driver') ||
+              (delReq.user_role && delReq.user_role.toLowerCase() === 'driver')
+            ) {
+              await tx.query(
+                `UPDATE drivers
+                 SET availability_status = 'offline', approval_status = 'SUSPENDED', updated_at = CURRENT_TIMESTAMP
+                 WHERE user_id = $1`,
+                [delReq.user_id]
+              );
+            }
+
+            return {
+              status: 200,
+              success: true,
+              message: 'Account deletion request approved. The user account has been deactivated.'
+            };
+          });
+        });
+      } catch (txErr: any) {
+        if (txErr && txErr.code === 'LAST_ACTIVE_ADMIN') {
+          return res.status(400).json({
+            success: false,
+            error: txErr.message
+          });
         }
+        throw txErr;
       }
 
-      return res.json({
+      if (txResult && txResult.error) {
+        return res.status(txResult.status || 400).json({
+          success: false,
+          error: txResult.error
+        });
+      }
+
+      return res.status(txResult?.status || 200).json({
         success: true,
-        message: action === 'APPROVE'
-          ? 'Account deletion request approved. The user account has been deactivated.'
-          : 'Account deletion request rejected.'
+        message: txResult?.message
       });
     } catch (err: any) {
       return res.status(500).json({

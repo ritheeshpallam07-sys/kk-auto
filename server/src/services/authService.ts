@@ -1,9 +1,45 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import { query } from '../config/db';
+import { query, DbTransactionClient } from '../config/db';
 import { AuthUser, JWT_SECRET, JWT_ALGORITHM, getJwtSecret } from '../middleware/auth';
 import { EmailService } from './emailService';
+
+export class AsyncMutex {
+  private queue: Array<() => void> = [];
+  private locked = false;
+
+  public async acquire(): Promise<() => void> {
+    if (!this.locked) {
+      this.locked = true;
+      return () => this.release();
+    }
+    return new Promise<() => void>((resolve) => {
+      this.queue.push(() => {
+        this.locked = true;
+        resolve(() => this.release());
+      });
+    });
+  }
+
+  public async runExclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const release = await this.acquire();
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+
+  private release(): void {
+    if (this.queue.length > 0) {
+      const next = this.queue.shift()!;
+      next();
+    } else {
+      this.locked = false;
+    }
+  }
+}
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -13,6 +49,46 @@ export interface RateLimitResult {
 }
 
 export class AuthService {
+  public static readonly adminDeactivationMutex = new AsyncMutex();
+
+  /**
+   * Count the number of currently active administrator accounts.
+   */
+  public static async countActiveAdmins(txClient?: DbTransactionClient): Promise<number> {
+    const db = txClient || { query };
+    const res = await db.query(
+      `SELECT COUNT(*) as count
+       FROM users
+       WHERE LOWER(role) = 'admin'
+         AND UPPER(COALESCE(status, 'ACTIVE')) != 'DEACTIVATED'`
+    );
+    return parseInt(res.rows[0].count, 10);
+  }
+
+  /**
+   * Asserts that deactivating the given administrator account will not leave
+   * the platform without any active administrators.
+   * Locks all active admin rows with FOR UPDATE to serialize concurrent deactivations.
+   */
+  public static async assertNotLastActiveAdmin(userId: number, txClient: DbTransactionClient): Promise<void> {
+    const activeAdminsRes = await txClient.query(
+      `SELECT id, email, role, COALESCE(status, 'ACTIVE') as status
+       FROM users
+       WHERE LOWER(role) = 'admin'
+         AND UPPER(COALESCE(status, 'ACTIVE')) != 'DEACTIVATED'
+       FOR UPDATE`
+    );
+
+    const otherActiveAdmins = activeAdminsRes.rows.filter((u: any) => Number(u.id) !== Number(userId));
+    if (otherActiveAdmins.length === 0) {
+      const error: any = new Error(
+        'Cannot deactivate the last remaining active administrator account. The platform must maintain at least one active administrator.'
+      );
+      error.statusCode = 400;
+      error.code = 'LAST_ACTIVE_ADMIN';
+      throw error;
+    }
+  }
   public static async hashPassword(password: string): Promise<string> {
     const salt = await bcrypt.genSalt(10);
     return bcrypt.hash(password, salt);
