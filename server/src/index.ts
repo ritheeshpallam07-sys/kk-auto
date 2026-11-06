@@ -121,6 +121,7 @@ app.use(
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: 'cross-origin' },
     crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+    referrerPolicy: { policy: 'no-referrer' },
     frameguard: { action: 'sameorigin' },
     hsts: process.env.NODE_ENV === 'production' ? {
       maxAge: 31536000,
@@ -216,14 +217,16 @@ export async function startServer() {
     await initDb();
     await initPlatformDefaults();
 
-    // Initial background cleanup of expired rate limits and revoked tokens
+    // Initial background cleanup of expired rate limits, revoked tokens, and password resets
     await AuthService.cleanupExpiredRateLimits().catch(() => {});
     await AuthService.cleanExpiredRevokedTokens().catch(() => {});
+    await AuthService.cleanupExpiredPasswordResets().catch(() => {});
 
     // Periodic cleanup (every 24 hours)
     const cleanupInterval = setInterval(() => {
       AuthService.cleanupExpiredRateLimits().catch(() => {});
       AuthService.cleanExpiredRevokedTokens().catch(() => {});
+      AuthService.cleanupExpiredPasswordResets().catch(() => {});
     }, 24 * 60 * 60 * 1000);
     cleanupInterval.unref();
 

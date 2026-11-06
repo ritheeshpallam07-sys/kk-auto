@@ -360,6 +360,21 @@ export const api = {
       body: JSON.stringify({ identifier, password })
     }),
     logout: () => request('/auth/logout', { method: 'POST' }),
+    forgotPassword: (email: string) =>
+      request<{ message: string }>('/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ email })
+      }),
+    verifyResetToken: (token: string) =>
+      request<{ valid: boolean }>('/auth/verify-reset-token', {
+        method: 'POST',
+        body: JSON.stringify({ token })
+      }),
+    resetPassword: (data: { token: string; newPassword: string; confirmPassword: string }) =>
+      request<{ message: string }>('/auth/reset-password', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
     changePassword: (data: { currentPassword: string; newPassword: string; confirmPassword: string }) =>
       request<{ message: string }>('/auth/change-password', {
         method: 'POST',

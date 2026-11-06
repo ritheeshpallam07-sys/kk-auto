@@ -119,9 +119,18 @@ export const OwnerLoginPage: React.FC<OwnerLoginPageProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-[#A1A1AA] uppercase mb-1.5">
-              Password
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-bold text-[#A1A1AA] uppercase">
+                Password
+              </label>
+              <button
+                type="button"
+                onClick={() => navigate('/forgot-password')}
+                className="text-xs font-semibold text-[#C6FF3D] hover:underline"
+              >
+                Forgot Password?
+              </button>
+            </div>
             <div className="relative">
               <Lock className="absolute left-3.5 top-3 w-4 h-4 text-[#A1A1AA]" />
               <input

@@ -511,6 +511,178 @@ export class AuthController {
     }
   }
 
+  public static async forgotPassword(req: Request, res: Response) {
+    try {
+      const clientIp = getClientIp(req);
+
+      // Rate limit by IP: 5 attempts per 15 minutes (900 seconds)
+      const ipLimit = await AuthService.checkRateLimit(`forgot_ip_${clientIp}`, 5, 900);
+      if (!ipLimit.allowed) {
+        if (ipLimit.isServiceUnavailable) {
+          return res.status(503).json({
+            success: false,
+            error: 'Authentication service temporarily unavailable. Please try again later.'
+          });
+        }
+        if (typeof res.set === 'function') {
+          res.set('Retry-After', String(ipLimit.retryAfterSeconds));
+        }
+        return res.status(429).json({
+          success: false,
+          error: 'Too many password reset requests from this IP. Please try again later.'
+        });
+      }
+
+      const { email } = req.body;
+      const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+
+      if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Please provide a valid email address.'
+        });
+      }
+
+      // Rate limit per target email: 3 attempts per 15 minutes (hashed key protects email privacy)
+      const emailHash = crypto.createHash('sha256').update(cleanEmail).digest('hex').slice(0, 32);
+      const emailLimit = await AuthService.checkRateLimit(`forgot_email_${emailHash}`, 3, 900);
+      if (!emailLimit.allowed) {
+        if (emailLimit.isServiceUnavailable) {
+          return res.status(503).json({
+            success: false,
+            error: 'Authentication service temporarily unavailable. Please try again later.'
+          });
+        }
+        if (typeof res.set === 'function') {
+          res.set('Retry-After', String(emailLimit.retryAfterSeconds));
+        }
+        return res.status(429).json({
+          success: false,
+          error: 'Too many password reset requests for this email address. Please try again later.'
+        });
+      }
+
+      // Determine client base URL from Host/Origin headers if appropriate, fallback to default
+      const originHeader = req.headers['origin'];
+      const hostHeader = req.headers['host'];
+      let clientBase: string | undefined;
+      if (typeof originHeader === 'string' && originHeader.startsWith('http')) {
+        clientBase = originHeader;
+      } else if (typeof hostHeader === 'string') {
+        const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+        clientBase = `${protocol}://${hostHeader}`;
+      }
+
+      const result = await AuthService.requestPasswordReset(cleanEmail, clientBase);
+
+      return res.status(200).json({
+        success: true,
+        message: result.message
+      });
+    } catch (err: any) {
+      const statusCode = err.statusCode || 500;
+      if (err.retryAfterSeconds && typeof res.set === 'function') {
+        res.set('Retry-After', String(err.retryAfterSeconds));
+      }
+      return res.status(statusCode).json({
+        success: false,
+        error: err.message || 'Failed to process password reset request.'
+      });
+    }
+  }
+
+  public static async verifyResetToken(req: Request, res: Response) {
+    try {
+      const clientIp = getClientIp(req);
+      const ipLimit = await AuthService.checkRateLimit(`verify_reset_ip_${clientIp}`, 30, 900);
+      if (!ipLimit.allowed) {
+        if (typeof res.set === 'function') {
+          res.set('Retry-After', String(ipLimit.retryAfterSeconds));
+        }
+        return res.status(429).json({
+          success: false,
+          error: 'Too many verification attempts from this IP. Please try again later.'
+        });
+      }
+
+      const { token } = req.body;
+      const result = await AuthService.verifyResetToken(token);
+
+      if (!result.valid) {
+        return res.status(400).json({
+          success: false,
+          valid: false,
+          error: result.error || 'This password reset link is invalid or has expired.'
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        valid: true
+      });
+    } catch (err: any) {
+      return res.status(400).json({
+        success: false,
+        valid: false,
+        error: 'Failed to verify reset token.'
+      });
+    }
+  }
+
+  public static async resetPassword(req: Request, res: Response) {
+    try {
+      const clientIp = getClientIp(req);
+
+      // Rate limit password resets per IP (10 attempts per 15 minutes)
+      const ipLimit = await AuthService.checkRateLimit(`reset_ip_${clientIp}`, 10, 900);
+      if (!ipLimit.allowed) {
+        if (typeof res.set === 'function') {
+          res.set('Retry-After', String(ipLimit.retryAfterSeconds));
+        }
+        return res.status(429).json({
+          success: false,
+          error: 'Too many password reset attempts from this IP. Please try again later.'
+        });
+      }
+
+      const { token, newPassword, confirmPassword } = req.body;
+
+      const resetResult = await AuthService.resetPassword(
+        token,
+        newPassword,
+        confirmPassword
+      );
+
+      // If user holds the admin role, log in admin_audit_logs with credentials redacted
+      if (resetResult.user.role === 'admin') {
+        try {
+          await AuditService.logAction({
+            adminId: resetResult.user.id,
+            adminEmail: resetResult.user.email,
+            action: 'RESET_PASSWORD',
+            targetType: 'USER',
+            targetId: resetResult.user.id,
+            details: { success: true, method: 'EMAIL_RECOVERY' },
+            clientIp
+          });
+        } catch (auditErr: any) {
+          console.error('[Audit] Failed to log admin reset password action:', auditErr?.message || auditErr);
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Password has been reset successfully. Please log in with your new password.'
+      });
+    } catch (err: any) {
+      const statusCode = err.statusCode || 400;
+      return res.status(statusCode).json({
+        success: false,
+        error: err.message || 'Failed to reset password.'
+      });
+    }
+  }
+
   public static async getDeletionRequest(req: Request, res: Response) {
     try {
       if (!req.user) {

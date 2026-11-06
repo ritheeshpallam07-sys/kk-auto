@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import { query, DbTransactionClient } from '../config/db';
+import { query, withTransaction, DbTransactionClient } from '../config/db';
 import { AuthUser, JWT_SECRET, JWT_ALGORITHM, getJwtSecret } from '../middleware/auth';
 import { EmailService } from './emailService';
 
@@ -686,5 +686,309 @@ export class AuthService {
     }
 
     return { requiresVerification: true, email };
+  }
+
+  /**
+   * Bounded cleanup of expired or already consumed password reset records (Phase 5 Reliability).
+   */
+  public static async cleanupExpiredPasswordResets(): Promise<number> {
+    try {
+      const result = await query(
+        `DELETE FROM password_resets
+         WHERE expires_at < CURRENT_TIMESTAMP OR used_at IS NOT NULL
+         RETURNING id`
+      );
+      return result.rowCount ?? result.rows.length;
+    } catch (err: any) {
+      console.error('Password resets cleanup failed:', err?.message || 'Database error');
+      return 0;
+    }
+  }
+
+  /**
+   * Initiates password recovery.
+   * Generates a 256-bit cryptographically secure reset token, persists only its SHA-256 hash,
+   * sends the recovery email via Resend, and enforces a 60-second cooldown per email address.
+   * If email delivery fails, the newly generated token is immediately invalidated.
+   * Prevents email enumeration by returning an identical response for registered, unregistered,
+   * and deactivated accounts.
+   */
+  public static async requestPasswordReset(
+    email: string,
+    baseUrl?: string
+  ): Promise<{ success: boolean; message: string }> {
+    const normEmail = String(email || '').trim().toLowerCase();
+    const genericMessage = 'If an active account is associated with that email, a password reset link has been sent.';
+
+    if (!normEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normEmail)) {
+      const err: any = new Error('Please provide a valid email address.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Anti-enumeration: look up user without disclosing results to client
+    const userRes = await query(
+      `SELECT id, email, role, COALESCE(status, 'ACTIVE') as status
+       FROM users
+       WHERE LOWER(email) = $1
+       LIMIT 1`,
+      [normEmail]
+    );
+
+    if (userRes.rows.length === 0 || userRes.rows[0].status === 'DEACTIVATED') {
+      // Timing attack countermeasure: simulate token generation & hashing
+      crypto.randomBytes(32);
+      crypto.createHash('sha256').update('dummy-timing-neutral').digest('hex');
+      return { success: true, message: genericMessage };
+    }
+
+    const user = userRes.rows[0];
+
+    // Check cooldown for active reset token for this user
+    const recentCheck = await query(
+      `SELECT created_at, expires_at
+       FROM password_resets
+       WHERE user_id = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [user.id]
+    );
+
+    if (recentCheck.rows.length > 0) {
+      const lastCreatedAt = new Date(recentCheck.rows[0].created_at).getTime();
+      const elapsedMs = Date.now() - lastCreatedAt;
+      if (elapsedMs < 60_000) {
+        const retrySec = Math.max(1, Math.ceil((60_000 - elapsedMs) / 1000));
+        const err: any = new Error(`Please wait ${retrySec} seconds before requesting another password reset link.`);
+        err.statusCode = 429;
+        err.retryAfterSeconds = retrySec;
+        throw err;
+      }
+    }
+
+    // Generate cryptographically secure 256-bit token
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15-minute token expiry
+
+    // Atomically invalidate prior unused reset tokens for this user and insert new one
+    let resetRecordId: number | null = null;
+    await withTransaction(async (tx) => {
+      await tx.query(
+        `DELETE FROM password_resets
+         WHERE user_id = $1 AND used_at IS NULL`,
+        [user.id]
+      );
+
+      const insertRes = await tx.query(
+        `INSERT INTO password_resets (user_id, token_hash, expires_at, created_at)
+         VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+         RETURNING id`,
+        [user.id, tokenHash, expiresAt]
+      );
+      resetRecordId = insertRes.rows[0]?.id;
+    });
+
+    // Resolve client URL for password reset link
+    const clientBase = (baseUrl || process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? 'https://clik2go.in' : 'http://localhost:5173')).replace(/\/$/, '');
+    const resetLink = `${clientBase}/reset-password?token=${rawToken}`;
+
+    // Dispatch email
+    try {
+      await EmailService.sendPasswordResetLink(user.email, resetLink);
+    } catch (emailErr: any) {
+      // CRITICAL REQUIREMENT: If email delivery fails, invalidate the newly generated reset token.
+      // Never leave a usable token when the reset email was not successfully sent.
+      if (resetRecordId) {
+        await query(
+          `DELETE FROM password_resets WHERE id = $1`,
+          [resetRecordId]
+        ).catch(() => {});
+      }
+      console.error('[EmailService] Failed to send password reset email:', emailErr?.message || 'Email delivery failure');
+      const err: any = new Error('Failed to deliver password reset email. Please try again later.');
+      err.statusCode = 503;
+      throw err;
+    }
+
+    return { success: true, message: genericMessage };
+  }
+
+  /**
+   * Pre-validates a reset token without consuming it.
+   */
+  public static async verifyResetToken(token: string): Promise<{ valid: boolean; error?: string }> {
+    if (!token || typeof token !== 'string' || !/^[a-fA-F0-9]{64}$/.test(token.trim())) {
+      return { valid: false, error: 'Invalid or malformed password reset link.' };
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(token.trim()).digest('hex');
+
+    const res = await query(
+      `SELECT pr.id, pr.expires_at, pr.used_at, u.status
+       FROM password_resets pr
+       JOIN users u ON pr.user_id = u.id
+       WHERE pr.token_hash = $1
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    if (res.rows.length === 0) {
+      return { valid: false, error: 'This password reset link is invalid or has expired.' };
+    }
+
+    const row = res.rows[0];
+
+    if (row.used_at !== null) {
+      return { valid: false, error: 'This password reset link has already been used.' };
+    }
+
+    if (new Date(row.expires_at).getTime() <= Date.now()) {
+      return { valid: false, error: 'This password reset link has expired. Please request a new one.' };
+    }
+
+    if (row.status === 'DEACTIVATED') {
+      return { valid: false, error: 'This account has been deactivated. Access is denied.' };
+    }
+
+    return { valid: true };
+  }
+
+  /**
+   * Resets the user's password using a verified single-use reset token.
+   * Executes within an atomic database transaction using row-level locking (FOR UPDATE)
+   * to prevent concurrent reset attempts or simultaneous token submissions.
+   * Atomically marks the token as used, updates password_hash, sets password_changed_at,
+   * and increments token_version to immediately invalidate all existing sessions.
+   */
+  public static async resetPassword(
+    token: string,
+    newPassword: string,
+    confirmPassword: string
+  ): Promise<{ success: boolean; user: AuthUser }> {
+    if (!token || typeof token !== 'string' || !/^[a-fA-F0-9]{64}$/.test(token.trim())) {
+      const err: any = new Error('Invalid or malformed password reset link.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (!newPassword || typeof newPassword !== 'string') {
+      const err: any = new Error('New password is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (!confirmPassword || typeof confirmPassword !== 'string') {
+      const err: any = new Error('Password confirmation is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (newPassword.length < 12) {
+      const err: any = new Error('New password must be at least 12 characters long.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (newPassword !== confirmPassword) {
+      const err: any = new Error('New password and confirmation do not match.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(token.trim()).digest('hex');
+
+    // Atomic transaction with row-level locking to prevent concurrent token submissions
+    const result = await withTransaction(async (tx) => {
+      const resetRes = await tx.query(
+        `SELECT pr.id, pr.user_id, pr.expires_at, pr.used_at,
+                u.id as user_id_val, u.name, u.email, u.mobile, u.role, u.password_hash,
+                COALESCE(u.status, 'ACTIVE') as status,
+                COALESCE(u.token_version, 1) as token_version
+         FROM password_resets pr
+         JOIN users u ON pr.user_id = u.id
+         WHERE pr.token_hash = $1
+         LIMIT 1
+         FOR UPDATE`,
+        [tokenHash]
+      );
+
+      if (resetRes.rows.length === 0) {
+        const err: any = new Error('This password reset link is invalid or has expired.');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const resetRow = resetRes.rows[0];
+
+      if (resetRow.used_at !== null) {
+        const err: any = new Error('This password reset link has already been used.');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      if (new Date(resetRow.expires_at).getTime() <= Date.now()) {
+        const err: any = new Error('This password reset link has expired. Please request a new one.');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      if (resetRow.status === 'DEACTIVATED') {
+        const err: any = new Error('This account has been deactivated. Access is denied.');
+        err.statusCode = 403;
+        throw err;
+      }
+
+      // Reject identical password reuse
+      const isSamePassword = await this.comparePassword(newPassword, resetRow.password_hash);
+      if (isSamePassword) {
+        const err: any = new Error('New password cannot be the same as your previous password.');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      // Hash new password using bcrypt (salt rounds: 10)
+      const newHash = await this.hashPassword(newPassword);
+
+      // Atomically mark token as used
+      await tx.query(
+        `UPDATE password_resets
+         SET used_at = CURRENT_TIMESTAMP
+         WHERE id = $1`,
+        [resetRow.id]
+      );
+
+      // Clean up any remaining unused tokens for this user
+      await tx.query(
+        `DELETE FROM password_resets
+         WHERE user_id = $1 AND id != $2`,
+        [resetRow.user_id, resetRow.id]
+      );
+
+      // Atomically update password, set password_changed_at, and increment token_version
+      const updateRes = await tx.query(
+        `UPDATE users
+         SET password_hash = $1,
+             password_changed_at = CURRENT_TIMESTAMP,
+             token_version = COALESCE(token_version, 1) + 1,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2
+         RETURNING id, name, email, mobile, role, terms_version, terms_accepted_at, status, token_version`,
+        [newHash, resetRow.user_id]
+      );
+
+      const updatedUser = updateRes.rows[0];
+      return {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        mobile: updatedUser.mobile,
+        role: updatedUser.role,
+        status: updatedUser.status,
+        token_version: Number(updatedUser.token_version)
+      };
+    });
+
+    return { success: true, user: result as AuthUser };
   }
 }

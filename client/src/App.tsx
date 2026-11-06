@@ -20,6 +20,8 @@ import { VerifyEmailPage } from './pages/VerifyEmailPage';
 import { TermsAcceptancePage } from './pages/TermsAcceptancePage';
 import { TermsPage } from './pages/TermsPage';
 import { PrivacyPage } from './pages/PrivacyPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 
 export const App: React.FC = () => {
   const [currentPath, setCurrentPath] = useState<string>(
@@ -71,6 +73,14 @@ export const App: React.FC = () => {
 
     if (currentPath === '/login') {
       return <LoginPage navigate={navigate} />;
+    }
+
+    if (currentPath === '/forgot-password') {
+      return <ForgotPasswordPage navigate={navigate} />;
+    }
+
+    if (currentPath === '/reset-password') {
+      return <ResetPasswordPage navigate={navigate} />;
     }
 
     if (currentPath === '/register') {

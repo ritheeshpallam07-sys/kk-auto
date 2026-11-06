@@ -24,7 +24,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [forgotModalOpen, setForgotModalOpen] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,7 +134,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
               </label>
               <button
                 type="button"
-                onClick={() => setForgotModalOpen(true)}
+                onClick={() => navigate('/forgot-password')}
                 className="text-xs font-semibold text-[#C6FF3D] hover:underline"
               >
                 Forgot Password?
@@ -193,27 +192,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
           </button>
         </div>
       </div>
-
-      {/* Forgot password modal */}
-      {forgotModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#171719] rounded-3xl p-6 sm:p-7 max-w-sm w-full shadow-2xl border border-[#303034] text-center">
-            <div className="w-12 h-12 rounded-2xl bg-[#202023] text-[#C6FF3D] border border-[#303034] mx-auto flex items-center justify-center mb-3">
-              <Lock className="w-6 h-6" />
-            </div>
-            <h3 className="text-base font-black text-white mb-1">Reset Password</h3>
-            <p className="text-xs text-[#A1A1AA] mb-5 leading-relaxed">
-              Use your registered mobile number or email address with the verification code to reset your account credentials.
-            </p>
-            <button
-              onClick={() => setForgotModalOpen(false)}
-              className="w-full py-2.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-bold text-xs rounded-xl shadow-subtle"
-            >
-              Got it
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

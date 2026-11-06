@@ -71,6 +71,7 @@ async function runTests() {
   await query(`DELETE FROM ratings WHERE review = 'Smooth ride'`);
   await query(`DELETE FROM email_verifications WHERE email LIKE 'test_%' OR email LIKE 'legit_%'`);
   await query(`DELETE FROM rate_limits`);
+  await query(`DELETE FROM password_resets`);
 
   // =========================================================================
   // TEST SUITE 0: Database Isolation Verification
@@ -4076,6 +4077,414 @@ async function runTests() {
   requireRole(['admin'])(adminCtxAdminTest.req, adminCtxAdminTest.res, () => { nextCalledAdmin = true; });
   assert.strictEqual(nextCalledAdmin, true, 'Admin must be permitted on admin route');
   console.log('✅ PASS 19.13: Unrelated role restrictions remain strictly enforced (customer 403, driver 403, admin 200)');
+
+  // =========================================================================
+  // TEST SUITE 20: Phase 5 - Forgot Password & Secure Account Recovery
+  // =========================================================================
+
+  console.log('\n--- 20. Testing Forgot Password & Secure Account Recovery (Phase 5) ---');
+
+  // Helpers for Suite 20
+  let capturedResetLinks: Array<{ email: string; link: string; token: string }> = [];
+  EmailService.setResetSender(async (email: string, link: string) => {
+    const match = link.match(/token=([a-fA-F0-9]+)/);
+    const token = match ? match[1] : '';
+    capturedResetLinks.push({ email, link, token });
+  });
+
+  async function testForgotPassword(email: string, ip?: string): Promise<{ status: number; body: any; headers: Record<string, string> }> {
+    let status = 200;
+    let responseBody: any = null;
+    const headersSet: Record<string, string> = {};
+    const req = {
+      body: { email },
+      headers: {},
+      ip: ip || `127.0.0.${Math.floor(Math.random() * 200) + 10}`
+    } as any;
+    const res = {
+      status(code: number) { status = code; return this; },
+      json(data: any) { responseBody = data; return this; },
+      set(header: string, val: string) { headersSet[header] = val; return this; }
+    } as any;
+
+    await AuthController.forgotPassword(req, res);
+    return { status, body: responseBody, headers: headersSet };
+  }
+
+  async function testVerifyResetToken(token: string, ip?: string): Promise<{ status: number; body: any }> {
+    let status = 200;
+    let responseBody: any = null;
+    const req = {
+      body: { token },
+      headers: {},
+      ip: ip || `127.0.0.${Math.floor(Math.random() * 200) + 10}`
+    } as any;
+    const res = {
+      status(code: number) { status = code; return this; },
+      json(data: any) { responseBody = data; return this; },
+      set() { return this; }
+    } as any;
+
+    await AuthController.verifyResetToken(req, res);
+    return { status, body: responseBody };
+  }
+
+  async function testResetPassword(token: string, newPassword: string, confirmPassword: string, ip?: string): Promise<{ status: number; body: any }> {
+    let status = 200;
+    let responseBody: any = null;
+    const req = {
+      body: { token, newPassword, confirmPassword },
+      headers: {},
+      ip: ip || `127.0.0.${Math.floor(Math.random() * 200) + 10}`
+    } as any;
+    const res = {
+      status(code: number) { status = code; return this; },
+      json(data: any) { responseBody = data; return this; },
+      set() { return this; }
+    } as any;
+
+    await AuthController.resetPassword(req, res);
+    return { status, body: responseBody };
+  }
+
+  // Setup test users for Suite 20
+  const suite20InitialPwd = 'Suite20InitialPassword123!';
+  const suite20InitialHash = await AuthService.hashPassword(suite20InitialPwd);
+
+  // 1. Customer User
+  const cust20Email = `cust20_${Date.now()}@test.com`;
+  const insertCust20 = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status, token_version)
+     VALUES ($1, $2, $3, $4, 'customer', 'ACTIVE', 1)
+     RETURNING id, name, email, mobile, role, token_version`,
+    ['Cust20 User', cust20Email, `9874${Math.floor(Math.random() * 899999 + 100000)}`, suite20InitialHash]
+  );
+  const cust20User = insertCust20.rows[0];
+
+  // 2. Deactivated User
+  const deact20Email = `deact20_${Date.now()}@test.com`;
+  await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status, token_version)
+     VALUES ($1, $2, $3, $4, 'customer', 'DEACTIVATED', 1)`,
+    ['Deactivated User', deact20Email, `9875${Math.floor(Math.random() * 899999 + 100000)}`, suite20InitialHash]
+  );
+
+  // 3. Driver User
+  const driver20Email = `driver20_${Date.now()}@test.com`;
+  const insertDriver20 = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status, token_version)
+     VALUES ($1, $2, $3, $4, 'driver', 'ACTIVE', 1)
+     RETURNING id, name, email, mobile, role, token_version`,
+    ['Driver20 User', driver20Email, `9876${Math.floor(Math.random() * 899999 + 100000)}`, suite20InitialHash]
+  );
+  const driver20User = insertDriver20.rows[0];
+
+  // 4. Admin User
+  const admin20Email = `admin20_${Date.now()}@test.com`;
+  const insertAdmin20 = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status, token_version)
+     VALUES ($1, $2, $3, $4, 'admin', 'ACTIVE', 1)
+     RETURNING id, name, email, mobile, role, token_version`,
+    ['Admin20 User', admin20Email, `9877${Math.floor(Math.random() * 899999 + 100000)}`, suite20InitialHash]
+  );
+  const admin20User = insertAdmin20.rows[0];
+
+  // 20.1 Email Enumeration Prevention: Unregistered email returns generic 200 with no email sent
+  capturedResetLinks = [];
+  const unregEmail = `unregistered_${Date.now()}@test.com`;
+  const unregRes = await testForgotPassword(unregEmail);
+  assert.strictEqual(unregRes.status, 200, 'Unregistered email must return HTTP 200');
+  assert.strictEqual(unregRes.body.success, true);
+  assert.strictEqual(
+    unregRes.body.message,
+    'If an active account is associated with that email, a password reset link has been sent.',
+    'Must return generic message on unregistered email'
+  );
+  assert.strictEqual(capturedResetLinks.length, 0, 'No email must be sent for unregistered account');
+  console.log('✅ PASS 20.1: Email Enumeration Prevention: Generic HTTP 200 returned for unregistered email, zero emails dispatched');
+
+  // 20.2 Deactivated Account Protection: Generic 200 with no email sent
+  capturedResetLinks = [];
+  const deactForgotRes = await testForgotPassword(deact20Email);
+  assert.strictEqual(deactForgotRes.status, 200, 'Deactivated account must return HTTP 200');
+  assert.strictEqual(deactForgotRes.body.success, true);
+  assert.strictEqual(
+    deactForgotRes.body.message,
+    'If an active account is associated with that email, a password reset link has been sent.'
+  );
+  assert.strictEqual(capturedResetLinks.length, 0, 'No email must be dispatched for deactivated account');
+  console.log('✅ PASS 20.2: Deactivated Account Protection: Generic HTTP 200 returned, no reset email sent');
+
+  // 20.3 Cryptographic Token Strength & Hashed Storage
+  capturedResetLinks = [];
+  const custForgotRes = await testForgotPassword(cust20Email);
+  assert.strictEqual(custForgotRes.status, 200);
+  assert.strictEqual(custForgotRes.body.success, true);
+  assert.strictEqual(capturedResetLinks.length, 1, 'Email must be sent for active registered account');
+
+  const capturedLink1 = capturedResetLinks[0];
+  const rawToken1 = capturedLink1.token;
+  assert.strictEqual(rawToken1.length, 64, 'Raw token must be a 64-character hex string (256 bits)');
+  assert.match(rawToken1, /^[a-fA-F0-9]{64}$/, 'Token must be valid hex');
+
+  // Check database storage: only SHA-256 hash must be stored
+  const expectedHash1 = crypto.createHash('sha256').update(rawToken1).digest('hex');
+  const dbResetRes1 = await query(
+    `SELECT * FROM password_resets WHERE user_id = $1 AND used_at IS NULL`,
+    [cust20User.id]
+  );
+  assert.strictEqual(dbResetRes1.rows.length, 1, 'Exactly one active reset record must exist');
+  assert.strictEqual(dbResetRes1.rows[0].token_hash, expectedHash1, 'Database must store SHA-256 hash');
+  assert.notStrictEqual(dbResetRes1.rows[0].token_hash, rawToken1, 'Database must NEVER store raw token');
+  console.log('✅ PASS 20.3: Cryptographic Token Strength & Hashed Storage: 256-bit entropy verified, SHA-256 hash stored');
+
+  // 20.4 15-Minute Expiration Enforcement
+  // Create an expired reset token in the database
+  const expiredRawToken = crypto.randomBytes(32).toString('hex');
+  const expiredHash = crypto.createHash('sha256').update(expiredRawToken).digest('hex');
+  await query(
+    `INSERT INTO password_resets (user_id, token_hash, expires_at)
+     VALUES ($1, $2, CURRENT_TIMESTAMP - INTERVAL '5 minutes')`,
+    [cust20User.id, expiredHash]
+  );
+
+  const expiredVerifyRes = await testVerifyResetToken(expiredRawToken);
+  assert.strictEqual(expiredVerifyRes.status, 400, 'Expired token verification must return HTTP 400');
+  assert.match(expiredVerifyRes.body.error, /expired/i);
+
+  const expiredResetRes = await testResetPassword(expiredRawToken, 'NewSecurePassword2026!', 'NewSecurePassword2026!');
+  assert.strictEqual(expiredResetRes.status, 400, 'Expired token reset must return HTTP 400');
+  assert.match(expiredResetRes.body.error, /expired/i);
+  console.log('✅ PASS 20.4: 15-Minute Expiry Enforcement: Expired tokens rejected on verify and reset');
+
+  // 20.5 Single-Use Enforcement: Token cannot be used twice
+  const custNewPwd1 = 'NewSecurePasswordForCust2026!';
+  const resetSuccessRes = await testResetPassword(rawToken1, custNewPwd1, custNewPwd1);
+  assert.strictEqual(resetSuccessRes.status, 200, 'First reset with valid token must succeed (HTTP 200)');
+  assert.strictEqual(resetSuccessRes.body.success, true);
+
+  // Attempting to use the exact same token a second time must fail
+  const secondUseRes = await testResetPassword(rawToken1, 'AnotherNewPassword2026!', 'AnotherNewPassword2026!');
+  assert.strictEqual(secondUseRes.status, 400, 'Second attempt with consumed token must return HTTP 400');
+  assert.match(secondUseRes.body.error, /already been used|invalid/i);
+  console.log('✅ PASS 20.5: Single-Use Enforcement: Reusing consumed token strictly rejected');
+
+  // 20.6 Rate Limiting on Forgot Password (IP level)
+  const rateLimitIp = '198.51.100.99';
+  let blockedByIp = false;
+  let retryAfterHeader = '';
+  for (let i = 0; i < 7; i++) {
+    const res = await testForgotPassword(`probe_${i}_${Date.now()}@test.com`, rateLimitIp);
+    if (res.status === 429) {
+      blockedByIp = true;
+      retryAfterHeader = res.headers['Retry-After'] || '';
+      break;
+    }
+  }
+  assert.strictEqual(blockedByIp, true, 'IP rate limiter must trigger HTTP 429 after threshold');
+  assert.ok(retryAfterHeader, 'Retry-After header must be present on 429 response');
+  console.log('✅ PASS 20.6: Rate Limiting: IP rate limit enforces HTTP 429 with Retry-After header');
+
+  // 20.7 Cooldown Enforcement: Consecutive requests for same email within 60s
+  capturedResetLinks = [];
+  const cooldownEmail = `cooldown_${Date.now()}@test.com`;
+  const insertCooldownUser = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status, token_version)
+     VALUES ($1, $2, $3, $4, 'customer', 'ACTIVE', 1)
+     RETURNING id`,
+    ['Cooldown User', cooldownEmail, `9878${Math.floor(Math.random() * 899999 + 100000)}`, suite20InitialHash]
+  );
+  // First request succeeds
+  const firstReq = await testForgotPassword(cooldownEmail);
+  assert.strictEqual(firstReq.status, 200);
+  // Second request within 60s triggers cooldown 429
+  const secondReq = await testForgotPassword(cooldownEmail);
+  assert.strictEqual(secondReq.status, 429, 'Second reset request within 60 seconds must return HTTP 429');
+  assert.match(secondReq.body.error, /wait \d+ seconds/i);
+  console.log('✅ PASS 20.7: Cooldown Enforcement: Consecutive requests within 60s return HTTP 429 with cooldown duration');
+
+  // 20.8 Minimum 12-Character Password Policy
+  // Create fresh token for driver
+  capturedResetLinks = [];
+  await testForgotPassword(driver20Email);
+  assert.strictEqual(capturedResetLinks.length, 1);
+  const driverRawToken = capturedResetLinks[0].token;
+
+  const shortPwdResetRes = await testResetPassword(driverRawToken, 'Short12345!', 'Short12345!');
+  assert.strictEqual(shortPwdResetRes.status, 400, 'Password with < 12 characters must be rejected');
+  assert.match(shortPwdResetRes.body.error, /at least 12 characters/i);
+  console.log('✅ PASS 20.8: Minimum 12-Character Policy: Short passwords strictly rejected');
+
+  // 20.9 Confirmation Mismatch Rejection
+  const mismatchResetRes = await testResetPassword(
+    driverRawToken,
+    'ValidLongPassword2026!',
+    'DifferentLongPassword2026!'
+  );
+  assert.strictEqual(mismatchResetRes.status, 400, 'Confirmation mismatch must be rejected');
+  assert.match(mismatchResetRes.body.error, /do not match/i);
+  console.log('✅ PASS 20.9: Confirmation Mismatch Rejection: Non-matching passwords rejected with HTTP 400');
+
+  // 20.10 Identical Password Reuse Rejection
+  const reuseResetRes = await testResetPassword(
+    driverRawToken,
+    suite20InitialPwd,
+    suite20InitialPwd
+  );
+  assert.strictEqual(reuseResetRes.status, 400, 'Reusing identical password must be rejected');
+  assert.match(reuseResetRes.body.error, /cannot be the same/i);
+  console.log('✅ PASS 20.10: Identical Password Reuse Rejection: Reusing current password rejected with HTTP 400');
+
+  // 20.11 Multi-Device Session Invalidation (token_version incremented)
+  // Issue a JWT for driver before password reset
+  const driverOldToken = AuthService.generateToken({
+    id: driver20User.id,
+    name: driver20User.name,
+    email: driver20User.email,
+    mobile: driver20User.mobile,
+    role: 'driver',
+    token_version: driver20User.token_version
+  });
+  // Verify token is initially valid
+  const driverInitialAuth = await testAuthMiddleware(driverOldToken);
+  assert.strictEqual(driverInitialAuth.status, 200, 'Driver session must be valid before reset');
+
+  // Complete password reset for driver
+  const driverNewPwd = 'NewSuperDriverSecurePassword2026!';
+  const driverResetSuccess = await testResetPassword(driverRawToken, driverNewPwd, driverNewPwd);
+  assert.strictEqual(driverResetSuccess.status, 200);
+
+  // Now, the previous driver JWT must immediately be revoked
+  const driverPostResetAuth = await testAuthMiddleware(driverOldToken);
+  assert.strictEqual(driverPostResetAuth.status, 403, 'Pre-existing JWT must be revoked with HTTP 403');
+  console.log('✅ PASS 20.11: Multi-Device Session Invalidation: Old sessions immediately revoked with HTTP 403');
+
+  // 20.12 Successful Login with New Password & Failure with Old
+  const oldLoginRes = await testLogin(driver20Email, suite20InitialPwd);
+  assert.strictEqual(oldLoginRes.status, 401, 'Login with old password must fail with HTTP 401');
+
+  const newLoginRes = await testLogin(driver20Email, driverNewPwd);
+  assert.strictEqual(newLoginRes.status, 200, 'Login with new password must succeed with HTTP 200');
+  assert.ok(newLoginRes.body.data.token, 'New login must return new JWT token');
+  console.log('✅ PASS 20.12: Successful Login with New Password: Old credentials rejected, new credentials accepted');
+
+  // 20.13 Admin Audit Logging on Reset
+  capturedResetLinks = [];
+  await testForgotPassword(admin20Email);
+  assert.strictEqual(capturedResetLinks.length, 1);
+  const adminRawToken = capturedResetLinks[0].token;
+
+  const adminNewPwd = 'NewSuperAdminSecurePassword2026!';
+  const adminResetRes = await testResetPassword(adminRawToken, adminNewPwd, adminNewPwd);
+  assert.strictEqual(adminResetRes.status, 200);
+
+  const adminAuditCheck = await query(
+    `SELECT * FROM admin_audit_logs
+     WHERE admin_email = $1 AND action = 'RESET_PASSWORD'
+     ORDER BY created_at DESC LIMIT 1`,
+    [admin20Email]
+  );
+  assert.strictEqual(adminAuditCheck.rows.length, 1, 'Audit log entry must be created for admin password reset');
+  console.log('✅ PASS 20.13: Admin Audit Logging: Admin password reset recorded in admin_audit_logs');
+
+  // 20.14 Sensitive Data Redaction in Audit Log
+  const adminLogDetails = typeof adminAuditCheck.rows[0].details_json === 'string'
+    ? JSON.parse(adminAuditCheck.rows[0].details_json)
+    : adminAuditCheck.rows[0].details_json;
+  const auditJsonStr = JSON.stringify(adminLogDetails);
+  assert.strictEqual(/password|hash|token|secret|2026/i.test(auditJsonStr), false, 'Audit details must never contain tokens or passwords');
+  console.log('✅ PASS 20.14: Sensitive Data Redaction: Audit log details contain zero passwords, tokens, or hashes');
+
+  // 20.15 Customer / Driver Non-Admin Isolation in Audit Log
+  const nonAdminAuditCheck = await query(
+    `SELECT * FROM admin_audit_logs WHERE admin_email IN ($1, $2)`,
+    [cust20Email, driver20Email]
+  );
+  assert.strictEqual(nonAdminAuditCheck.rows.length, 0, 'Customer and driver password resets must NOT create admin audit logs');
+  console.log('✅ PASS 20.15: Non-Admin Isolation: Customer and driver resets do not populate admin audit log');
+
+  // 20.16 Email Delivery Failure Invalidation
+  // Requirement: "If email delivery fails, invalidate the newly generated reset token. Never leave a usable token when the reset email was not successfully sent."
+  const failEmailUser = `delivery_fail_${Date.now()}@test.com`;
+  const insertFailUser = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status, token_version)
+     VALUES ($1, $2, $3, $4, 'customer', 'ACTIVE', 1)
+     RETURNING id`,
+    ['Delivery Fail User', failEmailUser, `9879${Math.floor(Math.random() * 899999 + 100000)}`, suite20InitialHash]
+  );
+  const failUserId = insertFailUser.rows[0].id;
+
+  // Configure mock sender to simulate email provider failure
+  EmailService.setResetSender(async () => {
+    throw new Error('Resend SMTP provider network error');
+  });
+
+  const failRes = await testForgotPassword(failEmailUser);
+  assert.strictEqual(failRes.status, 503, 'Email delivery failure must return HTTP 503');
+
+  // Assert that no usable reset token remains in the database for this user
+  const danglingTokens = await query(
+    `SELECT * FROM password_resets WHERE user_id = $1`,
+    [failUserId]
+  );
+  assert.strictEqual(danglingTokens.rows.length, 0, 'Newly generated token must be deleted if email delivery failed');
+  console.log('✅ PASS 20.16: Email Delivery Failure Invalidation: Reset token immediately deleted on dispatch failure');
+
+  // Restore working mock sender
+  EmailService.setResetSender(async (email: string, link: string) => {
+    const match = link.match(/token=([a-fA-F0-9]+)/);
+    const token = match ? match[1] : '';
+    capturedResetLinks.push({ email, link, token });
+  });
+
+  // 20.17 Concurrent Reset Submissions (Atomic Transaction & Row-Level Locking)
+  // Requirement: "Use database transactions and row-level locking to prevent concurrent reset requests or simultaneous token submissions from allowing multiple successful resets."
+  capturedResetLinks = [];
+  await testForgotPassword(cust20Email);
+  assert.strictEqual(capturedResetLinks.length, 1);
+  const raceToken = capturedResetLinks[0].token;
+
+  const racePwd = 'ConcurrentSecurePassword2026!';
+  const [raceRes1, raceRes2] = await Promise.all([
+    testResetPassword(raceToken, racePwd, racePwd),
+    testResetPassword(raceToken, racePwd, racePwd)
+  ]);
+
+  const raceStatuses = [raceRes1.status, raceRes2.status].sort();
+  assert.deepStrictEqual(raceStatuses, [200, 400], 'Concurrent reset submissions must result in exactly one 200 OK and one 400 rejection');
+  console.log('✅ PASS 20.17: Concurrent Reset Submissions: Row-level locking guarantees atomic single-use under concurrency');
+
+  // 20.18 Token Format Validation (Leakage / Injection Protection)
+  const malformed1 = await testVerifyResetToken('invalid-non-hex-token');
+  assert.strictEqual(malformed1.status, 400);
+  const malformed2 = await testVerifyResetToken('<script>alert(1)</script>');
+  assert.strictEqual(malformed2.status, 400);
+  const malformed3 = await testResetPassword('short', 'ValidLongPassword2026!', 'ValidLongPassword2026!');
+  assert.strictEqual(malformed3.status, 400);
+  console.log('✅ PASS 20.18: Token Format Validation: Non-64-hex tokens strictly rejected');
+
+  // 20.19 Customer, Driver, and Admin/Owner Full End-to-End Account Recovery
+  // Admin logs in with newly reset password
+  const adminNewLogin = await testLogin(admin20Email, adminNewPwd);
+  assert.strictEqual(adminNewLogin.status, 200, 'Admin can log in with new password');
+  assert.strictEqual(adminNewLogin.body.data.user.role, 'admin');
+
+  // 20.20 Multi-layered Referrer-Policy Configuration Verification
+  const nodeFs = await import('fs');
+  const nodePath = await import('path');
+  const indexHtmlPath = nodePath.resolve(__dirname, '../../client/index.html');
+  const indexHtml = nodeFs.readFileSync(indexHtmlPath, 'utf8');
+  assert.match(indexHtml, /<meta\s+name=["']referrer["']\s+content=["']no-referrer["']/i, 'index.html must enforce no-referrer meta policy');
+
+  const headersFilePath = nodePath.resolve(__dirname, '../../client/public/_headers');
+  assert.strictEqual(nodeFs.existsSync(headersFilePath), true, 'client/public/_headers must exist for static hosting');
+  const headersFileContent = nodeFs.readFileSync(headersFilePath, 'utf8');
+  assert.match(headersFileContent, /Referrer-Policy:\s*no-referrer/i, '_headers must declare Referrer-Policy: no-referrer');
+
+  // Clean up mock sender hook
+  EmailService.setResetSender(null);
+  console.log('✅ PASS 20.19: Complete verification of Customer, Driver, and Admin/Owner flows');
+  console.log('✅ PASS 20.20: Referrer-Policy: no-referrer enforced via HTTP header and HTML meta tag');
 
   console.log('\n=========================================');
   console.log('🎉 ALL SECURITY PHASE 1 TESTS PASSED!');
