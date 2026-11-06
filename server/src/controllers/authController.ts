@@ -313,9 +313,10 @@ export class AuthController {
       const token = AuthService.generateToken(txResult.user!);
 
       // SEC-05: Issue JWT session cookie and CSRF token
+      const csrfToken = generateCsrfToken();
       if (typeof res.cookie === 'function') {
         res.cookie('kk_token', token, getCookieOptions(txResult.user!.role));
-        res.cookie('kk_csrf', generateCsrfToken(), getCsrfCookieOptions());
+        res.cookie('kk_csrf', csrfToken, getCsrfCookieOptions());
       }
 
       return res.status(201).json({
@@ -323,7 +324,8 @@ export class AuthController {
         message: txResult.role === 'driver'
           ? 'Email verified. Driver account created and awaiting Owner/Admin approval.'
           : 'Email verified successfully. Account created.',
-        data: { user: txResult.user }
+        data: { user: txResult.user },
+        csrfToken
       });
     } catch (err: any) {
       // Rollback on every failure; never expose SQL errors or sensitive values to clients
@@ -396,16 +398,18 @@ export class AuthController {
         await AuthService.resetRateLimit(accFailKey);
 
         // SEC-05: Issue session token through Secure HttpOnly cookie
+        const csrfToken = generateCsrfToken();
         if (typeof res.cookie === 'function') {
           res.cookie('kk_token', result.token, getCookieOptions(result.user.role));
-          res.cookie('kk_csrf', generateCsrfToken(), getCsrfCookieOptions());
+          res.cookie('kk_csrf', csrfToken, getCsrfCookieOptions());
         }
 
         // Return user data; never expose raw JWT in JSON response body
         return res.status(200).json({
           success: true,
           message: 'Logged in successfully.',
-          data: { user: result.user }
+          data: { user: result.user },
+          csrfToken
         });
       } catch (authErr: any) {
         // If account is deactivated (credentials were correct), return 403 directly
@@ -461,11 +465,13 @@ export class AuthController {
 
       // Ensure CSRF cookie is initialized if missing
       const cookies = req.cookies || parseCookies(req.headers.cookie);
-      if (!cookies['kk_csrf'] && typeof res.cookie === 'function') {
-        res.cookie('kk_csrf', generateCsrfToken(), getCsrfCookieOptions());
+      let csrfToken = cookies['kk_csrf'];
+      if (!csrfToken && typeof res.cookie === 'function') {
+        csrfToken = generateCsrfToken();
+        res.cookie('kk_csrf', csrfToken, getCsrfCookieOptions());
       }
 
-      return res.json({ success: true, data: user });
+      return res.json({ success: true, data: user, csrfToken: csrfToken || undefined });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message });
     }

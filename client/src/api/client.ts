@@ -281,10 +281,49 @@ export interface RatingRecord {
   booking_reference?: string;
 }
 
+let inMemoryCsrfToken: string | null = null;
+let csrfFetchPromise: Promise<string | null> | null = null;
+
 function getCsrfTokenFromCookie(): string | null {
   if (typeof document === 'undefined' || !document.cookie) return null;
   const match = document.cookie.match(/(?:^|;\s*)kk_csrf=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : null;
+}
+
+export function getStoredCsrfToken(): string | null {
+  return inMemoryCsrfToken || getCsrfTokenFromCookie();
+}
+
+export function setStoredCsrfToken(token: string | null) {
+  inMemoryCsrfToken = token;
+}
+
+export async function ensureCsrfToken(): Promise<string | null> {
+  const current = getStoredCsrfToken();
+  if (current) return current;
+
+  if (!csrfFetchPromise) {
+    csrfFetchPromise = fetch(`${API_BASE}/auth/csrf-token`, {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store'
+    })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const data = await res.json().catch(() => ({}));
+        if (data && data.success && typeof data.csrfToken === 'string') {
+          inMemoryCsrfToken = data.csrfToken;
+          return data.csrfToken;
+        }
+        return null;
+      })
+      .catch(() => null)
+      .finally(() => {
+        csrfFetchPromise = null;
+      });
+  }
+
+  return csrfFetchPromise;
 }
 
 async function request<T>(
@@ -305,7 +344,7 @@ async function request<T>(
   // SEC-05: Attach CSRF token on state-changing requests when available
   const method = (options.method || 'GET').toUpperCase();
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
-    const csrfToken = getCsrfTokenFromCookie();
+    const csrfToken = await ensureCsrfToken();
     if (csrfToken) {
       headers['X-CSRF-Token'] = csrfToken;
     }
@@ -332,6 +371,10 @@ async function request<T>(
       } catch {
         data = { error: text || 'Server returned invalid response' };
       }
+    }
+
+    if (data && typeof data.csrfToken === 'string') {
+      inMemoryCsrfToken = data.csrfToken;
     }
 
     if (!res.ok) {
@@ -376,7 +419,13 @@ export const api = {
       body: JSON.stringify({ identifier, password })
     }),
     getCsrfToken: () => request<{ csrfToken: string }>('/auth/csrf-token'),
-    logout: () => request('/auth/logout', { method: 'POST' }),
+    logout: async () => {
+      try {
+        return await request('/auth/logout', { method: 'POST' });
+      } finally {
+        inMemoryCsrfToken = null;
+      }
+    },
     forgotPassword: (email: string) =>
       request<{ message: string }>('/auth/forgot-password', {
         method: 'POST',

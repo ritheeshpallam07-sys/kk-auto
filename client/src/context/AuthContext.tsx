@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, api } from '../api/client';
+import { User, api, setStoredCsrfToken } from '../api/client';
 
 interface AuthContextType {
   user: User | null;
@@ -138,6 +138,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (typeof localStorage !== 'undefined') {
         localStorage.removeItem('kk_token');
       }
+      setStoredCsrfToken(null);
       setUser(null);
       setSessionError(null);
     }

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../api/client';
 import { Logo } from '../components/Logo';
 import { 
   User, 
@@ -24,6 +25,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    // Proactively initialize CSRF token on login page load
+    api.auth.getCsrfToken().catch(() => {});
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
