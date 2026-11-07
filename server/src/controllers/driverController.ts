@@ -49,14 +49,54 @@ export class DriverController {
         return res.status(400).json({ success: false, error: 'Invalid availability status.' });
       }
 
+      // CONF-08: If attempting to become available, check if an account deletion request is pending
+      if (status === 'available') {
+        const userRes = await query(
+          `SELECT deletion_requested_at FROM users WHERE id = $1 LIMIT 1`,
+          [user.id]
+        );
+        if (userRes.rows.length > 0 && userRes.rows[0].deletion_requested_at !== null) {
+          return res.status(403).json({
+            success: false,
+            error: 'Cannot change availability to available while an account deletion request is pending.'
+          });
+        }
+      }
+
+      // Race-safe atomic update: strictly conditions status='available' on deletion_requested_at being NULL
       const updateRes = await query(
-        `UPDATE drivers SET availability_status = $1, updated_at = CURRENT_TIMESTAMP
-         WHERE user_id = $2 RETURNING *`,
+        `UPDATE drivers d
+         SET availability_status = $1, updated_at = CURRENT_TIMESTAMP
+         FROM users u
+         WHERE d.user_id = u.id
+           AND d.user_id = $2
+           AND ($1 <> 'available' OR u.deletion_requested_at IS NULL)
+         RETURNING d.*`,
         [status, user.id]
       );
 
       if (updateRes.rows.length === 0) {
-        return res.status(404).json({ success: false, error: 'Driver profile not found.' });
+        // Distinguish why no row was updated: nonexistent driver profile or race condition on deletion
+        const driverCheck = await query(
+          `SELECT d.id, u.deletion_requested_at
+           FROM drivers d
+           JOIN users u ON d.user_id = u.id
+           WHERE d.user_id = $1 LIMIT 1`,
+          [user.id]
+        );
+
+        if (driverCheck.rows.length === 0) {
+          return res.status(404).json({ success: false, error: 'Driver profile not found.' });
+        }
+
+        if (status === 'available' && driverCheck.rows[0].deletion_requested_at !== null) {
+          return res.status(403).json({
+            success: false,
+            error: 'Cannot change availability to available while an account deletion request is pending.'
+          });
+        }
+
+        return res.status(400).json({ success: false, error: 'Failed to update availability status.' });
       }
 
       return res.json({

@@ -4810,6 +4810,115 @@ async function runTests() {
 
   console.log('✅ PASS 21.5: SEC-05: Cookie-Based Authentication, Token Concealment, and CSRF Protection Fully Verified');
 
+  // =========================================================================
+  // TEST SUITE 22: CONF-08: Driver Availability Deletion-Request Lockout Safeguards
+  // =========================================================================
+  console.log('\n--- 22. Testing Driver Availability Deletion-Request Lockout (CONF-08) ---');
+
+  // Create Driver A (will request deletion) and Driver B (control driver)
+  const s22DriverAUserRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status)
+     VALUES ($1, $2, $3, 'hash', 'driver', 'ACTIVE')
+     RETURNING id`,
+    [`Driver Del A ${Date.now()}`, `driver_dela_${Date.now()}@test.com`, `9811${Math.floor(100000 + Math.random() * 900000)}`]
+  );
+  const s22DriverAId = s22DriverAUserRes.rows[0].id;
+  await query(
+    `INSERT INTO drivers (user_id, auto_number, availability_status, approval_status)
+     VALUES ($1, 'AP-04-DEL-A', 'available', 'APPROVED')`,
+    [s22DriverAId]
+  );
+  const s22UserDriverA: AuthUser = { id: s22DriverAId, name: 'Driver Del A', email: `driver_dela_${Date.now()}@test.com`, mobile: '9811000001', role: 'driver' };
+
+  const s22DriverBUserRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status)
+     VALUES ($1, $2, $3, 'hash', 'driver', 'ACTIVE')
+     RETURNING id`,
+    [`Driver Del B ${Date.now()}`, `driver_delb_${Date.now()}@test.com`, `9822${Math.floor(100000 + Math.random() * 900000)}`]
+  );
+  const s22DriverBId = s22DriverBUserRes.rows[0].id;
+  await query(
+    `INSERT INTO drivers (user_id, auto_number, availability_status, approval_status)
+     VALUES ($1, 'AP-04-DEL-B', 'available', 'APPROVED')`,
+    [s22DriverBId]
+  );
+  const s22UserDriverB: AuthUser = { id: s22DriverBId, name: 'Driver Del B', email: `driver_delb_${Date.now()}@test.com`, mobile: '9822000002', role: 'driver' };
+
+  // 22.1 Driver without pending deletion can toggle availability freely (available -> offline -> available)
+  const ctxNormOffline = createMockContext(s22UserDriverA, {}, { status: 'offline' });
+  await DriverController.updateAvailability(ctxNormOffline.req, ctxNormOffline.res);
+  assert.strictEqual(ctxNormOffline.getResponse().statusCode, 200, 'Normal driver can switch to offline');
+
+  const ctxNormAvailable = createMockContext(s22UserDriverA, {}, { status: 'available' });
+  await DriverController.updateAvailability(ctxNormAvailable.req, ctxNormAvailable.res);
+  assert.strictEqual(ctxNormAvailable.getResponse().statusCode, 200, 'Normal driver can switch to available');
+  console.log('✅ PASS 22.1: Driver without pending deletion can toggle availability to available and offline normally');
+
+  // Submit account deletion request for Driver A
+  const ctxDelReq = createMockContext(s22UserDriverA, {}, { reason: 'Switching careers' });
+  await AuthController.requestAccountDeletion(ctxDelReq.req, ctxDelReq.res);
+  assert.strictEqual(ctxDelReq.getResponse().statusCode, 201, 'Deletion request must be accepted');
+
+  // Verify Driver A's availability was set to offline and deletion_requested_at is non-null
+  const checkDriverA = await query(
+    `SELECT d.availability_status, u.deletion_requested_at
+     FROM drivers d JOIN users u ON d.user_id = u.id
+     WHERE d.user_id = $1`,
+    [s22DriverAId]
+  );
+  assert.strictEqual(checkDriverA.rows[0].availability_status, 'offline', 'Driver availability must be set to offline on deletion request');
+  assert.ok(checkDriverA.rows[0].deletion_requested_at !== null, 'deletion_requested_at must be populated');
+
+  // 22.2 Pending-deletion driver CANNOT become available (HTTP 403)
+  const ctxPendingAvail = createMockContext(s22UserDriverA, {}, { status: 'available' });
+  await DriverController.updateAvailability(ctxPendingAvail.req, ctxPendingAvail.res);
+  assert.strictEqual(ctxPendingAvail.getResponse().statusCode, 403, 'Pending deletion driver must be blocked from becoming available (HTTP 403)');
+  assert.match(ctxPendingAvail.getResponse().responseData.error, /cannot.*available.*deletion/i);
+  console.log('✅ PASS 22.2: Driver with pending account deletion is blocked from becoming available (HTTP 403)');
+
+  // 22.3 Pending-deletion driver can remain / switch to offline (HTTP 200)
+  const ctxPendingOffline = createMockContext(s22UserDriverA, {}, { status: 'offline' });
+  await DriverController.updateAvailability(ctxPendingOffline.req, ctxPendingOffline.res);
+  assert.strictEqual(ctxPendingOffline.getResponse().statusCode, 200, 'Pending deletion driver can safely remain or switch to offline');
+  console.log('✅ PASS 22.3: Driver with pending account deletion can remain or toggle to offline (HTTP 200)');
+
+  // 22.4 Driver A's pending deletion does not affect Driver B
+  const ctxDriverBAvail = createMockContext(s22UserDriverB, {}, { status: 'available' });
+  await DriverController.updateAvailability(ctxDriverBAvail.req, ctxDriverBAvail.res);
+  assert.strictEqual(ctxDriverBAvail.getResponse().statusCode, 200, 'Driver B must not be affected by Driver A deletion request');
+  assert.strictEqual(ctxDriverBAvail.getResponse().responseData.data.availability_status, 'available');
+  console.log('✅ PASS 22.4: One driver\'s deletion status has zero impact on another driver');
+
+  // 22.5 Deletion cancellation restores ability to become available
+  const ctxCancelDel = createMockContext(s22UserDriverA, {}, {});
+  await AuthController.cancelAccountDeletion(ctxCancelDel.req, ctxCancelDel.res);
+  assert.strictEqual(ctxCancelDel.getResponse().statusCode, 200, 'Cancellation of deletion request must succeed');
+
+  const ctxPostCancelAvail = createMockContext(s22UserDriverA, {}, { status: 'available' });
+  await DriverController.updateAvailability(ctxPostCancelAvail.req, ctxPostCancelAvail.res);
+  assert.strictEqual(ctxPostCancelAvail.getResponse().statusCode, 200, 'Driver can become available again after cancelling deletion');
+  assert.strictEqual(ctxPostCancelAvail.getResponse().responseData.data.availability_status, 'available');
+  console.log('✅ PASS 22.5: Cancelling deletion request immediately restores driver ability to become available');
+
+  // 22.6 Admin rejection of deletion request also clears deletion_requested_at and restores ability to become available
+  const ctxDelReq2 = createMockContext(s22UserDriverA, {}, { reason: 'Second request' });
+  await AuthController.requestAccountDeletion(ctxDelReq2.req, ctxDelReq2.res);
+  assert.strictEqual(ctxDelReq2.getResponse().statusCode, 201);
+  const delReq2Id = ctxDelReq2.getResponse().responseData.data.id;
+
+  // Admin rejects the deletion request
+  const s22UserAdmin: AuthUser = { id: 1, name: 'Admin', email: 'admin@clik2go.in', mobile: '9999999999', role: 'admin' };
+  const ctxAdminReject = createMockContext(s22UserAdmin, { id: String(delReq2Id) }, { action: 'REJECT', adminNotes: 'Driver needed on platform' });
+  await AdminController.processDeletionRequest(ctxAdminReject.req, ctxAdminReject.res);
+  assert.strictEqual(ctxAdminReject.getResponse().statusCode, 200);
+
+  // Driver A should now be able to become available again
+  const ctxPostRejectAvail = createMockContext(s22UserDriverA, {}, { status: 'available' });
+  await DriverController.updateAvailability(ctxPostRejectAvail.req, ctxPostRejectAvail.res);
+  assert.strictEqual(ctxPostRejectAvail.getResponse().statusCode, 200, 'Driver can become available after admin rejects deletion request');
+  assert.strictEqual(ctxPostRejectAvail.getResponse().responseData.data.availability_status, 'available');
+  console.log('✅ PASS 22.6: Admin rejection of deletion request immediately clears deletion flag and restores availability');
+
   console.log('\n=========================================');
   console.log('🎉 ALL SECURITY PHASE 1 TESTS PASSED!');
   console.log('=========================================\n');

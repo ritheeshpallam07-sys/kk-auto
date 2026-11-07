@@ -352,6 +352,14 @@ export class AdminController {
                 [adminNotes || null, requestId]
               );
 
+              // Clear user's deletion_requested_at flag so user/driver can resume active operations
+              await tx.query(
+                `UPDATE users
+                 SET deletion_requested_at = NULL
+                 WHERE id = $1`,
+                [delReq.user_id]
+              );
+
               // Log audit action inside transaction
               await AuditService.logAction(
                 {
