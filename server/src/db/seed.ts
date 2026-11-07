@@ -17,6 +17,16 @@ export async function initPlatformDefaults() {
      ON CONFLICT (key) DO NOTHING`
   );
 
+  // Support contact defaults (support@clik2go.in is official, phone/WhatsApp require verified config)
+  await query(
+    `INSERT INTO platform_settings (key, value, description, updated_at)
+     VALUES 
+       ('support_email', 'support@clik2go.in', 'Official Clik2Go customer & driver support email', CURRENT_TIMESTAMP),
+       ('support_phone', '', 'Configured support helpline phone number (leave empty if not configured)', CURRENT_TIMESTAMP),
+       ('support_whatsapp', '', 'Configured support WhatsApp number (leave empty if not configured)', CURRENT_TIMESTAMP)
+     ON CONFLICT (key) DO NOTHING`
+  );
+
   // 2. Locations - insert missing locations only
   const locations = ['JNTUA', 'Cross', 'Bus Stand', 'Marava'];
   for (const loc of locations) {

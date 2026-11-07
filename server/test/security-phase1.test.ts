@@ -25,6 +25,8 @@ import { BookingController } from '../src/controllers/bookingController';
 import { PaymentController } from '../src/controllers/paymentController';
 import { TripBookingController } from '../src/controllers/tripBookingController';
 import { AdminController } from '../src/controllers/adminController';
+import { SupportController } from '../src/controllers/supportController';
+import { SupportService } from '../src/services/supportService';
 import { AuditService, sanitizeAuditDetails } from '../src/services/auditService';
 import adminRoutes from '../src/routes/adminRoutes';
 import { initDb, query, resolveDbSsl } from '../src/config/db';
@@ -4520,6 +4522,7 @@ async function runTests() {
   // TEST SUITE 21: Phase 6 Complete Login & Session Security Hardening
   // =========================================================================
   console.log('\n--- 21. Testing Login & Session Security Hardening (Phase 6: SEC-01 to SEC-05) ---');
+  await query(`DELETE FROM rate_limits WHERE key LIKE 'login_ip_%' OR key LIKE 'login_fail_%'`);
 
   // --- SEC-01: Fix Account Lockout DoS & Track Failed Attempts Appropriately ---
   const sec01Email = `sec01_user_${Date.now()}@clik2go.in`;
@@ -4918,6 +4921,273 @@ async function runTests() {
   assert.strictEqual(ctxPostRejectAvail.getResponse().statusCode, 200, 'Driver can become available after admin rejects deletion request');
   assert.strictEqual(ctxPostRejectAvail.getResponse().responseData.data.availability_status, 'available');
   console.log('✅ PASS 22.6: Admin rejection of deletion request immediately clears deletion flag and restores availability');
+
+  // =========================================================================
+  // TEST SUITE 23: Customer & Driver In-App Support System Full Verification
+  // =========================================================================
+  console.log('\n--- 23. Testing Customer & Driver Support System (Phases 1-8) ---');
+
+  // Clean support tables for test isolation
+  await query(`DELETE FROM support_messages`);
+  await query(`DELETE FROM support_tickets`);
+  await query(`DELETE FROM rate_limits WHERE key LIKE 'support_%'`);
+
+  // Create Test Users: Customer A, Customer B, Driver A, Driver B
+  const s23CustAUserRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status)
+     VALUES ($1, $2, $3, 'hash', 'customer', 'ACTIVE')
+     RETURNING id`,
+    [`Cust Support A ${Date.now()}`, `cust_supp_a_${Date.now()}@test.com`, `9711${Math.floor(100000 + Math.random() * 900000)}`]
+  );
+  const s23CustAId = s23CustAUserRes.rows[0].id;
+  const s23CustAEmail = `cust_supp_a_${Date.now()}@test.com`;
+  const s23UserCustA: AuthUser = { id: s23CustAId, name: 'Cust Support A', email: s23CustAEmail, mobile: '9711000001', role: 'customer' };
+
+  const s23CustBUserRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status)
+     VALUES ($1, $2, $3, 'hash', 'customer', 'ACTIVE')
+     RETURNING id`,
+    [`Cust Support B ${Date.now()}`, `cust_supp_b_${Date.now()}@test.com`, `9722${Math.floor(100000 + Math.random() * 900000)}`]
+  );
+  const s23CustBId = s23CustBUserRes.rows[0].id;
+  const s23UserCustB: AuthUser = { id: s23CustBId, name: 'Cust Support B', email: `cust_supp_b_${Date.now()}@test.com`, mobile: '9722000002', role: 'customer' };
+
+  const s23DriverAUserRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status)
+     VALUES ($1, $2, $3, 'hash', 'driver', 'ACTIVE')
+     RETURNING id`,
+    [`Driver Support A ${Date.now()}`, `driver_supp_a_${Date.now()}@test.com`, `9733${Math.floor(100000 + Math.random() * 900000)}`]
+  );
+  const s23DriverAId = s23DriverAUserRes.rows[0].id;
+  await query(
+    `INSERT INTO drivers (user_id, auto_number, availability_status, approval_status)
+     VALUES ($1, 'AP-04-SUP-A', 'available', 'APPROVED')`,
+    [s23DriverAId]
+  );
+  const s23UserDriverA: AuthUser = { id: s23DriverAId, name: 'Driver Support A', email: `driver_supp_a_${Date.now()}@test.com`, mobile: '9733000003', role: 'driver' };
+
+  const s23DriverBUserRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status)
+     VALUES ($1, $2, $3, 'hash', 'driver', 'ACTIVE')
+     RETURNING id`,
+    [`Driver Support B ${Date.now()}`, `driver_supp_b_${Date.now()}@test.com`, `9744${Math.floor(100000 + Math.random() * 900000)}`]
+  );
+  const s23DriverBId = s23DriverBUserRes.rows[0].id;
+  await query(
+    `INSERT INTO drivers (user_id, auto_number, availability_status, approval_status)
+     VALUES ($1, 'AP-04-SUP-B', 'available', 'APPROVED')`,
+    [s23DriverBId]
+  );
+  const s23UserDriverB: AuthUser = { id: s23DriverBId, name: 'Driver Support B', email: `driver_supp_b_${Date.now()}@test.com`, mobile: '9744000004', role: 'driver' };
+
+  const s23UserAdmin: AuthUser = { id: 1, name: 'Owner Admin', email: 'admin@clik2go.in', mobile: '9999999999', role: 'admin' };
+
+  // Create test booking for Customer A
+  const s23BookingARes = await query(
+    `INSERT INTO bookings (customer_id, pickup_address, destination_address, pickup_datetime, estimated_fare, status, booking_reference)
+     VALUES ($1, 'Main Market', 'Railway Station', CURRENT_TIMESTAMP, 50, 'Completed', 'TEST_REF_SUP_A')
+     RETURNING id`,
+    [s23CustAId]
+  );
+  const s23BookingAId = s23BookingARes.rows[0].id;
+
+  // 23.1: Customer ticket creation
+  const ctxCreateCustTicket = createMockContext(s23UserCustA, {}, {
+    category: 'Payment Issue',
+    subject: 'Double charged for ride',
+    message: 'I was charged twice on UPI for my ride',
+    bookingId: s23BookingAId
+  });
+  await SupportController.createTicket(ctxCreateCustTicket.req, ctxCreateCustTicket.res);
+  const resCustTicket = ctxCreateCustTicket.getResponse();
+  assert.strictEqual(resCustTicket.statusCode, 201, 'Customer ticket creation must return HTTP 201');
+  assert.strictEqual(resCustTicket.responseData.success, true);
+  const custTicket = resCustTicket.responseData.data;
+  assert.match(custTicket.ticket_reference, /^TKT-\d{6}-\d{4}$/, 'Ticket reference must follow TKT-YYYYMM-XXXX pattern');
+  assert.strictEqual(custTicket.status, 'OPEN');
+  assert.strictEqual(custTicket.priority, 'MEDIUM');
+  assert.strictEqual(custTicket.category, 'Payment Issue');
+  assert.strictEqual(custTicket.booking_id, s23BookingAId);
+  console.log('✅ PASS 23.1: Customer ticket creation with booking association and initial message');
+
+  // 23.2: Driver ticket creation
+  const ctxCreateDriverTicket = createMockContext(s23UserDriverA, {}, {
+    category: 'Booking/Trip Issue',
+    subject: 'Customer cancelled mid-trip',
+    message: 'Customer dropped off at intermediate location without completing trip'
+  });
+  await SupportController.createTicket(ctxCreateDriverTicket.req, ctxCreateDriverTicket.res);
+  const resDriverTicket = ctxCreateDriverTicket.getResponse();
+  assert.strictEqual(resDriverTicket.statusCode, 201, 'Driver ticket creation must return HTTP 201');
+  assert.strictEqual(resDriverTicket.responseData.success, true);
+  const driverTicket = resDriverTicket.responseData.data;
+  assert.strictEqual(driverTicket.user_role, 'driver');
+  console.log('✅ PASS 23.2: Driver ticket creation with driver-specific category');
+
+  // 23.3: Customer ticket ownership enforcement (Customer B cannot access Customer A ticket)
+  const ctxCustBViewA = createMockContext(s23UserCustB, { id: String(custTicket.id) });
+  await SupportController.getTicketDetails(ctxCustBViewA.req, ctxCustBViewA.res);
+  assert.strictEqual(ctxCustBViewA.getResponse().statusCode, 403, 'Customer B must be forbidden from accessing Customer A ticket');
+  assert.match(ctxCustBViewA.getResponse().responseData.error, /unauthorized|permission/i);
+  console.log('✅ PASS 23.3: Customer ticket ownership enforcement (HTTP 403 on other customer ticket)');
+
+  // 23.4: Driver ticket ownership enforcement (Driver B cannot access Driver A ticket)
+  const ctxDriverBViewA = createMockContext(s23UserDriverB, { id: String(driverTicket.id) });
+  await SupportController.getTicketDetails(ctxDriverBViewA.req, ctxDriverBViewA.res);
+  assert.strictEqual(ctxDriverBViewA.getResponse().statusCode, 403, 'Driver B must be forbidden from accessing Driver A ticket');
+  console.log('✅ PASS 23.4: Driver ticket ownership enforcement (HTTP 403 on other driver ticket)');
+
+  // 23.5: Admin access to all tickets (pagination, filters, search)
+  const ctxAdminList = createMockContext(s23UserAdmin);
+  (ctxAdminList.req as any).query = { userRole: 'customer' };
+  await SupportController.getTickets(ctxAdminList.req, ctxAdminList.res);
+  const resAdminList = ctxAdminList.getResponse();
+  assert.strictEqual(resAdminList.statusCode, 200);
+  assert.ok(Array.isArray(resAdminList.responseData.data));
+  assert.ok(resAdminList.responseData.data.every((t: any) => t.user_role === 'customer'), 'Role filter must return only customer tickets');
+
+  const ctxAdminSearch = createMockContext(s23UserAdmin);
+  (ctxAdminSearch.req as any).query = { search: 'Double charged' };
+  await SupportController.getTickets(ctxAdminSearch.req, ctxAdminSearch.res);
+  const resAdminSearch = ctxAdminSearch.getResponse();
+  assert.strictEqual(resAdminSearch.statusCode, 200);
+  assert.ok(resAdminSearch.responseData.data.length >= 1);
+  assert.strictEqual(resAdminSearch.responseData.data[0].id, custTicket.id);
+
+  // Admin can view details of any ticket
+  const ctxAdminViewCustTicket = createMockContext(s23UserAdmin, { id: String(custTicket.id) });
+  await SupportController.getTicketDetails(ctxAdminViewCustTicket.req, ctxAdminViewCustTicket.res);
+  assert.strictEqual(ctxAdminViewCustTicket.getResponse().statusCode, 200, 'Admin can view any ticket details');
+  console.log('✅ PASS 23.5: Admin access to all tickets with filtering, search, and full details access');
+
+  // 23.6: Non-admin status update blocked (HTTP 403)
+  const nonAdminAuthReq = { user: s23UserCustA } as Request;
+  let requireRolePassed = false;
+  let requireRoleStatus = 200;
+  let requireRoleError = '';
+  const nonAdminRes = {
+    status(c: number) { requireRoleStatus = c; return this; },
+    json(d: any) { requireRoleError = d.error; return this; }
+  } as unknown as Response;
+  requireRole(['admin'])(nonAdminAuthReq, nonAdminRes, () => { requireRolePassed = true; });
+  assert.strictEqual(requireRolePassed, false, 'Non-admin user must not pass requireRole(admin)');
+  assert.strictEqual(requireRoleStatus, 403, 'requireRole(admin) must reject non-admin with HTTP 403');
+  console.log('✅ PASS 23.6: Non-admin status update blocked by requireRole(admin) middleware (HTTP 403)');
+
+  // 23.7: Message creation and conversation history retrieval
+  // Customer A adds a follow-up message
+  const ctxCustAddMsg = createMockContext(s23UserCustA, { id: String(custTicket.id) }, { message: 'Here is the payment transaction screenshot' });
+  await SupportController.addMessage(ctxCustAddMsg.req, ctxCustAddMsg.res);
+  assert.strictEqual(ctxCustAddMsg.getResponse().statusCode, 201, 'Customer can append follow-up message');
+
+  // Admin replies to Customer A
+  const ctxAdminReply = createMockContext(s23UserAdmin, { id: String(custTicket.id) }, { message: 'We have initiated a refund of ₹50. Please allow 24-48 hours.' });
+  await SupportController.addMessage(ctxAdminReply.req, ctxAdminReply.res);
+  assert.strictEqual(ctxAdminReply.getResponse().statusCode, 201, 'Admin can reply to user ticket');
+
+  // Retrieve ticket details and verify chronological messages
+  const ctxVerifyMsgs = createMockContext(s23UserCustA, { id: String(custTicket.id) });
+  await SupportController.getTicketDetails(ctxVerifyMsgs.req, ctxVerifyMsgs.res);
+  const resVerifyMsgs = ctxVerifyMsgs.getResponse();
+  assert.strictEqual(resVerifyMsgs.statusCode, 200);
+  assert.strictEqual(resVerifyMsgs.responseData.data.messages.length, 3, 'Must have 3 messages in conversation');
+  assert.strictEqual(resVerifyMsgs.responseData.data.messages[0].sender_role, 'customer');
+  assert.strictEqual(resVerifyMsgs.responseData.data.messages[1].sender_role, 'customer');
+  assert.strictEqual(resVerifyMsgs.responseData.data.messages[2].sender_role, 'admin');
+  console.log('✅ PASS 23.7: Chronological message history with distinct customer/admin roles preserved');
+
+  // 23.8: Status and priority updates with verified audit log
+  const ctxUpdateStatus = createMockContext(s23UserAdmin, { id: String(custTicket.id) }, {
+    status: 'IN_PROGRESS',
+    priority: 'URGENT'
+  });
+  await SupportController.updateTicketStatus(ctxUpdateStatus.req, ctxUpdateStatus.res);
+  assert.strictEqual(ctxUpdateStatus.getResponse().statusCode, 200);
+  assert.strictEqual(ctxUpdateStatus.getResponse().responseData.data.status, 'IN_PROGRESS');
+  assert.strictEqual(ctxUpdateStatus.getResponse().responseData.data.priority, 'URGENT');
+
+  // Verify Audit Log was recorded
+  const auditLogCheck = await query(
+    `SELECT * FROM admin_audit_logs WHERE action = 'UPDATE_SUPPORT_TICKET_STATUS' AND target_id = $1 ORDER BY id DESC LIMIT 1`,
+    [String(custTicket.id)]
+  );
+  assert.ok(auditLogCheck.rows.length >= 1, 'Audit log entry must be created on ticket status update');
+  assert.strictEqual(auditLogCheck.rows[0].admin_email, 'admin@clik2go.in');
+  console.log('✅ PASS 23.8: Status and priority update verified with tamper-evident audit logging');
+
+  // 23.9: Closed-ticket reply restrictions
+  // Admin closes the ticket
+  const ctxCloseTicket = createMockContext(s23UserAdmin, { id: String(custTicket.id) }, {
+    status: 'CLOSED'
+  });
+  await SupportController.updateTicketStatus(ctxCloseTicket.req, ctxCloseTicket.res);
+  assert.strictEqual(ctxCloseTicket.getResponse().statusCode, 200);
+
+  // Customer tries to reply to the closed ticket -> blocked
+  const ctxClosedReply = createMockContext(s23UserCustA, { id: String(custTicket.id) }, { message: 'Can you check again?' });
+  await SupportController.addMessage(ctxClosedReply.req, ctxClosedReply.res);
+  assert.strictEqual(ctxClosedReply.getResponse().statusCode, 400, 'Reply to closed ticket must be rejected with HTTP 400');
+  assert.match(ctxClosedReply.getResponse().responseData.error, /closed/i);
+  console.log('✅ PASS 23.9: Closed ticket reply guard blocks new user replies (HTTP 400)');
+
+  // 23.10: Input validation and rate limiting
+  // Invalid inputs
+  const ctxEmptyMsg = createMockContext(s23UserCustA, {}, { category: 'Other', subject: '', message: '' });
+  await SupportController.createTicket(ctxEmptyMsg.req, ctxEmptyMsg.res);
+  assert.strictEqual(ctxEmptyMsg.getResponse().statusCode, 400, 'Empty subject must be rejected');
+
+  const ctxInvalidCategory = createMockContext(s23UserCustA, {}, { category: 'Invalid Category Name', subject: 'Test', message: 'Test message' });
+  await SupportController.createTicket(ctxInvalidCategory.req, ctxInvalidCategory.res);
+  assert.strictEqual(ctxInvalidCategory.getResponse().statusCode, 400, 'Invalid category must be rejected');
+
+  // Rate limiting (5 tickets in 15 mins)
+  // Fill the remaining slots for s23CustA
+  for (let i = 0; i < 6; i++) {
+    const ctxRate = createMockContext(s23UserCustA, {}, { category: 'Other', subject: `Rate test ${i}`, message: 'Rate test message' });
+    await SupportController.createTicket(ctxRate.req, ctxRate.res);
+  }
+  // 7th ticket should trigger rate limiting 429
+  const ctxRateLimited = createMockContext(s23UserCustA, {}, { category: 'Other', subject: 'Over limit', message: 'Should be rate limited' });
+  await SupportController.createTicket(ctxRateLimited.req, ctxRateLimited.res);
+  assert.strictEqual(ctxRateLimited.getResponse().statusCode, 429, 'Excess ticket creation must return HTTP 429');
+  assert.match(ctxRateLimited.getResponse().responseData.error, /too many/i);
+  console.log('✅ PASS 23.10: Input validation and rate limiting enforcement (HTTP 400 and HTTP 429)');
+
+  // 23.11: WhatsApp/call configuration behavior
+  const config = await SupportService.getSupportConfig();
+  assert.strictEqual(typeof config.email, 'string');
+  assert.strictEqual(config.email, 'support@clik2go.in');
+  assert.strictEqual(typeof config.phoneConfigured, 'boolean');
+  assert.strictEqual(typeof config.whatsappConfigured, 'boolean');
+  console.log('✅ PASS 23.11: Support configuration sanitization and fallback indicators verified');
+
+  // 23.12: Booking ownership validation
+  // Customer B cannot attach Customer A's booking
+  const ctxCustBForeignBooking = createMockContext(s23UserCustB, {}, {
+    category: 'Payment Issue',
+    subject: 'Fraud claim',
+    message: 'Testing foreign booking attachment',
+    bookingId: s23BookingAId
+  });
+  await SupportController.createTicket(ctxCustBForeignBooking.req, ctxCustBForeignBooking.res);
+  assert.strictEqual(ctxCustBForeignBooking.getResponse().statusCode, 400, 'Cannot link unowned booking');
+  assert.match(ctxCustBForeignBooking.getResponse().responseData.error, /not owned/i);
+  console.log('✅ PASS 23.12: Booking ownership validation prevents attaching unowned booking');
+
+  // 23.13: Correct support navigation and route mounting
+  // Verify support routes are mounted on app
+  assert.ok(app._router.stack.some((layer: any) => layer.regexp && layer.regexp.test('/api/support')), 'supportRoutes must be mounted on app under /api/support');
+  console.log('✅ PASS 23.13: Express application router mounts support routes under /api/support');
+
+  // 23.14: Public/guest support config endpoint
+  const ctxPublicConfig = createMockContext(undefined);
+  await SupportController.getConfig(ctxPublicConfig.req, ctxPublicConfig.res);
+  assert.strictEqual(ctxPublicConfig.getResponse().statusCode, 200, 'Public support config must be accessible unauthenticated');
+  assert.strictEqual(ctxPublicConfig.getResponse().responseData.data.email, 'support@clik2go.in');
+  console.log('✅ PASS 23.14: Public/guest support config endpoint accessible without authentication');
+
+  // Clean support rate limits after test
+  await query(`DELETE FROM rate_limits WHERE key LIKE 'support_%'`);
 
   console.log('\n=========================================');
   console.log('🎉 ALL SECURITY PHASE 1 TESTS PASSED!');

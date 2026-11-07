@@ -99,6 +99,15 @@ export const Footer: React.FC<FooterProps> = ({ navigate, currentPath }) => {
                     Privacy Policy
                   </button>
                 </li>
+
+                <li>
+                  <button
+                    onClick={() => navigate('/support')}
+                    className="hover:text-[#C6FF3D] transition-colors"
+                  >
+                    Help & Support
+                  </button>
+                </li>
               </ul>
             </div>
 
@@ -145,6 +154,15 @@ export const Footer: React.FC<FooterProps> = ({ navigate, currentPath }) => {
                     </a>
                   </div>
                 </li>
+
+                <li className="pt-1">
+                  <button
+                    onClick={() => navigate('/support')}
+                    className="text-xs font-bold text-[#C6FF3D] hover:underline flex items-center gap-1"
+                  >
+                    Visit Support Desk →
+                  </button>
+                </li>
               </ul>
             </div>
 
@@ -157,6 +175,13 @@ export const Footer: React.FC<FooterProps> = ({ navigate, currentPath }) => {
             © {new Date().getFullYear()} <strong className="text-white">Clik2Go</strong>. All rights reserved.
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 text-[11px]">
+            <button
+              onClick={() => navigate('/support')}
+              className="hover:text-[#C6FF3D] transition-colors"
+            >
+              Help & Support
+            </button>
+            <span>•</span>
             <button
               onClick={() => navigate('/terms')}
               className="hover:text-[#C6FF3D] transition-colors"

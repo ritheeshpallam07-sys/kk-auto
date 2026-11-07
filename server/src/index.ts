@@ -17,6 +17,7 @@ import driverRoutes from './routes/driverRoutes';
 import adminRoutes from './routes/adminRoutes';
 import paymentRoutes from './routes/paymentRoutes';
 import tripBookingRoutes from './routes/tripBookingRoutes';
+import supportRoutes from './routes/supportRoutes';
 
 const app = express();
 // Enable single-hop reverse proxy trust for Render / Cloudflare architecture
@@ -179,6 +180,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/trip-bookings', tripBookingRoutes);
 app.use('/api/car-bookings', tripBookingRoutes);
+app.use('/api/support', supportRoutes);
 
 // Serve static frontend in production if built
 const clientDistPath = path.resolve(__dirname, '../../client/dist');

@@ -9,6 +9,11 @@ export interface ApiResponse<T = any> {
     total: number;
     totalPages: number;
   };
+  meta?: {
+    total: number;
+    page: number;
+    totalPages: number;
+  };
   error?: string;
   status?: number;
 }
@@ -212,6 +217,60 @@ export interface DriverAdminDetail extends DriverProfile {
   total_trips: number;
   total_earnings: number;
   pending_payout: number;
+}
+
+export interface SupportConfig {
+  email: string;
+  phone: string | null;
+  whatsapp: string | null;
+  phoneConfigured: boolean;
+  whatsappConfigured: boolean;
+}
+
+export interface SupportTicket {
+  id: number;
+  ticket_reference: string;
+  user_id: number;
+  user_role: string;
+  user_name?: string;
+  user_email?: string;
+  user_mobile?: string;
+  user_phone?: string;
+  category: string;
+  subject: string;
+  status: 'OPEN' | 'IN_PROGRESS' | 'WAITING_FOR_USER' | 'RESOLVED' | 'CLOSED';
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  booking_id: number | null;
+  booking_reference?: string | null;
+  message_count?: number;
+  latest_message?: string | null;
+  latest_message_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SupportMessage {
+  id: number;
+  ticket_id: number;
+  sender_user_id: number;
+  sender_role: string;
+  sender_name?: string;
+  message: string;
+  created_at: string;
+}
+
+export interface SupportTicketDetails {
+  ticket: SupportTicket;
+  messages: SupportMessage[];
+  booking?: {
+    id: number;
+    booking_reference: string;
+    pickup_address: string;
+    destination_address: string;
+    status: string;
+    estimated_fare: number;
+    pickup_datetime: string;
+  } | null;
 }
 
 export interface FareRoute {
@@ -671,5 +730,42 @@ confirmTrip: (id: number) =>
   })
 
       
+  },
+  support: {
+    getConfig: () => request<SupportConfig>('/support/config'),
+    createTicket: (data: { category: string; subject: string; message: string; bookingId?: number }) =>
+      request<SupportTicket>('/support/tickets', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+    getTickets: (params?: {
+      page?: number;
+      limit?: number;
+      userRole?: string;
+      category?: string;
+      status?: string;
+      priority?: string;
+      search?: string;
+    }) => {
+      const sp = new URLSearchParams();
+      if (params) {
+        Object.entries(params).forEach(([k, v]) => {
+          if (v !== undefined && v !== null && v !== '') sp.append(k, String(v));
+        });
+      }
+      const qs = sp.toString();
+      return request<any>(`/support/tickets${qs ? '?' + qs : ''}`);
+    },
+    getTicketDetails: (id: number) => request<SupportTicketDetails>(`/support/tickets/${id}`),
+    addMessage: (id: number, message: string) =>
+      request<SupportMessage>(`/support/tickets/${id}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ message })
+      }),
+    updateStatus: (id: number, data: { status?: string; priority?: string }) =>
+      request<SupportTicket>(`/support/tickets/${id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify(data)
+      })
   }
 };

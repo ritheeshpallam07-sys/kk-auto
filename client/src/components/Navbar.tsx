@@ -18,6 +18,7 @@ import {
   ExternalLink,
   Settings,
   History,
+  LifeBuoy
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -239,6 +240,23 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                   <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleNav('/support')}
+                  className="w-full p-3 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] hover:border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-[#202023] group-hover:bg-[#C6FF3D]/10 text-[#C6FF3D] flex items-center justify-center">
+                      <LifeBuoy className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">Help & Support</p>
+                      <p className="text-[10px] text-[#A1A1AA]">Driver tickets & helpline</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
+                </button>
               </>
             ) : isAdmin ? (
               /* ADMIN MENU */
@@ -349,6 +367,23 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </div>
                       <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleNav('/support')}
+                      className="w-full p-3 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] hover:border-[#C6FF3D]/40 text-left flex items-center justify-between group transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-[#202023] group-hover:bg-[#C6FF3D]/10 text-[#C6FF3D] flex items-center justify-center">
+                          <LifeBuoy className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-white">Help & Support</p>
+                          <p className="text-[10px] text-[#A1A1AA]">In-app tickets & inquiries</p>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-white" />
+                    </button>
                   </>
                 )}
               </>
@@ -385,7 +420,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             {/* Legal Links (Always Preserved) */}
-            <div className="flex items-center justify-center gap-3 py-2 text-[11px] text-[#A1A1AA]">
+            <div className="flex flex-wrap items-center justify-center gap-3 py-2 text-[11px] text-[#A1A1AA]">
+              <button
+                type="button"
+                onClick={() => handleNav('/support')}
+                className="hover:text-[#C6FF3D] transition-colors"
+              >
+                Help & Support
+              </button>
+              <span>•</span>
               <button
                 type="button"
                 onClick={() => handleNav('/terms')}

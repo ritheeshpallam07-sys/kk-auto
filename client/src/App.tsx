@@ -22,6 +22,7 @@ import { TermsPage } from './pages/TermsPage';
 import { PrivacyPage } from './pages/PrivacyPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { SupportPage } from './pages/SupportPage';
 
 export const App: React.FC = () => {
   const [currentPath, setCurrentPath] = useState<string>(
@@ -96,6 +97,10 @@ export const App: React.FC = () => {
 
     if (currentPath === '/privacy') {
       return <PrivacyPage navigate={navigate} />;
+    }
+
+    if (currentPath === '/support' || currentPath === '/help') {
+      return <SupportPage navigate={navigate} />;
     }
 
     if (currentPath === '/accept-terms') {

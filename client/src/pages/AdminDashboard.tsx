@@ -9,7 +9,9 @@ import {
   PlatformFinancials,
   TripBooking,
   RatingRecord,
-  AdminAuditLog
+  AdminAuditLog,
+  SupportTicket,
+  SupportTicketDetails
 } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
 import { 
@@ -32,7 +34,14 @@ import {
   Percent,
   Trash2,
   ClipboardList,
-  Key
+  Key,
+  LifeBuoy,
+  MessageSquare,
+  Send,
+  MessageCircle,
+  Clock,
+  User,
+  X
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -40,7 +49,7 @@ interface AdminDashboardProps {
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'drivers' | 'settlements' | 'routes' | 'commission' | 'bookings' | 'tripBookings' | 'ratings' | 'deletions' | 'auditLogs'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'drivers' | 'settlements' | 'routes' | 'commission' | 'bookings' | 'tripBookings' | 'ratings' | 'deletions' | 'auditLogs' | 'support'>('overview');
   
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [financials, setFinancials] = useState<PlatformFinancials | null>(null);
@@ -79,6 +88,116 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
   const [auditTotalCount, setAuditTotalCount] = useState(0);
   const [auditActionFilter, setAuditActionFilter] = useState('');
   const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+
+  // Support Management state
+  const [adminTickets, setAdminTickets] = useState<SupportTicket[]>([]);
+  const [adminTicketsTotal, setAdminTicketsTotal] = useState(0);
+  const [adminTicketsPage, setAdminTicketsPage] = useState(1);
+  const [adminTicketsTotalPages, setAdminTicketsTotalPages] = useState(1);
+  const [isLoadingSupport, setIsLoadingSupport] = useState(false);
+  const [supportRoleFilter, setSupportRoleFilter] = useState('all');
+  const [supportStatusFilter, setSupportStatusFilter] = useState('all');
+  const [supportPriorityFilter, setSupportPriorityFilter] = useState('all');
+  const [supportSearchQuery, setSupportSearchQuery] = useState('');
+  const [selectedSupportTicketDetails, setSelectedSupportTicketDetails] = useState<SupportTicketDetails | null>(null);
+  const [selectedSupportTicketId, setSelectedSupportTicketId] = useState<number | null>(null);
+  const [adminReplyInput, setAdminReplyInput] = useState('');
+  const [adminStatusUpdate, setAdminStatusUpdate] = useState('');
+  const [adminPriorityUpdate, setAdminPriorityUpdate] = useState('');
+  const [isUpdatingSupportStatus, setIsUpdatingSupportStatus] = useState(false);
+  const [isSendingAdminReply, setIsSendingAdminReply] = useState(false);
+  const [supportFeedback, setSupportFeedback] = useState<string | null>(null);
+
+  const loadAdminSupportTickets = async (
+    page = 1,
+    role = supportRoleFilter,
+    status = supportStatusFilter,
+    priority = supportPriorityFilter,
+    search = supportSearchQuery
+  ) => {
+    setIsLoadingSupport(true);
+    try {
+      const res = await api.support.getTickets({
+        page,
+        limit: 15,
+        userRole: role !== 'all' ? role : undefined,
+        status: status !== 'all' ? status : undefined,
+        priority: priority !== 'all' ? priority : undefined,
+        search: search.trim() || undefined
+      });
+      if (res && res.success && res.data) {
+        setAdminTickets(res.data);
+        if (res.meta) {
+          setAdminTicketsTotal(res.meta.total);
+          setAdminTicketsPage(res.meta.page);
+          setAdminTicketsTotalPages(res.meta.totalPages);
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to load support tickets:', err);
+    } finally {
+      setIsLoadingSupport(false);
+    }
+  };
+
+  const loadSupportTicketDetails = async (id: number) => {
+    try {
+      const res = await api.support.getTicketDetails(id);
+      if (res && res.success && res.data) {
+        setSelectedSupportTicketDetails(res.data);
+        setSelectedSupportTicketId(id);
+        setAdminStatusUpdate(res.data.ticket.status);
+        setAdminPriorityUpdate(res.data.ticket.priority);
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Failed to load ticket details.');
+    }
+  };
+
+  const handleAdminReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSupportTicketId || !adminReplyInput.trim()) return;
+    setIsSendingAdminReply(true);
+    try {
+      const res = await api.support.addMessage(selectedSupportTicketId, adminReplyInput.trim());
+      if (res && res.success) {
+        setAdminReplyInput('');
+        await loadSupportTicketDetails(selectedSupportTicketId);
+        loadAdminSupportTickets(adminTicketsPage);
+        setSupportFeedback('Reply sent to user successfully.');
+        setTimeout(() => setSupportFeedback(null), 3000);
+      } else {
+        alert((res as any)?.error || 'Failed to send reply.');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Failed to send reply.');
+    } finally {
+      setIsSendingAdminReply(false);
+    }
+  };
+
+  const handleAdminUpdateStatus = async () => {
+    if (!selectedSupportTicketId) return;
+    setIsUpdatingSupportStatus(true);
+    try {
+      const res = await api.support.updateStatus(selectedSupportTicketId, {
+        status: adminStatusUpdate,
+        priority: adminPriorityUpdate
+      });
+      if (res && res.success) {
+        await loadSupportTicketDetails(selectedSupportTicketId);
+        loadAdminSupportTickets(adminTicketsPage);
+        setSupportFeedback('Ticket status/priority updated & audit logged.');
+        setTimeout(() => setSupportFeedback(null), 3000);
+      } else {
+        alert((res as any)?.error || 'Failed to update ticket.');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Failed to update ticket.');
+    } finally {
+      setIsUpdatingSupportStatus(false);
+    }
+  };
 
   const loadAuditLogs = async (page = 1, actionFilter = auditActionFilter) => {
     setIsLoadingAudit(true);
@@ -516,6 +635,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
         >
           <ClipboardList className="w-3.5 h-3.5" />
           <span>Audit Trail</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('support');
+            loadAdminSupportTickets(1);
+          }}
+          className={`px-3.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            activeTab === 'support' ? 'bg-[#C6FF3D] text-[#0B0B0D] font-black shadow-glow-lime' : 'text-[#A1A1AA] hover:text-white'
+          }`}
+        >
+          <LifeBuoy className="w-3.5 h-3.5" />
+          <span>Support Desk</span>
         </button>
       </div>
 
@@ -1616,6 +1748,386 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
                   >
                     Next
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 10: CUSTOMER & DRIVER SUPPORT DESK */}
+      {activeTab === 'support' && (
+        <div className="bg-[#171719] rounded-3xl p-6 sm:p-8 border border-[#303034] shadow-card space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-[#303034]">
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                <LifeBuoy className="w-5 h-5 text-[#C6FF3D]" />
+                <span>Customer & Driver Support Desk</span>
+              </h2>
+              <p className="text-xs text-[#A1A1AA] mt-0.5">
+                Manage, prioritize, and respond to incoming customer and driver support tickets.
+              </p>
+            </div>
+            <button
+              onClick={() => loadAdminSupportTickets(adminTicketsPage)}
+              disabled={isLoadingSupport}
+              className="px-3 py-1.5 rounded-xl bg-[#202023] hover:bg-[#28282C] border border-[#303034] text-white flex items-center gap-2 text-xs font-bold transition-all disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingSupport ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+          </div>
+
+          {/* Filters Bar */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-[#202023]/60 p-4 rounded-2xl border border-[#303034]">
+            <div>
+              <label className="block text-[11px] font-bold text-[#A1A1AA] uppercase mb-1">User Role</label>
+              <select
+                value={supportRoleFilter}
+                onChange={(e) => {
+                  setSupportRoleFilter(e.target.value);
+                  loadAdminSupportTickets(1, e.target.value, supportStatusFilter, supportPriorityFilter, supportSearchQuery);
+                }}
+                className="w-full bg-[#171719] border border-[#303034] text-xs text-white rounded-xl px-3 py-2 focus:outline-none focus:border-[#C6FF3D]"
+              >
+                <option value="all">All Roles</option>
+                <option value="customer">Customers</option>
+                <option value="driver">Drivers</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-[#A1A1AA] uppercase mb-1">Status</label>
+              <select
+                value={supportStatusFilter}
+                onChange={(e) => {
+                  setSupportStatusFilter(e.target.value);
+                  loadAdminSupportTickets(1, supportRoleFilter, e.target.value, supportPriorityFilter, supportSearchQuery);
+                }}
+                className="w-full bg-[#171719] border border-[#303034] text-xs text-white rounded-xl px-3 py-2 focus:outline-none focus:border-[#C6FF3D]"
+              >
+                <option value="all">All Statuses</option>
+                <option value="OPEN">OPEN</option>
+                <option value="IN_PROGRESS">IN PROGRESS</option>
+                <option value="WAITING_FOR_USER">WAITING FOR USER</option>
+                <option value="RESOLVED">RESOLVED</option>
+                <option value="CLOSED">CLOSED</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-[#A1A1AA] uppercase mb-1">Priority</label>
+              <select
+                value={supportPriorityFilter}
+                onChange={(e) => {
+                  setSupportPriorityFilter(e.target.value);
+                  loadAdminSupportTickets(1, supportRoleFilter, supportStatusFilter, e.target.value, supportSearchQuery);
+                }}
+                className="w-full bg-[#171719] border border-[#303034] text-xs text-white rounded-xl px-3 py-2 focus:outline-none focus:border-[#C6FF3D]"
+              >
+                <option value="all">All Priorities</option>
+                <option value="LOW">LOW</option>
+                <option value="MEDIUM">MEDIUM</option>
+                <option value="HIGH">HIGH</option>
+                <option value="URGENT">URGENT</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-[#A1A1AA] uppercase mb-1">Search</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Ticket #, subject, name..."
+                  value={supportSearchQuery}
+                  onChange={(e) => setSupportSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      loadAdminSupportTickets(1, supportRoleFilter, supportStatusFilter, supportPriorityFilter, supportSearchQuery);
+                    }
+                  }}
+                  className="w-full bg-[#171719] border border-[#303034] text-xs text-white rounded-xl pl-8 pr-3 py-2 focus:outline-none focus:border-[#C6FF3D]"
+                />
+                <Search className="w-3.5 h-3.5 text-[#A1A1AA] absolute left-2.5 top-2.5" />
+              </div>
+            </div>
+          </div>
+
+          {/* Ticket Table */}
+          {isLoadingSupport ? (
+            <div className="text-center py-12 text-[#A1A1AA] text-sm flex items-center justify-center gap-2">
+              <RefreshCw className="w-4 h-4 animate-spin text-[#C6FF3D]" />
+              <span>Loading support tickets...</span>
+            </div>
+          ) : adminTickets.length === 0 ? (
+            <div className="text-center py-12 bg-[#202023]/40 rounded-2xl border border-[#303034] text-[#A1A1AA] text-sm">
+              <LifeBuoy className="w-8 h-8 text-[#A1A1AA] mx-auto mb-2 opacity-50" />
+              <p>No support tickets found matching the selected filters.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="overflow-x-auto border border-[#303034] rounded-2xl">
+                <table className="w-full text-xs text-left">
+                  <thead className="text-[11px] font-bold text-[#A1A1AA] uppercase bg-[#202023] border-b border-[#303034]">
+                    <tr>
+                      <th className="px-4 py-3">Reference</th>
+                      <th className="px-4 py-3">User & Role</th>
+                      <th className="px-4 py-3">Category</th>
+                      <th className="px-4 py-3">Subject</th>
+                      <th className="px-4 py-3">Priority</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Created</th>
+                      <th className="px-4 py-3 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#303034]/50">
+                    {adminTickets.map((t) => (
+                      <tr key={t.id} className="hover:bg-[#202023]/60 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-white whitespace-nowrap">
+                          {t.ticket_reference}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-white">{t.user_name || 'User'}</div>
+                          <div className="flex items-center gap-1.5 text-[10px] text-[#A1A1AA]">
+                            <span className={`px-1.5 py-0.5 rounded font-bold uppercase tracking-wider text-[9px] ${
+                              t.user_role === 'driver' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' : 'bg-blue-500/10 text-blue-400 border border-blue-500/30'
+                            }`}>
+                              {t.user_role}
+                            </span>
+                            <span>{t.user_phone || t.user_email || ''}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-[#A1A1AA] whitespace-nowrap">
+                          {t.category}
+                        </td>
+                        <td className="px-4 py-3 text-white max-w-xs truncate">
+                          <div>{t.subject}</div>
+                          {t.booking_id && (
+                            <span className="text-[10px] text-[#C6FF3D]">Booking #{t.booking_id}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            t.priority === 'URGENT' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
+                            t.priority === 'HIGH' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' :
+                            t.priority === 'MEDIUM' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                            'bg-slate-500/20 text-slate-400 border border-slate-500/30'
+                          }`}>
+                            {t.priority}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            t.status === 'OPEN' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                            t.status === 'IN_PROGRESS' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' :
+                            t.status === 'WAITING_FOR_USER' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                            t.status === 'RESOLVED' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                            'bg-zinc-600/30 text-zinc-400 border border-zinc-500/30'
+                          }`}>
+                            {t.status.replace(/_/g, ' ')}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-[#A1A1AA] whitespace-nowrap">
+                          {new Date(t.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <button
+                            onClick={() => loadSupportTicketDetails(t.id)}
+                            className="px-2.5 py-1.5 bg-[#C6FF3D]/10 hover:bg-[#C6FF3D]/20 text-[#C6FF3D] border border-[#C6FF3D]/30 rounded-xl font-bold transition-all"
+                          >
+                            View Ticket
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Support Pagination Controls */}
+              <div className="flex items-center justify-between text-xs text-[#A1A1AA] pt-2">
+                <div>
+                  Showing {adminTickets.length} of {adminTicketsTotal} support ticket{adminTicketsTotal === 1 ? '' : 's'}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => loadAdminSupportTickets(adminTicketsPage - 1)}
+                    disabled={adminTicketsPage <= 1 || isLoadingSupport}
+                    className="px-3 py-1.5 rounded-xl bg-[#202023] hover:bg-[#28282C] border border-[#303034] text-white disabled:opacity-40 disabled:hover:bg-[#202023] transition-all font-bold"
+                  >
+                    Previous
+                  </button>
+                  <span className="px-2 font-medium">
+                    Page {adminTicketsPage} of {adminTicketsTotalPages || 1}
+                  </span>
+                  <button
+                    onClick={() => loadAdminSupportTickets(adminTicketsPage + 1)}
+                    disabled={adminTicketsPage >= adminTicketsTotalPages || isLoadingSupport}
+                    className="px-3 py-1.5 rounded-xl bg-[#202023] hover:bg-[#28282C] border border-[#303034] text-white disabled:opacity-40 disabled:hover:bg-[#202023] transition-all font-bold"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Ticket Detail Modal */}
+          {selectedSupportTicketDetails && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+              <div className="bg-[#171719] border border-[#303034] rounded-3xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+                {/* Modal Header */}
+                <div className="p-5 border-b border-[#303034] flex items-center justify-between bg-[#202023]">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-[#C6FF3D] bg-[#C6FF3D]/10 px-2 py-0.5 rounded border border-[#C6FF3D]/30">
+                        {selectedSupportTicketDetails.ticket.ticket_reference}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        selectedSupportTicketDetails.ticket.user_role === 'driver' ? 'bg-amber-500/10 text-amber-400' : 'bg-blue-500/10 text-blue-400'
+                      }`}>
+                        {selectedSupportTicketDetails.ticket.user_role}
+                      </span>
+                      <span className="text-xs text-[#A1A1AA]">
+                        • {selectedSupportTicketDetails.ticket.category}
+                      </span>
+                    </div>
+                    <h3 className="text-base font-bold text-white mt-1">
+                      {selectedSupportTicketDetails.ticket.subject}
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setSelectedSupportTicketDetails(null)}
+                    className="p-2 text-[#A1A1AA] hover:text-white rounded-xl hover:bg-[#28282C] transition-all"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Ticket Meta Info & Status controls */}
+                <div className="p-5 border-b border-[#303034] bg-[#1B1B1E] space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <span className="text-[10px] text-[#A1A1AA] uppercase block font-bold">User</span>
+                      <span className="font-medium text-white">{selectedSupportTicketDetails.ticket.user_name || 'User'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-[#A1A1AA] uppercase block font-bold">Contact</span>
+                      <span className="font-medium text-white">{selectedSupportTicketDetails.ticket.user_phone || selectedSupportTicketDetails.ticket.user_email || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-[#A1A1AA] uppercase block font-bold">Booking Link</span>
+                      <span className="font-medium text-white">
+                        {selectedSupportTicketDetails.ticket.booking_id ? `#${selectedSupportTicketDetails.ticket.booking_id}` : 'None'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-[#A1A1AA] uppercase block font-bold">Created</span>
+                      <span className="font-medium text-white">
+                        {new Date(selectedSupportTicketDetails.ticket.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Status / Priority update form */}
+                  <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-[#303034]">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-[#A1A1AA]">Status:</span>
+                      <select
+                        value={adminStatusUpdate}
+                        onChange={(e) => setAdminStatusUpdate(e.target.value)}
+                        className="bg-[#202023] border border-[#303034] text-xs text-white rounded-xl px-3 py-1.5 focus:outline-none focus:border-[#C6FF3D]"
+                      >
+                        <option value="OPEN">OPEN</option>
+                        <option value="IN_PROGRESS">IN PROGRESS</option>
+                        <option value="WAITING_FOR_USER">WAITING FOR USER</option>
+                        <option value="RESOLVED">RESOLVED</option>
+                        <option value="CLOSED">CLOSED</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-[#A1A1AA]">Priority:</span>
+                      <select
+                        value={adminPriorityUpdate}
+                        onChange={(e) => setAdminPriorityUpdate(e.target.value)}
+                        className="bg-[#202023] border border-[#303034] text-xs text-white rounded-xl px-3 py-1.5 focus:outline-none focus:border-[#C6FF3D]"
+                      >
+                        <option value="LOW">LOW</option>
+                        <option value="MEDIUM">MEDIUM</option>
+                        <option value="HIGH">HIGH</option>
+                        <option value="URGENT">URGENT</option>
+                      </select>
+                    </div>
+
+                    <button
+                      onClick={handleAdminUpdateStatus}
+                      disabled={isUpdatingSupportStatus}
+                      className="px-3 py-1.5 bg-[#C6FF3D] hover:bg-[#B5F522] text-[#0B0B0D] rounded-xl text-xs font-black transition-all disabled:opacity-50"
+                    >
+                      {isUpdatingSupportStatus ? 'Saving...' : 'Update Status'}
+                    </button>
+
+                    {supportFeedback && (
+                      <span className="text-xs text-[#C6FF3D] font-medium">{supportFeedback}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Conversation Thread */}
+                <div className="p-5 flex-1 overflow-y-auto space-y-4 max-h-[40vh] bg-[#121214]">
+                  {selectedSupportTicketDetails.messages.map((m) => {
+                    const isAdmin = m.sender_role === 'admin';
+                    return (
+                      <div
+                        key={m.id}
+                        className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
+                      >
+                        <div className="flex items-center gap-1.5 mb-1 text-[10px] text-[#A1A1AA]">
+                          <span className={`font-bold uppercase ${isAdmin ? 'text-[#C6FF3D]' : 'text-white'}`}>
+                            {isAdmin ? 'Admin / Support' : m.sender_name}
+                          </span>
+                          <span>•</span>
+                          <span>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <div
+                          className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-xs whitespace-pre-wrap leading-relaxed ${
+                            isAdmin
+                              ? 'bg-[#C6FF3D]/10 border border-[#C6FF3D]/30 text-white'
+                              : 'bg-[#202023] border border-[#303034] text-[#E4E4E7]'
+                          }`}
+                        >
+                          {m.message}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Admin Reply Box */}
+                <div className="p-4 border-t border-[#303034] bg-[#171719]">
+                  <form onSubmit={handleAdminReply} className="space-y-3">
+                    <textarea
+                      value={adminReplyInput}
+                      onChange={(e) => setAdminReplyInput(e.target.value)}
+                      placeholder="Type your reply to the user..."
+                      rows={3}
+                      className="w-full bg-[#202023] border border-[#303034] text-xs text-white rounded-2xl p-3 focus:outline-none focus:border-[#C6FF3D] placeholder-[#71717A] resize-none"
+                    />
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-[#A1A1AA]">
+                        Sending a reply sets the ticket to Waiting for User.
+                      </span>
+                      <button
+                        type="submit"
+                        disabled={isSendingAdminReply || !adminReplyInput.trim()}
+                        className="px-4 py-2 bg-[#C6FF3D] hover:bg-[#B5F522] text-[#0B0B0D] rounded-xl text-xs font-black transition-all flex items-center gap-1.5 disabled:opacity-40"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>{isSendingAdminReply ? 'Sending...' : 'Send Reply'}</span>
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </div>
             </div>

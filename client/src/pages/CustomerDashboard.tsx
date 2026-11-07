@@ -16,7 +16,8 @@ import {
   AlertCircle,
   Users,
   MapPin,
-  Loader2
+  Loader2,
+  LifeBuoy
 } from 'lucide-react';
 
 interface CustomerDashboardProps {
@@ -163,17 +164,29 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
             </p>
           </div>
 
-          {/* Quick link to view past/pending outstation trips */}
-          {myTripBookings.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            {/* Quick link to view past/pending outstation trips */}
+            {myTripBookings.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowTripListModal(true)}
+                className="px-3.5 py-2 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] text-xs font-bold text-[#A1A1AA] hover:text-white flex items-center gap-2 transition-colors"
+              >
+                <CalendarDays className="w-4 h-4 text-[#C6FF3D]" />
+                <span>My Outstation Trips ({myTripBookings.length})</span>
+              </button>
+            )}
+
+            {/* Help & Support Quick Action */}
             <button
               type="button"
-              onClick={() => setShowTripListModal(true)}
-              className="px-3.5 py-2 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] text-xs font-bold text-[#A1A1AA] hover:text-white flex items-center gap-2 self-start sm:self-auto transition-colors"
+              onClick={() => navigate('/support')}
+              className="px-3.5 py-2 rounded-2xl bg-[#171719] hover:bg-[#202023] border border-[#303034] text-xs font-bold text-[#A1A1AA] hover:text-white flex items-center gap-2 transition-colors"
             >
-              <CalendarDays className="w-4 h-4 text-[#C6FF3D]" />
-              <span>My Outstation Trips ({myTripBookings.length})</span>
+              <LifeBuoy className="w-4 h-4 text-[#C6FF3D]" />
+              <span>Help & Support</span>
             </button>
-          )}
+          </div>
         </div>
 
         {/* Active Ride Banner (Only visible if a ride is in progress) */}

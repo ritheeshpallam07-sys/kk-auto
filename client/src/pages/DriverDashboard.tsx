@@ -25,7 +25,8 @@ import {
   QrCode,
   ArrowLeft,
   Settings,
-  History
+  History,
+  LifeBuoy
 } from 'lucide-react';
 import QRCode from 'qrcode';
 
@@ -1027,6 +1028,15 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
         >
           <Settings className="w-3.5 h-3.5" />
           <span>Account Settings</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => navigate('/support')}
+          className="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap bg-[#171719] text-[#A1A1AA] hover:text-white border border-[#303034]"
+        >
+          <LifeBuoy className="w-3.5 h-3.5 text-[#C6FF3D]" />
+          <span>Help & Support</span>
         </button>
       </div>
 
