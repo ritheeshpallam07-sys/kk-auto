@@ -50,6 +50,13 @@ const DEFAULT_MAP_CENTER: Coordinates = {
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
+export interface PlaceSuggestion {
+  placeId: string;
+  mainText: string;
+  secondaryText: string;
+  fullText: string;
+}
+
 export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) => {
   const { user } = useAuth();
 
@@ -71,6 +78,21 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
       ? LOCATION_COORDINATES[initialDest]
       : null;
   });
+
+  // Autocomplete UI & search state (Google Places API New)
+  const [pickupSuggestions, setPickupSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [destSuggestions, setDestSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [isSearchingPickup, setIsSearchingPickup] = useState(false);
+  const [isSearchingDest, setIsSearchingDest] = useState(false);
+  const [showPickupDropdown, setShowPickupDropdown] = useState(false);
+  const [showDestDropdown, setShowDestDropdown] = useState(false);
+  const [isResolvingPlace, setIsResolvingPlace] = useState(false);
+
+  // Debounce and container refs
+  const pickupDebounceRef = useRef<any>(null);
+  const destDebounceRef = useRef<any>(null);
+  const pickupWrapperRef = useRef<HTMLDivElement | null>(null);
+  const destWrapperRef = useRef<HTMLDivElement | null>(null);
 
   // Passengers: 1 to 6
   const [passengers, setPassengers] = useState(initialPassengers);
@@ -141,6 +163,11 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
         }
 
         const { Map } = (await importLibrary('maps')) as any;
+        try {
+          await importLibrary('places');
+        } catch (e) {
+          console.warn('Google Places warning:', e);
+        }
         try {
           await importLibrary('geometry');
         } catch (e) {
@@ -238,6 +265,7 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
       return;
     }
     setRouteError(null);
+    setShowPickupDropdown(false);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const lat = pos.coords.latitude;
@@ -266,6 +294,321 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
         setRouteError('Could not obtain current location: ' + err.message);
       }
     );
+  };
+
+  // Click outside and keyboard dismiss for autocomplete dropdowns
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (pickupWrapperRef.current && !pickupWrapperRef.current.contains(target)) {
+        setShowPickupDropdown(false);
+      }
+      if (destWrapperRef.current && !destWrapperRef.current.contains(target)) {
+        setShowDestDropdown(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowPickupDropdown(false);
+        setShowDestDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+      if (pickupDebounceRef.current) clearTimeout(pickupDebounceRef.current);
+      if (destDebounceRef.current) clearTimeout(destDebounceRef.current);
+    };
+  }, []);
+
+  // ── Places API (New) Autocomplete Search ──
+  const searchPlacesNew = async (
+    query: string,
+    biasCoords?: Coordinates | null
+  ): Promise<PlaceSuggestion[]> => {
+    const cleanQuery = query.trim();
+    if (!cleanQuery || cleanQuery.length < 2) return [];
+
+    const center = biasCoords || DEFAULT_MAP_CENTER;
+
+    // 1. Primary Engine: Google Maps JS SDK Places API (New) AutocompleteSuggestion
+    const google = (window as any).google;
+    const placesLib = google?.maps?.places;
+    if (placesLib?.AutocompleteSuggestion?.fetchAutocompleteSuggestions) {
+      try {
+        const response = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input: cleanQuery,
+          includedRegionCodes: ['in'],
+          locationBias: {
+            lat: center.lat,
+            lng: center.lng
+          }
+        });
+
+        if (response?.suggestions && Array.isArray(response.suggestions)) {
+          const results: PlaceSuggestion[] = response.suggestions.map((s: any) => {
+            const pred = s.placePrediction;
+            const placeId = pred?.placeId || (pred?.place ? String(pred.place).replace('places/', '') : '');
+            const mainText = pred?.mainText?.toString() || pred?.text?.toString() || cleanQuery;
+            const secondaryText = pred?.secondaryText?.toString() || '';
+            const fullText = pred?.text?.toString() || `${mainText}${secondaryText ? ', ' + secondaryText : ''}`;
+            return { placeId, mainText, secondaryText, fullText };
+          });
+
+          if (results.length > 0) return results;
+        }
+      } catch (err: any) {
+        // SDK fetch error; silently fall through to REST
+      }
+    }
+
+    // 2. Secondary Engine: Direct REST Places API (New)
+    if (GOOGLE_MAPS_API_KEY) {
+      try {
+        const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY
+          },
+          body: JSON.stringify({
+            input: cleanQuery,
+            includedRegionCodes: ['in'],
+            locationBias: {
+              circle: {
+                center: { latitude: center.lat, longitude: center.lng },
+                radius: 35000.0
+              }
+            }
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.suggestions && Array.isArray(data.suggestions)) {
+            const results: PlaceSuggestion[] = data.suggestions.map((s: any) => {
+              const pred = s.placePrediction;
+              const placeId = pred?.placeId || (pred?.place ? String(pred.place).replace('places/', '') : '');
+              const mainText = pred?.structuredFormat?.mainText?.text || pred?.text?.text || cleanQuery;
+              const secondaryText = pred?.structuredFormat?.secondaryText?.text || '';
+              const fullText = pred?.text?.text || `${mainText}${secondaryText ? ', ' + secondaryText : ''}`;
+              return { placeId, mainText, secondaryText, fullText };
+            });
+
+            if (results.length > 0) return results;
+          }
+        }
+      } catch (err) {
+        // Fall through to local landmarks
+      }
+    }
+
+    // 3. Tertiary Engine: Local Landmark Fallback
+    return Object.keys(LOCATION_COORDINATES)
+      .filter((name) => name.toLowerCase().includes(cleanQuery.toLowerCase()))
+      .map((name) => ({
+        placeId: `local_${name}`,
+        mainText: name,
+        secondaryText: 'Madanapalle Service Area',
+        fullText: `${name}, Madanapalle`
+      }));
+  };
+
+  // ── Places API (New) Fetch Place Details ──
+  const fetchPlaceDetailsNew = async (
+    placeId: string,
+    fallbackText: string
+  ): Promise<{ address: string; coords: Coordinates } | null> => {
+    // Check local landmark prefix
+    if (placeId.startsWith('local_')) {
+      const name = placeId.replace('local_', '');
+      if (LOCATION_COORDINATES[name]) {
+        return {
+          address: `${name}, Madanapalle`,
+          coords: LOCATION_COORDINATES[name]
+        };
+      }
+    }
+
+    const localMatch = resolveCoordinates(fallbackText);
+
+    // 1. Primary Engine: Google Maps JS SDK Place class
+    const google = (window as any).google;
+    const placesLib = google?.maps?.places;
+    if (placesLib?.Place && placeId) {
+      try {
+        const place = new placesLib.Place({ id: placeId });
+        await place.fetchFields({
+          fields: ['location', 'formattedAddress', 'displayName']
+        });
+
+        if (place.location) {
+          const lat = typeof place.location.lat === 'function' ? place.location.lat() : place.location.lat;
+          const lng = typeof place.location.lng === 'function' ? place.location.lng() : place.location.lng;
+          const address = place.formattedAddress || (typeof place.displayName === 'string' ? place.displayName : place.displayName?.text) || fallbackText;
+          return { address, coords: { lat, lng } };
+        }
+      } catch (err) {
+        // Fall through to REST
+      }
+    }
+
+    // 2. Secondary Engine: Direct REST Places API (New)
+    if (GOOGLE_MAPS_API_KEY && placeId) {
+      try {
+        const res = await fetch(
+          `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?fields=id,formattedAddress,location,displayName`,
+          {
+            headers: {
+              'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY
+            }
+          }
+        );
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.location?.latitude && data?.location?.longitude) {
+            const address = data.formattedAddress || data.displayName?.text || fallbackText;
+            return {
+              address,
+              coords: {
+                lat: data.location.latitude,
+                lng: data.location.longitude
+              }
+            };
+          }
+        }
+      } catch (err) {
+        // Fall through to geocoder
+      }
+    }
+
+    // 3. Tertiary Engine: Google Maps Geocoder fallback
+    if (google?.maps?.Geocoder && fallbackText) {
+      try {
+        const geocoder = new google.maps.Geocoder();
+        const geoResult = await new Promise<any>((resolve) => {
+          geocoder.geocode({ address: fallbackText }, (results: any, status: any) => {
+            if (status === 'OK' && results && results[0]?.geometry?.location) {
+              resolve(results[0]);
+            } else {
+              resolve(null);
+            }
+          });
+        });
+
+        if (geoResult) {
+          return {
+            address: geoResult.formatted_address || fallbackText,
+            coords: {
+              lat: geoResult.geometry.location.lat(),
+              lng: geoResult.geometry.location.lng()
+            }
+          };
+        }
+      } catch (err) {
+        // Fall through
+      }
+    }
+
+    if (localMatch) {
+      return { address: fallbackText, coords: localMatch };
+    }
+
+    return null;
+  };
+
+  const handlePickupInputChange = (val: string) => {
+    setFromLocation(val);
+    if (pickupDebounceRef.current) clearTimeout(pickupDebounceRef.current);
+
+    const localCoords = resolveCoordinates(val);
+    if (localCoords) setPickupCoords(localCoords);
+
+    if (val.trim().length < 2) {
+      setPickupSuggestions([]);
+      setShowPickupDropdown(false);
+      setIsSearchingPickup(false);
+      return;
+    }
+
+    setShowPickupDropdown(true);
+    setIsSearchingPickup(true);
+
+    pickupDebounceRef.current = setTimeout(async () => {
+      const results = await searchPlacesNew(val, destCoords || DEFAULT_MAP_CENTER);
+      setPickupSuggestions(results);
+      setIsSearchingPickup(false);
+    }, 300);
+  };
+
+  const handleDestInputChange = (val: string) => {
+    setToLocation(val);
+    if (destDebounceRef.current) clearTimeout(destDebounceRef.current);
+
+    const localCoords = resolveCoordinates(val);
+    if (localCoords) setDestCoords(localCoords);
+
+    if (val.trim().length < 2) {
+      setDestSuggestions([]);
+      setShowDestDropdown(false);
+      setIsSearchingDest(false);
+      return;
+    }
+
+    setShowDestDropdown(true);
+    setIsSearchingDest(true);
+
+    destDebounceRef.current = setTimeout(async () => {
+      const results = await searchPlacesNew(val, pickupCoords || DEFAULT_MAP_CENTER);
+      setDestSuggestions(results);
+      setIsSearchingDest(false);
+    }, 300);
+  };
+
+  const handleSelectPickupSuggestion = async (s: PlaceSuggestion) => {
+    setShowPickupDropdown(false);
+    setPickupSuggestions([]);
+    setFromLocation(s.fullText);
+    setIsResolvingPlace(true);
+
+    const details = await fetchPlaceDetailsNew(s.placeId, s.fullText);
+    setIsResolvingPlace(false);
+
+    if (details) {
+      setFromLocation(details.address);
+      setPickupCoords(details.coords);
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.panTo(details.coords);
+        mapInstanceRef.current.setZoom(15);
+      }
+    }
+  };
+
+  const handleSelectDestSuggestion = async (s: PlaceSuggestion) => {
+    setShowDestDropdown(false);
+    setDestSuggestions([]);
+    setToLocation(s.fullText);
+    setIsResolvingPlace(true);
+
+    const details = await fetchPlaceDetailsNew(s.placeId, s.fullText);
+    setIsResolvingPlace(false);
+
+    if (details) {
+      setToLocation(details.address);
+      setDestCoords(details.coords);
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.panTo(details.coords);
+        mapInstanceRef.current.setZoom(15);
+      }
+    }
   };
 
   // 2. Update Map Markers & Route Path
@@ -617,20 +960,20 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
             </div>
           </div>
 
-          {/* Location Inputs (Manual + GPS / Map Pin - NO autocomplete popup or chips) */}
+          {/* Location Inputs (Places API New Autocomplete + GPS / Map Pin) */}
           <div className="relative space-y-3 bg-[#202023] p-3.5 rounded-2xl border border-[#303034]">
             {/* Connecting line */}
             <div className="absolute left-[22px] top-[28px] bottom-[28px] w-0.5 bg-[#303034] pointer-events-none" />
 
             {/* 1. Pickup Input */}
-            <div className="relative pl-7">
+            <div ref={pickupWrapperRef} className="relative pl-7">
               <div className="absolute left-0 top-3 w-2.5 h-2.5 rounded-full bg-[#C6FF3D] ring-4 ring-[#C6FF3D]/20" />
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA]">Pickup</span>
                 <button
                   type="button"
                   onClick={handleUseCurrentLocation}
-                  className="text-[10px] font-bold text-[#C6FF3D] hover:underline flex items-center gap-1"
+                  className="text-[10px] font-bold text-[#C6FF3D] hover:underline flex items-center gap-1 cursor-pointer"
                 >
                   <Crosshair className="w-3 h-3" />
                   <span>Current GPS</span>
@@ -641,26 +984,73 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
                 <input
                   type="text"
                   value={fromLocation}
-                  onChange={(e) => {
-                    setFromLocation(e.target.value);
-                    const coords = resolveCoordinates(e.target.value);
-                    if (coords) setPickupCoords(coords);
+                  onChange={(e) => handlePickupInputChange(e.target.value)}
+                  onFocus={() => {
+                    if (fromLocation.trim().length >= 2 && pickupSuggestions.length > 0) {
+                      setShowPickupDropdown(true);
+                    }
                   }}
-                  placeholder="Enter pickup address..."
+                  placeholder="Enter pickup address or landmark..."
                   autoComplete="off"
-                  className="w-full bg-[#171719] border border-[#303034] focus:border-[#C6FF3D] rounded-xl px-3 py-2 text-xs sm:text-sm font-semibold text-white placeholder-[#71717A] focus:outline-none pr-8"
+                  className="w-full bg-[#171719] border border-[#303034] focus:border-[#C6FF3D] rounded-xl px-3 py-2 text-xs sm:text-sm font-semibold text-white placeholder-[#71717A] focus:outline-none pr-8 transition-colors"
                 />
+
+                {isResolvingPlace && (
+                  <div className="absolute right-8 top-1/2 -translate-y-1/2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#C6FF3D]" />
+                  </div>
+                )}
+
                 {fromLocation && (
                   <button
                     type="button"
                     onClick={() => {
                       setFromLocation('');
                       setPickupCoords(null);
+                      setPickupSuggestions([]);
+                      setShowPickupDropdown(false);
                     }}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-white p-0.5"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-white p-0.5 cursor-pointer"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
+                )}
+
+                {/* Suggestions Dropdown for Pickup */}
+                {showPickupDropdown && fromLocation.trim().length >= 2 && (
+                  <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-[#171719] border border-[#303034] rounded-2xl shadow-2xl overflow-hidden backdrop-blur-md max-h-56 overflow-y-auto">
+                    {isSearchingPickup ? (
+                      <div className="p-3.5 flex items-center justify-center gap-2 text-xs text-[#A1A1AA]">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-[#C6FF3D]" />
+                        <span>Searching places...</span>
+                      </div>
+                    ) : pickupSuggestions.length > 0 ? (
+                      pickupSuggestions.map((item, idx) => (
+                        <button
+                          key={`${item.placeId}_${idx}`}
+                          type="button"
+                          onClick={() => handleSelectPickupSuggestion(item)}
+                          className="w-full text-left p-3 hover:bg-[#202023] active:bg-[#26262A] flex items-start gap-2.5 transition-colors border-b border-[#202023] last:border-b-0 cursor-pointer"
+                        >
+                          <MapPin className="w-4 h-4 text-[#C6FF3D] mt-0.5 flex-shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-bold text-white truncate">
+                              {item.mainText}
+                            </div>
+                            {item.secondaryText && (
+                              <div className="text-[10px] text-[#A1A1AA] truncate">
+                                {item.secondaryText}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="p-3.5 text-center text-xs text-[#71717A]">
+                        No matching places found. You can continue typing or pin on map.
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -668,14 +1058,17 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
             <div className="h-px bg-[#303034] ml-7" />
 
             {/* 2. Destination Input */}
-            <div className="relative pl-7">
+            <div ref={destWrapperRef} className="relative pl-7">
               <div className="absolute left-0 top-3 w-2.5 h-2.5 bg-white ring-4 ring-white/20 rounded-xs" />
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA]">Destination</span>
                 <button
                   type="button"
-                  onClick={() => setActivePinMode('destination')}
-                  className={`text-[10px] font-bold flex items-center gap-1 ${
+                  onClick={() => {
+                    setShowDestDropdown(false);
+                    setActivePinMode('destination');
+                  }}
+                  className={`text-[10px] font-bold flex items-center gap-1 cursor-pointer ${
                     activePinMode === 'destination' ? 'text-[#C6FF3D]' : 'text-[#A1A1AA] hover:text-white'
                   }`}
                 >
@@ -688,26 +1081,73 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
                 <input
                   type="text"
                   value={toLocation}
-                  onChange={(e) => {
-                    setToLocation(e.target.value);
-                    const coords = resolveCoordinates(e.target.value);
-                    if (coords) setDestCoords(coords);
+                  onChange={(e) => handleDestInputChange(e.target.value)}
+                  onFocus={() => {
+                    if (toLocation.trim().length >= 2 && destSuggestions.length > 0) {
+                      setShowDestDropdown(true);
+                    }
                   }}
-                  placeholder="Enter destination address..."
+                  placeholder="Enter destination address or landmark..."
                   autoComplete="off"
-                  className="w-full bg-[#171719] border border-[#303034] focus:border-[#C6FF3D] rounded-xl px-3 py-2 text-xs sm:text-sm font-semibold text-white placeholder-[#71717A] focus:outline-none pr-8"
+                  className="w-full bg-[#171719] border border-[#303034] focus:border-[#C6FF3D] rounded-xl px-3 py-2 text-xs sm:text-sm font-semibold text-white placeholder-[#71717A] focus:outline-none pr-8 transition-colors"
                 />
+
+                {isResolvingPlace && (
+                  <div className="absolute right-8 top-1/2 -translate-y-1/2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#C6FF3D]" />
+                  </div>
+                )}
+
                 {toLocation && (
                   <button
                     type="button"
                     onClick={() => {
                       setToLocation('');
                       setDestCoords(null);
+                      setDestSuggestions([]);
+                      setShowDestDropdown(false);
                     }}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-white p-0.5"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-white p-0.5 cursor-pointer"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
+                )}
+
+                {/* Suggestions Dropdown for Destination */}
+                {showDestDropdown && toLocation.trim().length >= 2 && (
+                  <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-[#171719] border border-[#303034] rounded-2xl shadow-2xl overflow-hidden backdrop-blur-md max-h-56 overflow-y-auto">
+                    {isSearchingDest ? (
+                      <div className="p-3.5 flex items-center justify-center gap-2 text-xs text-[#A1A1AA]">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-[#C6FF3D]" />
+                        <span>Searching places...</span>
+                      </div>
+                    ) : destSuggestions.length > 0 ? (
+                      destSuggestions.map((item, idx) => (
+                        <button
+                          key={`${item.placeId}_${idx}`}
+                          type="button"
+                          onClick={() => handleSelectDestSuggestion(item)}
+                          className="w-full text-left p-3 hover:bg-[#202023] active:bg-[#26262A] flex items-start gap-2.5 transition-colors border-b border-[#202023] last:border-b-0 cursor-pointer"
+                        >
+                          <MapPin className="w-4 h-4 text-[#C6FF3D] mt-0.5 flex-shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-bold text-white truncate">
+                              {item.mainText}
+                            </div>
+                            {item.secondaryText && (
+                              <div className="text-[10px] text-[#A1A1AA] truncate">
+                                {item.secondaryText}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="p-3.5 text-center text-xs text-[#71717A]">
+                        No matching places found. You can continue typing or pin on map.
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
