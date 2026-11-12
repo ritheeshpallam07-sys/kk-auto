@@ -29,6 +29,12 @@ import { AdminController } from '../src/controllers/adminController';
 import { SupportController } from '../src/controllers/supportController';
 import { SupportService } from '../src/services/supportService';
 import { AuditService, sanitizeAuditDetails } from '../src/services/auditService';
+import {
+  notifyAvailableDriversOfNewRide,
+  isPushConfigured,
+  NewRidePushPayload,
+  PushSubscriptionData
+} from '../src/services/pushNotificationService';
 import adminRoutes from '../src/routes/adminRoutes';
 import { initDb, query, resolveDbSsl } from '../src/config/db';
 import { runSeed, initPlatformDefaults } from '../src/db/seed';
@@ -5632,6 +5638,138 @@ async function runTests() {
   const preservedLegacy = await TripBookingService.getTripBookingById(legacyId, s25CustId);
   assert.strictEqual(preservedLegacy.trip_place, 'Horsley Hills', 'Existing trip records must be preserved by migration');
   console.log('✅ PASS 25.7: Legacy mutation normalization & conditional DB migration data preservation verified');
+
+  // =========================================================================
+  // TEST SUITE 26: Driver New-Ride Web Push Eligibility, Privacy & Cleanup
+  // =========================================================================
+
+  console.log('\n--- 26. Testing Driver New-Ride Web Push Filtering, PII Protection & Expired Subscription Cleanup ---');
+  await query(`DELETE FROM bookings WHERE booking_reference LIKE 'TEST_REF_PUSH_%'`);
+  await query(`DELETE FROM driver_push_subscriptions WHERE endpoint LIKE 'https://push.example.test/%'`);
+  await query(`DELETE FROM drivers WHERE auto_number IN ('AP03PA1001', 'AP03PB1002', 'AP03PC1003', 'AP03PD1004')`);
+  await query(`DELETE FROM users WHERE email LIKE 'push_%@test.com'`);
+  const s26Salt = Date.now();
+  const s26UserRes = await query<{ id: number; role: string }>(
+    `INSERT INTO users (name, mobile, email, password_hash, role, status)
+     VALUES
+       ('Push Driver A', $1, $2, 'hash', 'driver', 'ACTIVE'),
+       ('Push Driver B', $3, $4, 'hash', 'driver', 'ACTIVE'),
+       ('Push Driver C', $5, $6, 'hash', 'driver', 'ACTIVE'),
+       ('Push Driver D', $7, $8, 'hash', 'driver', 'ACTIVE'),
+       ('Push Customer', $9, $10, 'hash', 'customer', 'ACTIVE')
+     RETURNING id, role`,
+    [
+      `990001${String(s26Salt).slice(-4)}`, `push_a_${s26Salt}@test.com`,
+      `990002${String(s26Salt).slice(-4)}`, `push_b_${s26Salt}@test.com`,
+      `990003${String(s26Salt).slice(-4)}`, `push_c_${s26Salt}@test.com`,
+      `990004${String(s26Salt).slice(-4)}`, `push_d_${s26Salt}@test.com`,
+      `990005${String(s26Salt).slice(-4)}`, `push_cust_${s26Salt}@test.com`
+    ]
+  );
+
+  const [uDriverA, uDriverB, uDriverC, uDriverD, uCust26] = s26UserRes.rows;
+  const s26DriverRes = await query<{ id: number }>(
+    `INSERT INTO drivers (user_id, auto_number, auto_model, availability_status, approval_status)
+     VALUES
+       ($1, 'AP03PA1001', 'Bajaj RE', 'available', 'APPROVED'),
+       ($2, 'AP03PB1002', 'Bajaj RE', 'offline', 'APPROVED'),
+       ($3, 'AP03PC1003', 'Bajaj RE', 'available', 'PENDING'),
+       ($4, 'AP03PD1004', 'Bajaj RE', 'available', 'ACTIVE')
+     RETURNING id`,
+    [uDriverA.id, uDriverB.id, uDriverC.id, uDriverD.id]
+  );
+  const [drvAId, drvBId, drvCId, drvDId] = s26DriverRes.rows.map((r) => r.id);
+
+  const endpointA = `https://push.example.test/sub-a-${s26Salt}`;
+  const endpointB = `https://push.example.test/sub-b-${s26Salt}`;
+  const endpointC = `https://push.example.test/sub-c-${s26Salt}`;
+  const endpointD = `https://push.example.test/sub-d-expired-${s26Salt}`;
+
+  await query(
+    `INSERT INTO driver_push_subscriptions (driver_id, endpoint, p256dh, auth)
+     VALUES
+       ($1, $5, 'p256dh_a', 'auth_a'),
+       ($2, $6, 'p256dh_b', 'auth_b'),
+       ($3, $7, 'p256dh_c', 'auth_c'),
+       ($4, $8, 'p256dh_d', 'auth_d')`,
+    [drvAId, drvBId, drvCId, drvDId, endpointA, endpointB, endpointC, endpointD]
+  );
+
+  const sentTargets: Array<{ endpoint: string; payload: NewRidePushPayload }> = [];
+  const pushSummary = await notifyAvailableDriversOfNewRide(
+    {
+      id: 88001,
+      booking_reference: `TEST_REF_PUSH_${s26Salt}`,
+      pickup_area_name: 'Bus Stand Area',
+      destination_area_name: 'JNTUA Circle',
+      estimated_fare: 145,
+      passengers: 2
+    },
+    {
+      sendFn: async (sub: PushSubscriptionData, payload: NewRidePushPayload) => {
+        if (sub.endpoint === endpointD) {
+          const goneErr: any = new Error('Subscription expired');
+          goneErr.statusCode = 410;
+          throw goneErr;
+        }
+        sentTargets.push({ endpoint: sub.endpoint, payload });
+      }
+    }
+  );
+
+  assert.strictEqual(pushSummary.skipped, false, 'Injected sendFn run must not be skipped');
+  assert.strictEqual(pushSummary.targeted >= 2, true, 'Online approved drivers (A and D) must be targeted');
+  assert.strictEqual(sentTargets.some((t) => t.endpoint === endpointA), true, 'Online APPROVED Driver A must receive push');
+  assert.strictEqual(sentTargets.some((t) => t.endpoint === endpointB), false, 'Offline Driver B must NOT receive push');
+  assert.strictEqual(sentTargets.some((t) => t.endpoint === endpointC), false, 'Pending Driver C must NOT receive push');
+  assert.strictEqual(pushSummary.cleaned >= 1, true, 'Expired 410 subscription must be cleaned up');
+
+  const remainingSubD = await query(`SELECT id FROM driver_push_subscriptions WHERE endpoint = $1`, [endpointD]);
+  assert.strictEqual(remainingSubD.rows.length, 0, 'Expired 410 endpoint D must be deleted from driver_push_subscriptions');
+
+  const deliveredPayload = sentTargets.find((t) => t.endpoint === endpointA)!.payload;
+  assert.strictEqual(deliveredPayload.title, 'New Ride Request');
+  assert.strictEqual(deliveredPayload.tag, 'ride-request-88001');
+  assert.strictEqual(deliveredPayload.bookingId, 88001);
+  assert.strictEqual(deliveredPayload.url, '/driver');
+  assert.ok(
+    deliveredPayload.body.includes('Bus Stand Area') && deliveredPayload.body.includes('JNTUA Circle') && deliveredPayload.body.includes('₹145'),
+    `Push body must contain area names & fare: ${deliveredPayload.body}`
+  );
+  assert.ok(!deliveredPayload.body.includes('PRIVATE') && !JSON.stringify(deliveredPayload).includes('p256dh'), 'Push payload must never expose secrets or PII');
+
+  // 26.2 BookingController.createBooking must still succeed (HTTP 201) when VAPID keys are unconfigured
+  const prevPub = process.env.VAPID_PUBLIC_KEY;
+  const prevPriv = process.env.VAPID_PRIVATE_KEY;
+  const prevSub = process.env.VAPID_SUBJECT;
+  delete process.env.VAPID_PUBLIC_KEY;
+  delete process.env.VAPID_PRIVATE_KEY;
+  delete process.env.VAPID_SUBJECT;
+  assert.strictEqual(isPushConfigured(), false);
+
+  const ctxBookingNoVapid = createMockContext(
+    { id: uCust26.id, role: 'customer', email: `push_cust_${s26Salt}@test.com`, name: 'Push Customer', mobile: `990005${String(s26Salt).slice(-4)}` },
+    {},
+    {
+      pickupAddress: 'JNTUA',
+      destinationAddress: 'Cross',
+      passengers: 1
+    }
+  );
+  await BookingController.createBooking(ctxBookingNoVapid.req, ctxBookingNoVapid.res);
+  const resBookingNoVapid = ctxBookingNoVapid.getResponse();
+  assert.strictEqual(resBookingNoVapid.statusCode, 201, 'Booking creation must return HTTP 201 cleanly even when VAPID is unconfigured');
+  assert.strictEqual(resBookingNoVapid.responseData.success, true);
+
+  if (prevPub !== undefined) process.env.VAPID_PUBLIC_KEY = prevPub;
+  if (prevPriv !== undefined) process.env.VAPID_PRIVATE_KEY = prevPriv;
+  if (prevSub !== undefined) process.env.VAPID_SUBJECT = prevSub;
+
+  await query(`DELETE FROM bookings WHERE customer_id = $1`, [uCust26.id]);
+  await query(`DELETE FROM driver_push_subscriptions WHERE driver_id IN ($1, $2, $3, $4)`, [drvAId, drvBId, drvCId, drvDId]);
+  await query(`DELETE FROM drivers WHERE id IN ($1, $2, $3, $4)`, [drvAId, drvBId, drvCId, drvDId]);
+  await query(`DELETE FROM users WHERE id IN ($1, $2, $3, $4, $5)`, [uDriverA.id, uDriverB.id, uDriverC.id, uDriverD.id, uCust26.id]);
+  console.log('✅ PASS 26: Driver New-Ride Web Push filtering, area-only payload, 410 cleanup & unconfigured-VAPID safety verified');
 
   console.log('\n=========================================');
   console.log('🎉 ALL SECURITY PHASE 1 TESTS PASSED!');

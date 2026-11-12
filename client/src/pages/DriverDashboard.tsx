@@ -3,6 +3,15 @@ import { api, DriverProfile, Booking, DriverEarningsSummary } from '../api/clien
 import { useAuth } from '../context/AuthContext';
 import { StatusBadge } from '../components/StatusBadge';
 import {
+  getLocalNotifiedRideIds,
+  saveLocalNotifiedRideIds,
+  readSwNotifiedRideIds,
+  markSwNotifiedRideId,
+  readActiveSwNotificationBookingIds,
+  closeRideNotification,
+  showForegroundRideNotification
+} from '../utils/notifications';
+import {
   Car,
   Power,
   MapPin,
@@ -224,6 +233,10 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
   const hasEarningsRef = React.useRef(false);
   const earningsSeqRef = React.useRef(0);
   const dismissedRequestIdsRef = React.useRef<Set<number>>(new Set());
+  const notifiedRequestIdsRef = React.useRef<Set<number>>(new Set());
+  const hydratedNotifiedDriverIdRef = React.useRef<number | null>(null);
+  const hasProcessedInitialRequestsRef = React.useRef(false);
+  const openNotificationsRef = React.useRef<Map<number, Notification>>(new Map());
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
@@ -257,6 +270,8 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
     window.scrollTo(0, 0);
   };
 
+  const latestProfileRef = React.useRef<DriverProfile | null>(null);
+
   useEffect(() => {
     loadDriverData();
     const interval = setInterval(() => {
@@ -264,12 +279,28 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
         loadDriverData();
       }
     }, 6000);
-    return () => clearInterval(interval);
+
+    const handleSwMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'KK_NEW_RIDE_PUSH' && !isAuthErrorRef.current) {
+        loadDriverData();
+      }
+    };
+
+    const swContainer = typeof navigator !== 'undefined' ? navigator.serviceWorker : undefined;
+    swContainer?.addEventListener?.('message', handleSwMessage);
+
+    return () => {
+      clearInterval(interval);
+      swContainer?.removeEventListener?.('message', handleSwMessage);
+    };
   }, []);
 
   useEffect(() => {
     const checkNotificationSubscription = async () => {
       try {
+        if (typeof Notification !== 'undefined') {
+          setNotificationPermission(Notification.permission);
+        }
         if (
           !('Notification' in window) ||
           !('serviceWorker' in navigator) ||
@@ -328,6 +359,91 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
     }
   };
 
+  const markRequestsNotified = (driverId: number | undefined, bookingIds: number[]) => {
+    for (const id of bookingIds) {
+      if (Number.isInteger(id) && id > 0) {
+        notifiedRequestIdsRef.current.add(id);
+      }
+    }
+    if (driverId) {
+      saveLocalNotifiedRideIds(driverId, notifiedRequestIdsRef.current);
+    }
+  };
+
+  const notifyNewRideRequests = async (
+    driverProfile: DriverProfile | null,
+    incomingRequests: Booking[]
+  ) => {
+    if (!driverProfile) return;
+
+    if (hydratedNotifiedDriverIdRef.current !== driverProfile.id) {
+      hydratedNotifiedDriverIdRef.current = driverProfile.id;
+      for (const id of getLocalNotifiedRideIds(driverProfile.id)) {
+        notifiedRequestIdsRef.current.add(id);
+      }
+    }
+
+    const [swCachedIds, activeNotificationIds] = await Promise.all([
+      readSwNotifiedRideIds(),
+      readActiveSwNotificationBookingIds()
+    ]);
+    for (const id of [...swCachedIds, ...activeNotificationIds]) {
+      notifiedRequestIdsRef.current.add(id);
+    }
+
+    const statusUpper = (driverProfile.approval_status || '').toUpperCase();
+    const isDriverEligible =
+      (statusUpper === 'APPROVED' || statusUpper === 'ACTIVE') &&
+      driverProfile.availability_status === 'available';
+
+    const hasPermission =
+      typeof Notification !== 'undefined' && Notification.permission === 'granted';
+    const isForegroundVisible =
+      typeof document !== 'undefined' && document.visibilityState === 'visible';
+
+    const isInitialPass = !hasProcessedInitialRequestsRef.current;
+    hasProcessedInitialRequestsRef.current = true;
+
+    const toNotify: Booking[] = [];
+    const seenIds: number[] = [];
+
+    for (const req of incomingRequests) {
+      if (
+        dismissedRequestIdsRef.current.has(req.id) ||
+        notifiedRequestIdsRef.current.has(req.id)
+      ) {
+        continue;
+      }
+
+      seenIds.push(req.id);
+
+      // On initial load, skip stale pre-existing bookings older than 5 minutes
+      if (isInitialPass && req.created_at) {
+        const createdMs = Date.parse(req.created_at);
+        if (Number.isFinite(createdMs) && Date.now() - createdMs > 5 * 60 * 1000) {
+          continue;
+        }
+      }
+
+      if (hasPermission && isDriverEligible && isForegroundVisible) {
+        toNotify.push(req);
+      }
+    }
+
+    // Record all handled/seen IDs before displaying so rapid polls never duplicate notifications
+    if (hasPermission || seenIds.length > 0) {
+      markRequestsNotified(driverProfile.id, seenIds);
+    }
+
+    for (const req of toNotify) {
+      await markSwNotifiedRideId(req.id);
+      const instance = await showForegroundRideNotification(req);
+      if (instance) {
+        openNotificationsRef.current.set(req.id, instance);
+      }
+    }
+  };
+
   const loadDriverData = async () => {
     if (isAuthErrorRef.current) return;
     void loadEarningsData(!hasEarningsRef.current);
@@ -340,6 +456,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
 
       if (profRes.success && profRes.data) {
         hasProfileRef.current = true;
+        latestProfileRef.current = profRes.data;
         setProfile(profRes.data);
         setProfileAuthError(null);
         setProfileLoadError(null);
@@ -363,7 +480,9 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
         return;
       }
       if (reqRes.success && reqRes.data) {
-        setRequests(reqRes.data.filter(r => !dismissedRequestIdsRef.current.has(r.id)));
+        const filteredRequests = reqRes.data.filter(r => !dismissedRequestIdsRef.current.has(r.id));
+        setRequests(filteredRequests);
+        void notifyNewRideRequests(profRes.data || latestProfileRef.current, filteredRequests);
       }
 
       if (myRidesRes.success && myRidesRes.data) {
@@ -587,12 +706,17 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
 
       setIsNotificationEnabled(true);
       setNotificationError(null);
+      markRequestsNotified(
+        profile?.id || latestProfileRef.current?.id,
+        requests.map((r) => r.id)
+      );
 
       try {
         await registration.showNotification('Clik2Go Driver Console', {
           body: 'Push alerts are now enabled for incoming ride bookings.',
           icon: '/pwa-192x192.png',
-          badge: '/pwa-192x192.png'
+          badge: '/pwa-192x192.png',
+          silent: false
         });
       } catch {
         // Subscription saved even if immediate preview notification fails
@@ -625,9 +749,15 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
 
   const handleAcceptRide = async (bookingId: number) => {
     setActionError(null);
+    markRequestsNotified(profile?.id || latestProfileRef.current?.id, [bookingId]);
+    void markSwNotifiedRideId(bookingId);
+    void closeRideNotification(bookingId, openNotificationsRef.current.get(bookingId));
+    openNotificationsRef.current.delete(bookingId);
+
     const res = await api.driver.acceptRide(bookingId);
     if (res.success && res.data) {
       dismissedRequestIdsRef.current.delete(bookingId);
+      setRequests(prev => prev.filter(r => r.id !== bookingId));
       setActiveRide(res.data);
       loadDriverData();
     } else {
@@ -637,6 +767,10 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
 
   const handleRejectRide = (bookingId: number) => {
     dismissedRequestIdsRef.current.add(bookingId);
+    markRequestsNotified(profile?.id || latestProfileRef.current?.id, [bookingId]);
+    void markSwNotifiedRideId(bookingId);
+    void closeRideNotification(bookingId, openNotificationsRef.current.get(bookingId));
+    openNotificationsRef.current.delete(bookingId);
     setRequests(prev => prev.filter(r => r.id !== bookingId));
   };
 
@@ -1366,7 +1500,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
               </div>
             </div>
 
-            {notificationError && !isNotificationEnabled && (
+            {notificationError && !isNotificationEnabled ? (
               <div className="mt-4 p-3 rounded-xl bg-amber-950/40 border border-amber-800/80 text-amber-200 text-xs flex items-center justify-between gap-3">
                 <span>
                   {notificationError}
@@ -1380,7 +1514,11 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
                   Dismiss
                 </button>
               </div>
-            )}
+            ) : !isNotificationEnabled && notificationPermission === 'denied' ? (
+              <div className="mt-4 p-3 rounded-xl bg-amber-950/40 border border-amber-800/80 text-amber-200 text-xs">
+                Browser notifications are blocked in your browser settings. Enable Notifications for this site in browser permissions, then tap Enable Alerts.
+              </div>
+            ) : null}
 
             {/* 3 Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">

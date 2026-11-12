@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { query } from '../config/db';
 import { RouteService } from '../services/routeService';
 import { FareService } from '../services/fareService';
+import { notifyAvailableDriversOfNewRide } from '../services/pushNotificationService';
 
 export class BookingController {
   /**
@@ -286,6 +287,11 @@ const insertResult = await query(
   pickupAreaName: booking.pickup_area_name,
   destinationAreaName: booking.destination_area_name,
 });
+
+      // Notify subscribed available drivers via Web Push (non-blocking)
+      void notifyAvailableDriversOfNewRide(booking).catch((pushErr: any) => {
+        console.warn('[Push] New ride notification skipped:', pushErr?.message || 'dispatch error');
+      });
 
       return res.status(201).json({
         success: true,
