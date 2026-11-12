@@ -1,5 +1,8 @@
-import { safeGetLocal, safeSetLocal } from './storage';
-import { Booking } from '../api/client';
+import { safeGetLocal, safeSetLocal, safeRemoveLocal } from './storage';
+import { api, Booking } from '../api/client';
+
+export const ONBOARDING_DISMISS_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const ONBOARDING_DISMISSED_KEY_PREFIX = 'kk_notif_onboarding_dismissed_at';
 
 export const KK_PUSH_CACHE = 'kk-push-notified-v1';
 export const KK_PUSH_IDS_KEY = '/__kk_push_notified_ids.json';
@@ -170,5 +173,216 @@ export const showForegroundRideNotification = async (
       }
     }
     return null;
+  }
+};
+
+export const isPushNotificationsSupported = (): boolean =>
+  typeof window !== 'undefined' &&
+  'Notification' in window &&
+  'serviceWorker' in navigator &&
+  'PushManager' in window;
+
+const getOnboardingDismissKey = (userId?: number | null): string =>
+  userId && Number.isInteger(userId) && userId > 0
+    ? `${ONBOARDING_DISMISSED_KEY_PREFIX}_${userId}`
+    : ONBOARDING_DISMISSED_KEY_PREFIX;
+
+/**
+ * Returns true when the driver dismissed onboarding within the last 24 hours.
+ * Malformed, negative, expired, or clock-skewed values are cleared safely.
+ */
+export const isNotificationOnboardingDismissed = (
+  userId?: number | null,
+  nowMs: number = Date.now()
+): boolean => {
+  const key = getOnboardingDismissKey(userId);
+  const raw = safeGetLocal(key);
+  if (!raw || !raw.trim()) return false;
+
+  const dismissedAt = Number(raw);
+  if (
+    !Number.isFinite(dismissedAt) ||
+    dismissedAt <= 0 ||
+    dismissedAt > nowMs + ONBOARDING_DISMISS_COOLDOWN_MS
+  ) {
+    safeRemoveLocal(key);
+    return false;
+  }
+
+  if (nowMs - dismissedAt >= ONBOARDING_DISMISS_COOLDOWN_MS) {
+    safeRemoveLocal(key);
+    return false;
+  }
+
+  return true;
+};
+
+export const dismissNotificationOnboarding = (
+  userId?: number | null,
+  nowMs: number = Date.now()
+): void => {
+  if (!Number.isFinite(nowMs) || nowMs <= 0) return;
+  safeSetLocal(getOnboardingDismissKey(userId), String(nowMs));
+};
+
+export const clearNotificationOnboardingDismissal = (userId?: number | null): void => {
+  safeRemoveLocal(getOnboardingDismissKey(userId));
+};
+
+export const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+};
+
+/**
+ * Reuses an active service worker registration when present, or falls back
+ * to registering `/sw.js` / awaiting `navigator.serviceWorker.ready`.
+ */
+export const ensurePushServiceWorkerRegistration = async (): Promise<
+  ServiceWorkerRegistration | undefined
+> => {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+    return undefined;
+  }
+
+  let registration = await navigator.serviceWorker.getRegistration();
+  if (!registration && typeof navigator.serviceWorker.register === 'function') {
+    try {
+      registration = await navigator.serviceWorker.register('/sw.js');
+    } catch {
+      // Fall back to waiting for ready registration below
+    }
+  }
+
+  if (!registration && navigator.serviceWorker.ready) {
+    registration = await Promise.race<ServiceWorkerRegistration | undefined>([
+      navigator.serviceWorker.ready,
+      new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 4000))
+    ]);
+  }
+
+  return registration;
+};
+
+export type EnsurePushSubscriptionResult =
+  | { ok: true; reusedSubscription: boolean; subscription: PushSubscription }
+  | {
+      ok: false;
+      reason:
+        | 'unsupported'
+        | 'permission_not_granted'
+        | 'missing_vapid_key'
+        | 'no_service_worker'
+        | 'incomplete_subscription'
+        | 'server_error'
+        | 'unknown';
+      error: string;
+    };
+
+/**
+ * Ensures the driver has an active Web Push subscription saved on the backend
+ * once Notification permission is granted. Never calls Notification.requestPermission().
+ */
+export const ensureDriverPushSubscription = async (options?: {
+  showPreview?: boolean;
+}): Promise<EnsurePushSubscriptionResult> => {
+  if (!isPushNotificationsSupported()) {
+    return {
+      ok: false,
+      reason: 'unsupported',
+      error: 'Push notifications are not supported on this browser/device.'
+    };
+  }
+
+  if (Notification.permission !== 'granted') {
+    return {
+      ok: false,
+      reason: 'permission_not_granted',
+      error: 'Notification permission is not granted.'
+    };
+  }
+
+  try {
+    const registration = await ensurePushServiceWorkerRegistration();
+    if (!registration) {
+      return {
+        ok: false,
+        reason: 'no_service_worker',
+        error: 'Background service worker is not ready yet. Please refresh the page and try again.'
+      };
+    }
+
+    let subscription = await registration.pushManager.getSubscription();
+    const reusedSubscription = Boolean(subscription);
+
+    if (!subscription) {
+      const vapidRes = await api.driver.getPushPublicKey();
+      const vapidPublicKey = vapidRes.data?.publicKey;
+      if (!vapidPublicKey) {
+        return {
+          ok: false,
+          reason: 'missing_vapid_key',
+          error: 'Push alerts are unavailable because the notification server key is missing.'
+        };
+      }
+
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as unknown as BufferSource
+      });
+    }
+
+    const rawSub = subscription.toJSON();
+    if (!rawSub.endpoint || !rawSub.keys?.p256dh || !rawSub.keys?.auth) {
+      return {
+        ok: false,
+        reason: 'incomplete_subscription',
+        error: 'Incomplete push subscription payload returned by browser.'
+      };
+    }
+
+    const saveRes = await api.driver.savePushSubscription({
+      endpoint: rawSub.endpoint,
+      expirationTime: rawSub.expirationTime,
+      keys: {
+        p256dh: rawSub.keys.p256dh,
+        auth: rawSub.keys.auth
+      }
+    });
+
+    if (!saveRes.success) {
+      return {
+        ok: false,
+        reason: 'server_error',
+        error: saveRes.error || 'Failed to save push subscription on server.'
+      };
+    }
+
+    if (options?.showPreview) {
+      try {
+        await registration.showNotification('Clik2Go Driver Console', {
+          body: 'Push alerts are now enabled for incoming ride bookings.',
+          icon: '/pwa-192x192.png',
+          badge: '/pwa-192x192.png',
+          silent: false
+        });
+      } catch {
+        // Subscription saved even if immediate preview notification fails
+      }
+    }
+
+    return { ok: true, reusedSubscription, subscription };
+  } catch (error: any) {
+    return {
+      ok: false,
+      reason: 'unknown',
+      error: error?.message || 'Unable to enable push notifications.'
+    };
   }
 };

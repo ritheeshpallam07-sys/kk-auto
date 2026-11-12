@@ -9,7 +9,12 @@ import {
   markSwNotifiedRideId,
   readActiveSwNotificationBookingIds,
   closeRideNotification,
-  showForegroundRideNotification
+  showForegroundRideNotification,
+  isPushNotificationsSupported,
+  ensureDriverPushSubscription,
+  isNotificationOnboardingDismissed,
+  dismissNotificationOnboarding,
+  clearNotificationOnboardingDismissal
 } from '../utils/notifications';
 import {
   Car,
@@ -36,7 +41,9 @@ import {
   Settings,
   History,
   LifeBuoy,
-  Bell
+  Bell,
+  BellOff,
+  RefreshCw
 } from 'lucide-react';
 import QRCode from 'qrcode';
 
@@ -215,7 +222,7 @@ interface DriverDashboardProps {
 }
 
 export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) => {
-  const { logout, refreshUser } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState<DriverTab>(getDriverTabFromUrl);
   const [profile, setProfile] = useState<DriverProfile | null>(null);
   const [earnings, setEarnings] = useState<DriverEarningsSummary | null>(null);
@@ -245,6 +252,12 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
   const [isNotificationEnabled, setIsNotificationEnabled] = useState(false);
   const [isEnablingNotifications, setIsEnablingNotifications] = useState(false);
   const [notificationError, setNotificationError] = useState<string | null>(null);
+  const [isOnboardingDismissed, setIsOnboardingDismissed] = useState<boolean>(() =>
+    isNotificationOnboardingDismissed(user?.id)
+  );
+  const [deniedCheckFeedback, setDeniedCheckFeedback] = useState<string | null>(null);
+  const pushSyncInFlightRef = React.useRef<Promise<boolean> | null>(null);
+  const isPushSupported = isPushNotificationsSupported();
 
   // Driver profile & payment editing state
   const [profileName, setProfileName] = useState('');
@@ -296,39 +309,77 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
   }, []);
 
   useEffect(() => {
+    let isCancelled = false;
+    let permissionStatus: PermissionStatus | null = null;
+
     const checkNotificationSubscription = async () => {
       try {
-        if (typeof Notification !== 'undefined') {
-          setNotificationPermission(Notification.permission);
-        }
-        if (
-          !('Notification' in window) ||
-          !('serviceWorker' in navigator) ||
-          !('PushManager' in window)
-        ) {
+        if (typeof Notification === 'undefined') {
           return;
         }
 
-        if (Notification.permission !== 'granted') {
+        const currentPermission = Notification.permission;
+        if (!isCancelled) {
+          setNotificationPermission(currentPermission);
+        }
+
+        if (!isPushNotificationsSupported()) {
+          if (!isCancelled) {
+            setIsNotificationEnabled(false);
+          }
+          return;
+        }
+
+        if (currentPermission === 'granted') {
+          if (!isCancelled) {
+            await syncGrantedPushSubscription({ showPreview: false });
+          }
+          return;
+        }
+
+        if (!isCancelled) {
           setIsNotificationEnabled(false);
-          return;
+          setIsOnboardingDismissed(isNotificationOnboardingDismissed(user?.id));
+          if (currentPermission !== 'denied') {
+            setDeniedCheckFeedback(null);
+          }
         }
-
-        const registration = await navigator.serviceWorker.getRegistration();
-        if (!registration) {
-          setIsNotificationEnabled(false);
-          return;
-        }
-        const subscription = await registration.pushManager.getSubscription();
-
-        setIsNotificationEnabled(!!subscription);
       } catch (error) {
         console.error('Error checking notification state:', error);
       }
     };
 
-    checkNotificationSubscription();
-  }, []);
+    setIsOnboardingDismissed(isNotificationOnboardingDismissed(user?.id));
+    void checkNotificationSubscription();
+
+    const handleFocus = () => {
+      void checkNotificationSubscription();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
+      navigator.permissions
+        .query({ name: 'notifications' as PermissionName })
+        .then((status) => {
+          if (isCancelled) return;
+          permissionStatus = status;
+          permissionStatus.onchange = () => {
+            void checkNotificationSubscription();
+          };
+        })
+        .catch(() => {
+          // Permissions API query is optional across browsers
+        });
+    }
+
+    return () => {
+      isCancelled = true;
+      window.removeEventListener('focus', handleFocus);
+      if (permissionStatus) {
+        permissionStatus.onchange = null;
+      }
+    };
+  }, [user?.id]);
 
   const loadEarningsData = async (showLoadingState = false) => {
     if (isAuthErrorRef.current) return;
@@ -587,20 +638,48 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
     )
   );
 
-  const urlBase64ToUint8Array = (base64String: string) => {
-    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding)
-      .replace(/-/g, '+')
-      .replace(/_/g, '/');
-
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
+  const syncGrantedPushSubscription = async (options?: {
+    showPreview?: boolean;
+  }): Promise<boolean> => {
+    if (pushSyncInFlightRef.current) {
+      return pushSyncInFlightRef.current;
     }
 
-    return outputArray;
+    const syncPromise = (async () => {
+      const result = await ensureDriverPushSubscription(options);
+      if (result.ok) {
+        setIsNotificationEnabled(true);
+        setNotificationError(null);
+        setDeniedCheckFeedback(null);
+        clearNotificationOnboardingDismissal(user?.id);
+        setIsOnboardingDismissed(false);
+        markRequestsNotified(
+          profile?.id || latestProfileRef.current?.id,
+          requests.map((r) => r.id)
+        );
+        return true;
+      }
+
+      setIsNotificationEnabled(false);
+      if (result.reason !== 'permission_not_granted') {
+        setNotificationError(result.error);
+      }
+      return false;
+    })();
+
+    pushSyncInFlightRef.current = syncPromise;
+    try {
+      return await syncPromise;
+    } finally {
+      if (pushSyncInFlightRef.current === syncPromise) {
+        pushSyncInFlightRef.current = null;
+      }
+    }
+  };
+
+  const handleDismissOnboarding = () => {
+    dismissNotificationOnboarding(user?.id);
+    setIsOnboardingDismissed(true);
   };
 
   const handleEnableNotifications = async () => {
@@ -609,124 +688,89 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
     setActionError(null);
 
     try {
-      if (
-        !('Notification' in window) ||
-        !('serviceWorker' in navigator) ||
-        !('PushManager' in window)
-      ) {
+      if (!isPushSupported) {
         const msg = 'Push notifications are not supported on this browser/device.';
         setNotificationError(msg);
-        setActionError(msg);
         setIsNotificationEnabled(false);
         return;
       }
 
       if (Notification.permission === 'denied') {
         setNotificationPermission('denied');
-        const msg =
-          'Notifications are blocked in browser settings. Please allow notifications for this site and try again.';
-        setNotificationError(msg);
-        setActionError(msg);
+        setDeniedCheckFeedback(
+          'Notifications are blocked in your browser settings. Please allow Notifications for this site in your browser settings, then click Try Again.'
+        );
         setIsNotificationEnabled(false);
+        return;
+      }
+
+      if (Notification.permission === 'granted') {
+        setNotificationPermission('granted');
+        await syncGrantedPushSubscription({ showPreview: true });
         return;
       }
 
       const permission = await Notification.requestPermission();
       setNotificationPermission(permission);
 
+      if (permission === 'denied') {
+        setDeniedCheckFeedback(
+          'Notifications are blocked in your browser settings. Please allow Notifications for this site in your browser settings, then click Try Again.'
+        );
+        setIsNotificationEnabled(false);
+        return;
+      }
+
       if (permission !== 'granted') {
-        const msg = 'Notification permission was not granted. Please allow alerts to receive ride requests.';
-        setNotificationError(msg);
-        setActionError(msg);
+        setNotificationError(
+          'Notification permission was not granted. Click Enable Notifications whenever you are ready to receive ride alerts.'
+        );
         setIsNotificationEnabled(false);
         return;
       }
 
-      const vapidRes = await api.driver.getPushPublicKey();
-      const vapidPublicKey = vapidRes.data?.publicKey;
-
-      if (!vapidPublicKey) {
-        const msg = 'Push alerts are unavailable because the notification server key is missing.';
-        setNotificationError(msg);
-        setActionError(msg);
-        setIsNotificationEnabled(false);
-        return;
-      }
-
-      let registration = await navigator.serviceWorker.getRegistration();
-      if (!registration) {
-        registration = await Promise.race<ServiceWorkerRegistration | undefined>([
-          navigator.serviceWorker.ready,
-          new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 4000))
-        ]);
-      }
-
-      if (!registration) {
-        const msg = 'Background service worker is not ready yet. Please refresh the page and try again.';
-        setNotificationError(msg);
-        setActionError(msg);
-        setIsNotificationEnabled(false);
-        return;
-      }
-
-      let subscription = await registration.pushManager.getSubscription();
-
-      if (!subscription) {
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
-        });
-      }
-
-      const rawSub = subscription.toJSON();
-      if (!rawSub.endpoint || !rawSub.keys?.p256dh || !rawSub.keys?.auth) {
-        const msg = 'Incomplete push subscription payload returned by browser.';
-        setNotificationError(msg);
-        setActionError(msg);
-        setIsNotificationEnabled(false);
-        return;
-      }
-
-      const saveRes = await api.driver.savePushSubscription({
-        endpoint: rawSub.endpoint,
-        expirationTime: rawSub.expirationTime,
-        keys: {
-          p256dh: rawSub.keys.p256dh,
-          auth: rawSub.keys.auth
-        }
-      });
-
-      if (!saveRes.success) {
-        const msg = saveRes.error || 'Failed to save push subscription on server.';
-        setNotificationError(msg);
-        setActionError(msg);
-        setIsNotificationEnabled(false);
-        return;
-      }
-
-      setIsNotificationEnabled(true);
-      setNotificationError(null);
-      markRequestsNotified(
-        profile?.id || latestProfileRef.current?.id,
-        requests.map((r) => r.id)
-      );
-
-      try {
-        await registration.showNotification('Clik2Go Driver Console', {
-          body: 'Push alerts are now enabled for incoming ride bookings.',
-          icon: '/pwa-192x192.png',
-          badge: '/pwa-192x192.png',
-          silent: false
-        });
-      } catch {
-        // Subscription saved even if immediate preview notification fails
-      }
+      setDeniedCheckFeedback(null);
+      await syncGrantedPushSubscription({ showPreview: true });
     } catch (error: any) {
       console.error('Push notification setup error:', error);
-      const msg = error?.message || 'Unable to enable push notifications.';
-      setNotificationError(msg);
-      setActionError(msg);
+      setNotificationError(error?.message || 'Unable to enable push notifications.');
       setIsNotificationEnabled(false);
+    } finally {
+      setIsEnablingNotifications(false);
+    }
+  };
+
+  const handleTryAgainNotifications = async () => {
+    if (!isPushSupported || typeof Notification === 'undefined') {
+      setNotificationError('Push notifications are not supported on this browser/device.');
+      return;
+    }
+
+    setIsEnablingNotifications(true);
+    setNotificationError(null);
+
+    try {
+      const currentPermission = Notification.permission;
+      setNotificationPermission(currentPermission);
+
+      if (currentPermission === 'denied') {
+        // Browser denial cannot be overridden programmatically; inform the user honestly.
+        setDeniedCheckFeedback(
+          'Notifications are still blocked in your browser settings. Enable Notifications for this site in browser settings first, then click Try Again.'
+        );
+        setIsNotificationEnabled(false);
+        return;
+      }
+
+      if (currentPermission === 'granted') {
+        setDeniedCheckFeedback(null);
+        await syncGrantedPushSubscription({ showPreview: true });
+        return;
+      }
+
+      // Permission was reset to 'default' in browser settings -> proceed with normal user-initiated request.
+      setDeniedCheckFeedback(null);
+      await handleEnableNotifications();
     } finally {
       setIsEnablingNotifications(false);
     }
@@ -1455,21 +1499,31 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
                   <span>UPI & Profile</span>
                 </button>
 
-                {isNotificationEnabled ? (
-                  <div className="flex-1 sm:flex-none px-3.5 py-2.5 rounded-xl font-bold text-xs bg-[#C6FF3D]/10 text-[#C6FF3D] border border-[#C6FF3D]/30 flex items-center justify-center gap-1.5 shadow-subtle">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-[#C6FF3D]" />
-                    <span>Alerts Enabled</span>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleEnableNotifications}
-                    disabled={isEnablingNotifications}
-                    className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-bold text-xs bg-[#202023] hover:bg-[#26262A] text-white border border-[#303034] hover:border-[#C6FF3D]/50 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
-                  >
-                    <Bell className="w-3.5 h-3.5 text-[#C6FF3D]" />
-                    <span>{isEnablingNotifications ? 'Enabling...' : 'Enable Alerts'}</span>
-                  </button>
+                {isPushSupported && (
+                  isNotificationEnabled ? (
+                    <div
+                      data-testid="driver-notifications-enabled"
+                      className="flex-1 sm:flex-none px-3.5 py-2.5 rounded-xl font-bold text-xs bg-[#C6FF3D]/10 text-[#C6FF3D] border border-[#C6FF3D]/30 flex items-center justify-center gap-1.5 shadow-subtle"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#C6FF3D]" />
+                      <span>Notifications Enabled</span>
+                    </div>
+                  ) : notificationPermission === 'denied' ? (
+                    <div className="flex-1 sm:flex-none px-3.5 py-2.5 rounded-xl font-bold text-xs bg-amber-950/40 text-amber-300 border border-amber-800/80 flex items-center justify-center gap-1.5">
+                      <BellOff className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Notifications Blocked</span>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleEnableNotifications}
+                      disabled={isEnablingNotifications}
+                      className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-bold text-xs bg-[#202023] hover:bg-[#26262A] text-white border border-[#303034] hover:border-[#C6FF3D]/50 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                    >
+                      <Bell className="w-3.5 h-3.5 text-[#C6FF3D]" />
+                      <span>{isEnablingNotifications ? 'Enabling...' : 'Enable Notifications'}</span>
+                    </button>
+                  )
                 )}
 
                 {isApproved ? (
@@ -1500,25 +1554,91 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
               </div>
             </div>
 
-            {notificationError && !isNotificationEnabled ? (
-              <div className="mt-4 p-3 rounded-xl bg-amber-950/40 border border-amber-800/80 text-amber-200 text-xs flex items-center justify-between gap-3">
-                <span>
-                  {notificationError}
-                  {notificationPermission === 'denied' ? ' (Browser permission: Denied)' : ''}
-                </span>
+            {isPushSupported && !isNotificationEnabled && notificationPermission === 'default' && !isOnboardingDismissed && !profileAuthError && !profileLoadError && (
+              <div
+                data-testid="driver-notification-onboarding"
+                className="mt-4 p-4 rounded-2xl bg-[#202023] border border-[#C6FF3D]/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-[#C6FF3D]/10 border border-[#C6FF3D]/30 text-[#C6FF3D] flex items-center justify-center flex-shrink-0">
+                    <Bell className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs sm:text-sm font-bold text-white">
+                      Turn on ride request notifications
+                    </p>
+                    <p className="text-xs text-[#A1A1AA] mt-0.5">
+                      Notifications help drivers receive new ride requests promptly, even when Clik2Go is in the background.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleDismissOnboarding}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold text-[#A1A1AA] hover:text-white transition-colors cursor-pointer"
+                  >
+                    Not now
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleEnableNotifications}
+                    disabled={isEnablingNotifications}
+                    className="px-4 py-2 rounded-xl bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs transition-all cursor-pointer disabled:opacity-60"
+                  >
+                    {isEnablingNotifications ? 'Enabling...' : 'Enable Notifications'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {isPushSupported && !isNotificationEnabled && notificationPermission === 'denied' && !profileAuthError && (
+              <div
+                data-testid="driver-notification-denied"
+                className="mt-4 p-4 rounded-2xl bg-amber-950/40 border border-amber-800/80 text-amber-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+              >
+                <div className="flex items-start gap-2.5">
+                  <BellOff className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <span>
+                    {deniedCheckFeedback ||
+                      'Notifications are blocked in your browser settings. Enable Notifications for this site in browser settings to receive new ride requests.'}
+                  </span>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setNotificationError(null)}
-                  className="text-amber-300 hover:text-white text-[11px] font-bold flex-shrink-0 cursor-pointer"
+                  onClick={handleTryAgainNotifications}
+                  disabled={isEnablingNotifications}
+                  className="px-3.5 py-2 rounded-xl bg-[#202023] hover:bg-[#26262A] text-white border border-amber-700/80 text-xs font-bold flex items-center justify-center gap-1.5 flex-shrink-0 cursor-pointer disabled:opacity-60"
                 >
-                  Dismiss
+                  <RefreshCw className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Try Again</span>
                 </button>
               </div>
-            ) : !isNotificationEnabled && notificationPermission === 'denied' ? (
-              <div className="mt-4 p-3 rounded-xl bg-amber-950/40 border border-amber-800/80 text-amber-200 text-xs">
-                Browser notifications are blocked in your browser settings. Enable Notifications for this site in browser permissions, then tap Enable Alerts.
+            )}
+
+            {notificationError && !isNotificationEnabled && notificationPermission !== 'denied' && (
+              <div className="mt-4 p-3 rounded-xl bg-amber-950/40 border border-amber-800/80 text-amber-200 text-xs flex items-center justify-between gap-3">
+                <span>{notificationError}</span>
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  {notificationPermission === 'granted' && (
+                    <button
+                      type="button"
+                      onClick={() => void syncGrantedPushSubscription({ showPreview: false })}
+                      className="text-[#C6FF3D] hover:underline text-[11px] font-bold cursor-pointer"
+                    >
+                      Retry
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setNotificationError(null)}
+                    className="text-amber-300 hover:text-white text-[11px] font-bold cursor-pointer"
+                  >
+                    Dismiss
+                  </button>
+                </div>
               </div>
-            ) : null}
+            )}
 
             {/* 3 Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
