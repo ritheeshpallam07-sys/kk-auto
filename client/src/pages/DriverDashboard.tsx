@@ -295,7 +295,18 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
 
     const handleSwMessage = (event: MessageEvent) => {
       if (event.data?.type === 'KK_NEW_RIDE_PUSH' && !isAuthErrorRef.current) {
-        loadDriverData();
+        void loadDriverData();
+      } else if (event.data?.type === 'KK_NOTIFICATION_CLICKED') {
+        setActiveTab('dashboard');
+        if (typeof window !== 'undefined' && window.location.pathname.startsWith('/driver') && window.location.search) {
+          window.history.replaceState({}, '', '/driver');
+        }
+        if (!isAuthErrorRef.current) {
+          void loadDriverData();
+        }
+        requestAnimationFrame(() => {
+          document.getElementById('incoming-requests-section')?.scrollIntoView({ behavior: 'smooth' });
+        });
       }
     };
 
@@ -357,6 +368,12 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
     };
     window.addEventListener('focus', handleFocus);
 
+    const swContainer = typeof navigator !== 'undefined' ? navigator.serviceWorker : undefined;
+    const handleControllerChange = () => {
+      void checkNotificationSubscription();
+    };
+    swContainer?.addEventListener?.('controllerchange', handleControllerChange);
+
     if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
       navigator.permissions
         .query({ name: 'notifications' as PermissionName })
@@ -375,6 +392,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
     return () => {
       isCancelled = true;
       window.removeEventListener('focus', handleFocus);
+      swContainer?.removeEventListener?.('controllerchange', handleControllerChange);
       if (permissionStatus) {
         permissionStatus.onchange = null;
       }
@@ -456,7 +474,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
     hasProcessedInitialRequestsRef.current = true;
 
     const toNotify: Booking[] = [];
-    const seenIds: number[] = [];
+    const staleInitialIds: number[] = [];
 
     for (const req of incomingRequests) {
       if (
@@ -466,12 +484,11 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
         continue;
       }
 
-      seenIds.push(req.id);
-
       // On initial load, skip stale pre-existing bookings older than 5 minutes
       if (isInitialPass && req.created_at) {
         const createdMs = Date.parse(req.created_at);
         if (Number.isFinite(createdMs) && Date.now() - createdMs > 5 * 60 * 1000) {
+          staleInitialIds.push(req.id);
           continue;
         }
       }
@@ -481,9 +498,10 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
       }
     }
 
-    // Record all handled/seen IDs before displaying so rapid polls never duplicate notifications
-    if (hasPermission || seenIds.length > 0) {
-      markRequestsNotified(driverProfile.id, seenIds);
+    // Record handled/notified IDs before displaying so rapid polls never duplicate notifications
+    const idsToPersist = [...staleInitialIds, ...toNotify.map((req) => req.id)];
+    if (idsToPersist.length > 0) {
+      markRequestsNotified(driverProfile.id, idsToPersist);
     }
 
     for (const req of toNotify) {

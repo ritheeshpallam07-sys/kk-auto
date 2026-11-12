@@ -117,9 +117,9 @@ export const closeRideNotification = async (
 
 /**
  * Show one normal OS/browser notification using the device's default notification sound.
- * Uses the Browser Notification API when the app is open in the foreground,
- * with ServiceWorkerRegistration.showNotification fallback for mobile browsers (e.g. Android Chrome)
- * that disallow direct `new Notification()` construction.
+ * Prefers ServiceWorkerRegistration.showNotification() whenever a service worker is available
+ * so foreground and background notifications share the same notificationclick navigation/focus handler,
+ * falling back to `new Notification()` only when no service worker notification handler is active.
  */
 export const showForegroundRideNotification = async (
   request: Booking
@@ -131,6 +131,9 @@ export const showForegroundRideNotification = async (
   const dropArea = (request.destination_area_name || '').trim() || 'Destination Area';
   const fare = Math.round(Number(request.estimated_fare || 0));
   const passengerCount = Number(request.passengers || 1);
+  const targetUrl = window.location?.origin
+    ? new URL('/driver', window.location.origin).href
+    : '/driver';
 
   const title = 'New Ride Request';
   const options: NotificationOptions & { renotify?: boolean } = {
@@ -144,16 +147,32 @@ export const showForegroundRideNotification = async (
     data: {
       bookingId: request.id,
       bookingReference: request.booking_reference,
-      url: '/driver'
+      url: targetUrl
     }
   };
+
+  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+    try {
+      const reg = await ensurePushServiceWorkerRegistration();
+      if (reg && typeof reg.showNotification === 'function') {
+        await reg.showNotification(title, options);
+        return null;
+      }
+    } catch {
+      // Fall back to direct Notification API below if SW showNotification fails
+    }
+  }
 
   try {
     const instance = new Notification(title, options);
     instance.onclick = () => {
       try {
         window.focus();
-        document.getElementById('incoming-requests-section')?.scrollIntoView({ behavior: 'smooth' });
+        if (window.location?.pathname && !window.location.pathname.startsWith('/driver')) {
+          window.location.assign(targetUrl);
+        } else {
+          document.getElementById('incoming-requests-section')?.scrollIntoView({ behavior: 'smooth' });
+        }
         instance.close();
       } catch {
         // Ignore focus/scroll failures
@@ -161,17 +180,6 @@ export const showForegroundRideNotification = async (
     };
     return instance;
   } catch {
-    // Android Chrome & certain PWAs require ServiceWorkerRegistration.showNotification()
-    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-      try {
-        const reg = await navigator.serviceWorker.getRegistration();
-        if (reg && typeof reg.showNotification === 'function') {
-          await reg.showNotification(title, options);
-        }
-      } catch {
-        // Ignore fallback notification error
-      }
-    }
     return null;
   }
 };
@@ -240,9 +248,53 @@ export const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   return outputArray;
 };
 
+const waitForServiceWorkerReady = async (
+  registration?: ServiceWorkerRegistration
+): Promise<ServiceWorkerRegistration | undefined> => {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+    return registration;
+  }
+
+  const pendingWorker = registration?.installing || registration?.waiting;
+  const activationPromise = pendingWorker
+    ? new Promise<ServiceWorkerRegistration | undefined>((resolve) => {
+        if (pendingWorker.state === 'activated' || registration?.active) {
+          resolve(registration);
+          return;
+        }
+        const onStateChange = () => {
+          if (pendingWorker.state === 'activated' || registration?.active) {
+            pendingWorker.removeEventListener('statechange', onStateChange);
+            resolve(registration);
+          } else if (pendingWorker.state === 'redundant') {
+            pendingWorker.removeEventListener('statechange', onStateChange);
+            resolve(undefined);
+          }
+        };
+        pendingWorker.addEventListener('statechange', onStateChange);
+      })
+    : undefined;
+
+  const readyPromise = navigator.serviceWorker.ready;
+  const racers: Array<Promise<ServiceWorkerRegistration | undefined>> = [
+    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 10000))
+  ];
+  if (readyPromise) racers.push(readyPromise);
+  if (activationPromise) racers.push(activationPromise);
+
+  const settled = await Promise.race(racers);
+  if (settled) return settled;
+
+  try {
+    return (await navigator.serviceWorker.getRegistration('/')) || registration;
+  } catch {
+    return registration;
+  }
+};
+
 /**
- * Reuses an active service worker registration when present, or falls back
- * to registering `/sw.js` / awaiting `navigator.serviceWorker.ready`.
+ * Reuses an active service worker registration for `/` when present, registers `/sw.js` if missing,
+ * and waits until the service worker is activated so PushManager.subscribe() never fails in normal browser tabs.
  */
 export const ensurePushServiceWorkerRegistration = async (): Promise<
   ServiceWorkerRegistration | undefined
@@ -251,20 +303,37 @@ export const ensurePushServiceWorkerRegistration = async (): Promise<
     return undefined;
   }
 
-  let registration = await navigator.serviceWorker.getRegistration();
+  let registration =
+    (await navigator.serviceWorker.getRegistration('/')) ||
+    (await navigator.serviceWorker.getRegistration());
+
   if (!registration && typeof navigator.serviceWorker.register === 'function') {
     try {
-      registration = await navigator.serviceWorker.register('/sw.js');
+      registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
     } catch {
       // Fall back to waiting for ready registration below
     }
   }
 
-  if (!registration && navigator.serviceWorker.ready) {
-    registration = await Promise.race<ServiceWorkerRegistration | undefined>([
-      navigator.serviceWorker.ready,
-      new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 4000))
-    ]);
+  const needsActivation =
+    !registration ||
+    (('active' in registration || 'installing' in registration || 'waiting' in registration) &&
+      !registration.active);
+
+  const readyPromise = navigator.serviceWorker.ready as Promise<ServiceWorkerRegistration> | undefined;
+  if (needsActivation && (readyPromise || registration?.installing || registration?.waiting)) {
+    const readyRegistration = await waitForServiceWorkerReady(registration);
+    if (readyRegistration) {
+      registration = readyRegistration;
+    }
+  }
+
+  if (
+    registration &&
+    ('active' in registration || 'installing' in registration || 'waiting' in registration) &&
+    !registration.active
+  ) {
+    return undefined;
   }
 
   return registration;
@@ -366,12 +435,21 @@ export const ensureDriverPushSubscription = async (options?: {
 
     if (options?.showPreview) {
       try {
+        const previewTargetUrl = window.location?.origin
+          ? new URL('/driver', window.location.origin).href
+          : '/driver';
         await registration.showNotification('Clik2Go Driver Console', {
           body: 'Push alerts are now enabled for incoming ride bookings.',
           icon: '/pwa-192x192.png',
           badge: '/pwa-192x192.png',
-          silent: false
-        });
+          tag: 'driver-notifications-enabled',
+          renotify: false,
+          silent: false,
+          requireInteraction: false,
+          data: {
+            url: previewTargetUrl
+          }
+        } as NotificationOptions & { renotify?: boolean });
       } catch {
         // Subscription saved even if immediate preview notification fails
       }
