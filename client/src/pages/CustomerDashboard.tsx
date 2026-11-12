@@ -1,7 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { api, Booking, TripBooking, getCashfreeMode } from '../api/client';
+import { api, Booking, TripBooking, TripDestination, getCashfreeMode } from '../api/client';
 import { load } from '@cashfreepayments/cashfree-js';
+import {
+  PlaceSuggestion,
+  ensureGooglePlacesLoaded,
+  searchPlacesNew,
+  fetchPlaceDetailsNew
+} from '../utils/places';
 import {
   Car,
   Compass,
@@ -17,7 +23,9 @@ import {
   Users,
   MapPin,
   Loader2,
-  LifeBuoy
+  LifeBuoy,
+  Plus,
+  Trash2
 } from 'lucide-react';
 
 interface CustomerDashboardProps {
@@ -32,6 +40,25 @@ const TRIP_STATUS_LABELS: Record<string, { label: string; color: string }> = {
   CANCELLED: { label: 'Cancelled',     color: 'bg-rose-950/40 text-rose-400 border border-rose-800' },
 };
 
+const getLocalTodayYmd = (): string => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const getLocalNowHm = (): string => {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+};
+
+interface DestinationStopItem extends TripDestination {
+  uid: number;
+}
+
 export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }) => {
   const { user } = useAuth();
 
@@ -41,13 +68,24 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
   const [isLoading, setIsLoading] = useState(true);
 
   // Trip form modal state
+  const nextStopUidRef = useRef(2);
   const [showTripModal, setShowTripModal] = useState(false);
   const [showTripListModal, setShowTripListModal] = useState(false);
+  const [destinations, setDestinations] = useState<DestinationStopItem[]>([{ uid: 1, name: '' }]);
+  const [activeStopUid, setActiveStopUid] = useState<number | null>(null);
+  const activeStopUidRef = useRef<number | null>(null);
+  const [destSuggestions, setDestSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [isSearchingDest, setIsSearchingDest] = useState(false);
+  const [highlightedSuggestionIdx, setHighlightedSuggestionIdx] = useState<number>(-1);
+  const [pendingDetailsByUid, setPendingDetailsByUid] = useState<Record<number, boolean>>({});
+  const debounceTimersByUidRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const searchSeqByUidRef = useRef<Record<number, number>>({});
+  const detailSeqByUidRef = useRef<Record<number, number>>({});
+
   const [tripForm, setTripForm] = useState({
     customerName: user?.name || '',
     phoneNumber: user?.mobile || '',
     members: 1,
-    tripPlace: '',
     days: 1,
     tripDate: '',
     pickupTime: '',
@@ -57,6 +95,20 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
   const [tripSubmitError, setTripSubmitError] = useState<string | null>(null);
   const [tripPayingId, setTripPayingId] = useState<number | null>(null);
   const [tripPayError, setTripPayError] = useState<string | null>(null);
+
+  const isFetchingAnyDetails = Object.values(pendingDetailsByUid).some(Boolean);
+
+  useEffect(() => {
+    if (showTripModal) {
+      ensureGooglePlacesLoaded();
+    }
+  }, [showTripModal]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(debounceTimersByUidRef.current).forEach((timer) => clearTimeout(timer));
+    };
+  }, []);
 
   useEffect(() => {
     async function loadData() {
@@ -84,22 +136,255 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
     ['Searching for Auto', 'Driver Assigned', 'Driver Arriving', 'Ride Started'].includes(b.status)
   );
 
+  const handleDestinationInputChange = (uid: number, value: string) => {
+    if (debounceTimersByUidRef.current[uid]) {
+      clearTimeout(debounceTimersByUidRef.current[uid]);
+      delete debounceTimersByUidRef.current[uid];
+    }
+
+    // Invalidate any in-flight autocomplete search or place-details lookup for this stop
+    const nextSearchSeq = (searchSeqByUidRef.current[uid] || 0) + 1;
+    searchSeqByUidRef.current[uid] = nextSearchSeq;
+    detailSeqByUidRef.current[uid] = (detailSeqByUidRef.current[uid] || 0) + 1;
+
+    setPendingDetailsByUid((prev) => {
+      if (!prev[uid]) return prev;
+      const next = { ...prev };
+      delete next[uid];
+      return next;
+    });
+
+    setDestinations((prev) =>
+      prev.map((d) =>
+        d.uid === uid
+          ? { uid, name: value, address: undefined, placeId: undefined, lat: undefined, lng: undefined }
+          : d
+      )
+    );
+    setTripSubmitError(null);
+
+    if (value.trim().length < 2) {
+      if (activeStopUidRef.current === uid) {
+        activeStopUidRef.current = null;
+        setActiveStopUid(null);
+        setDestSuggestions([]);
+        setIsSearchingDest(false);
+        setHighlightedSuggestionIdx(-1);
+      }
+      return;
+    }
+
+    activeStopUidRef.current = uid;
+    setActiveStopUid(uid);
+    setIsSearchingDest(true);
+    setHighlightedSuggestionIdx(-1);
+
+    debounceTimersByUidRef.current[uid] = setTimeout(async () => {
+      delete debounceTimersByUidRef.current[uid];
+      const results = await searchPlacesNew(value, {
+        useLocationBias: false,
+        includeLocalFallback: false
+      });
+
+      // Discard stale responses if the user edited/cleared this stop or moved focus
+      if (searchSeqByUidRef.current[uid] !== nextSearchSeq || activeStopUidRef.current !== uid) {
+        return;
+      }
+
+      setDestSuggestions(results);
+      setIsSearchingDest(false);
+      setHighlightedSuggestionIdx(-1);
+    }, 300);
+  };
+
+  const handleSelectDestinationSuggestion = async (uid: number, suggestion: PlaceSuggestion) => {
+    if (debounceTimersByUidRef.current[uid]) {
+      clearTimeout(debounceTimersByUidRef.current[uid]);
+      delete debounceTimersByUidRef.current[uid];
+    }
+
+    // Cancel pending search results and track this specific details fetch
+    searchSeqByUidRef.current[uid] = (searchSeqByUidRef.current[uid] || 0) + 1;
+    const detailSeq = (detailSeqByUidRef.current[uid] || 0) + 1;
+    detailSeqByUidRef.current[uid] = detailSeq;
+
+    if (activeStopUidRef.current === uid) {
+      activeStopUidRef.current = null;
+      setActiveStopUid(null);
+      setDestSuggestions([]);
+      setIsSearchingDest(false);
+      setHighlightedSuggestionIdx(-1);
+    }
+
+    setPendingDetailsByUid((prev) => ({ ...prev, [uid]: true }));
+    setDestinations((prev) =>
+      prev.map((d) =>
+        d.uid === uid
+          ? {
+              uid,
+              name: suggestion.mainText || suggestion.fullText,
+              address: suggestion.fullText,
+              placeId: suggestion.placeId,
+              lat: undefined,
+              lng: undefined
+            }
+          : d
+      )
+    );
+
+    try {
+      const details = await fetchPlaceDetailsNew(suggestion.placeId, suggestion.fullText);
+      if (detailSeqByUidRef.current[uid] !== detailSeq) {
+        return;
+      }
+      if (details) {
+        setDestinations((prev) =>
+          prev.map((d) => {
+            if (d.uid !== uid) return d;
+            // Double-guard against newer user input or a different suggestion
+            if (detailSeqByUidRef.current[uid] !== detailSeq || d.placeId !== suggestion.placeId) {
+              return d;
+            }
+            return {
+              uid,
+              name: suggestion.mainText || details.address,
+              address: details.address,
+              placeId: suggestion.placeId,
+              lat: details.coords.lat,
+              lng: details.coords.lng
+            };
+          })
+        );
+      }
+    } finally {
+      if (detailSeqByUidRef.current[uid] === detailSeq) {
+        setPendingDetailsByUid((prev) => {
+          if (!prev[uid]) return prev;
+          const next = { ...prev };
+          delete next[uid];
+          return next;
+        });
+      }
+    }
+  };
+
+  const handleAddDestination = () => {
+    const newUid = nextStopUidRef.current++;
+    setTripSubmitError(null);
+    activeStopUidRef.current = null;
+    setActiveStopUid(null);
+    setDestSuggestions([]);
+    setIsSearchingDest(false);
+    setHighlightedSuggestionIdx(-1);
+    setDestinations((prev) => [...prev, { uid: newUid, name: '' }]);
+  };
+
+  const handleRemoveDestination = (uid: number, index: number) => {
+    if (index === 0) return;
+    if (debounceTimersByUidRef.current[uid]) {
+      clearTimeout(debounceTimersByUidRef.current[uid]);
+      delete debounceTimersByUidRef.current[uid];
+    }
+    searchSeqByUidRef.current[uid] = (searchSeqByUidRef.current[uid] || 0) + 1;
+    detailSeqByUidRef.current[uid] = (detailSeqByUidRef.current[uid] || 0) + 1;
+
+    setPendingDetailsByUid((prev) => {
+      if (!prev[uid]) return prev;
+      const next = { ...prev };
+      delete next[uid];
+      return next;
+    });
+
+    if (activeStopUidRef.current === uid) {
+      activeStopUidRef.current = null;
+      setActiveStopUid(null);
+      setDestSuggestions([]);
+      setIsSearchingDest(false);
+      setHighlightedSuggestionIdx(-1);
+    }
+
+    setDestinations((prev) => prev.filter((d) => d.uid !== uid));
+  };
+
   const handleTripSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setTripSubmitError(null);
     setTripSubmitSuccess(null);
 
-    if (!tripForm.tripPlace.trim()) { setTripSubmitError('Please enter a destination place.'); return; }
-    if (!tripForm.tripDate) { setTripSubmitError('Please select a travel date.'); return; }
-    if (!tripForm.pickupTime) { setTripSubmitError('Please select a pickup time.'); return; }
+    if (isFetchingAnyDetails) {
+      setTripSubmitError('Please wait for selected destination details to finish loading.');
+      return;
+    }
+
+    const cleanedDestinations: TripDestination[] = destinations.map(({ uid: _uid, ...d }) => ({
+      ...d,
+      name: (d.name || '').trim()
+    }));
+
+    if (cleanedDestinations.length === 0 || !cleanedDestinations[0].name) {
+      setTripSubmitError('Please enter your primary destination.');
+      return;
+    }
+    if (cleanedDestinations.some((d) => !d.name)) {
+      setTripSubmitError('Please fill in or remove any empty additional destinations.');
+      return;
+    }
+
+    const membersNum = Number(tripForm.members);
+    if (!Number.isInteger(membersNum) || membersNum < 1 || membersNum > 20) {
+      setTripSubmitError('Passengers must be between 1 and 20.');
+      return;
+    }
+
+    const daysNum = Number(tripForm.days);
+    if (!Number.isInteger(daysNum) || daysNum < 1 || daysNum > 30) {
+      setTripSubmitError('Trip duration must be between 1 and 30 days.');
+      return;
+    }
+
+    const todayYmd = getLocalTodayYmd();
+    if (!tripForm.tripDate) {
+      setTripSubmitError('Please select a start date.');
+      return;
+    }
+    if (tripForm.tripDate < todayYmd) {
+      setTripSubmitError('Start date cannot be in the past.');
+      return;
+    }
+
+    if (!tripForm.pickupTime) {
+      setTripSubmitError('Please select a pickup time.');
+      return;
+    }
+    if (tripForm.tripDate === todayYmd) {
+      const selectedDateTime = new Date(`${tripForm.tripDate}T${tripForm.pickupTime}:00`);
+      if (selectedDateTime.getTime() < Date.now() - 60_000) {
+        setTripSubmitError('Pickup time cannot be in the past.');
+        return;
+      }
+    }
+
+    const rawPhone = (tripForm.phoneNumber || user?.mobile || '').trim();
+    const digits = rawPhone.replace(/\D/g, '');
+    let nationalPhone = digits;
+    if (digits.length === 12 && digits.startsWith('91')) nationalPhone = digits.slice(2);
+    else if (digits.length === 11 && digits.startsWith('0')) nationalPhone = digits.slice(1);
+
+    if (!/^\d{10}$/.test(nationalPhone) || /^(\d)\1{9}$/.test(nationalPhone)) {
+      setTripSubmitError('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+
+    const formattedTripPlace = cleanedDestinations.map((d) => d.name).join(' → ');
 
     setIsTripSubmitting(true);
     const res = await api.tripBookings.create({
       customerName: tripForm.customerName || user?.name || 'Customer',
-      phoneNumber: tripForm.phoneNumber || user?.mobile || '',
-      members: Number(tripForm.members),
-      tripPlace: tripForm.tripPlace,
-      days: Number(tripForm.days),
+      phoneNumber: rawPhone,
+      members: membersNum,
+      tripPlace: formattedTripPlace,
+      destinations: cleanedDestinations,
+      days: daysNum,
       tripDate: tripForm.tripDate,
       pickupTime: tripForm.pickupTime,
     });
@@ -107,11 +392,18 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
 
     if (res.success) {
       setTripSubmitSuccess('Trip request submitted! The owner will review and contact you with fixed quote.');
+      const resetUid = nextStopUidRef.current++;
+      setDestinations([{ uid: resetUid, name: '' }]);
+      setPendingDetailsByUid({});
+      activeStopUidRef.current = null;
+      setActiveStopUid(null);
+      setDestSuggestions([]);
+      setIsSearchingDest(false);
+      setHighlightedSuggestionIdx(-1);
       setTripForm({
         customerName: user?.name || '',
         phoneNumber: user?.mobile || '',
         members: 1,
-        tripPlace: '',
         days: 1,
         tripDate: '',
         pickupTime: ''
@@ -325,7 +617,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
       {/* ── Plan a Trip Modal (Black and Lime) ───────────────────────────── */}
       {showTripModal && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto safe-top safe-bottom">
-          <div className="w-full max-w-lg bg-[#171719] rounded-3xl border border-[#303034] shadow-2xl p-6 sm:p-8 space-y-5 my-auto">
+          <div className="w-full max-w-lg bg-[#171719] rounded-3xl border border-[#303034] shadow-2xl p-6 sm:p-8 space-y-5 my-auto max-h-[90vh] overflow-y-auto">
 
             <div className="flex items-center justify-between pb-3 border-b border-[#303034]">
               <div className="flex items-center gap-2.5">
@@ -366,26 +658,192 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
             ) : (
               <form onSubmit={handleTripSubmit} className="space-y-4">
 
-                {/* Destination */}
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA] block mb-1">
-                    Destination / Place Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={tripForm.tripPlace}
-                    onChange={(e) => setTripForm({ ...tripForm, tripPlace: e.target.value })}
-                    placeholder="e.g. Tirupati, Bengaluru, Chennai..."
-                    className="w-full bg-[#202023] border border-[#303034] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-[#71717A] focus:outline-none focus:border-[#C6FF3D]"
-                  />
+                {/* Destinations (Multi-stop with Google Places Autocomplete) */}
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA]">
+                      Destination / Place Name *
+                    </label>
+                    {destinations.length < 10 && (
+                      <button
+                        type="button"
+                        onClick={handleAddDestination}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#202023] hover:bg-[#26262A] border border-[#303034] hover:border-[#C6FF3D]/60 text-[11px] font-bold text-[#C6FF3D] transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Destination</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {destinations.map((dest, idx) => {
+                    const isDropdownOpen = activeStopUid === dest.uid && dest.name.trim().length >= 2;
+                    const isStopDetailsLoading = Boolean(pendingDetailsByUid[dest.uid]);
+                    return (
+                      <div
+                        key={`trip-dest-uid-${dest.uid}`}
+                        className="relative"
+                        onBlur={(e) => {
+                          if (e.currentTarget.contains(e.relatedTarget as Node)) {
+                            return;
+                          }
+                          if (activeStopUidRef.current === dest.uid) {
+                            activeStopUidRef.current = null;
+                            setActiveStopUid(null);
+                            setDestSuggestions([]);
+                            setIsSearchingDest(false);
+                            setHighlightedSuggestionIdx(-1);
+                          }
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="relative flex-1">
+                            <MapPin className="w-3.5 h-3.5 text-[#C6FF3D] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                            <input
+                              type="text"
+                              required={idx === 0}
+                              role="combobox"
+                              aria-autocomplete="list"
+                              aria-expanded={isDropdownOpen}
+                              aria-controls={isDropdownOpen ? `trip-dest-listbox-${dest.uid}` : undefined}
+                              value={dest.name}
+                              onChange={(e) => handleDestinationInputChange(dest.uid, e.target.value)}
+                              onFocus={() => {
+                                const trimmed = dest.name.trim();
+                                if (trimmed.length >= 2 && !dest.placeId) {
+                                  if (activeStopUidRef.current !== dest.uid) {
+                                    setDestSuggestions([]);
+                                    handleDestinationInputChange(dest.uid, dest.name);
+                                  } else {
+                                    setActiveStopUid(dest.uid);
+                                  }
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (!isDropdownOpen || destSuggestions.length === 0) {
+                                  if (e.key === 'Escape' && activeStopUidRef.current === dest.uid) {
+                                    activeStopUidRef.current = null;
+                                    setActiveStopUid(null);
+                                    setDestSuggestions([]);
+                                    setHighlightedSuggestionIdx(-1);
+                                  }
+                                  return;
+                                }
+                                if (e.key === 'ArrowDown') {
+                                  e.preventDefault();
+                                  setHighlightedSuggestionIdx((prev) =>
+                                    prev < destSuggestions.length - 1 ? prev + 1 : 0
+                                  );
+                                } else if (e.key === 'ArrowUp') {
+                                  e.preventDefault();
+                                  setHighlightedSuggestionIdx((prev) =>
+                                    prev > 0 ? prev - 1 : destSuggestions.length - 1
+                                  );
+                                } else if (e.key === 'Enter' && highlightedSuggestionIdx >= 0) {
+                                  e.preventDefault();
+                                  const selected = destSuggestions[highlightedSuggestionIdx];
+                                  if (selected) {
+                                    handleSelectDestinationSuggestion(dest.uid, selected);
+                                  }
+                                } else if (e.key === 'Escape') {
+                                  e.preventDefault();
+                                  activeStopUidRef.current = null;
+                                  setActiveStopUid(null);
+                                  setDestSuggestions([]);
+                                  setHighlightedSuggestionIdx(-1);
+                                }
+                              }}
+                              placeholder={
+                                idx === 0
+                                  ? 'Search primary destination (e.g. Tirupati, Bengaluru...)'
+                                  : `Search stop ${idx + 1} (e.g. Kanipakam, Kalahasti...)`
+                              }
+                              aria-label={idx === 0 ? 'Destination / Place Name' : `Stop ${idx + 1}`}
+                              className="w-full bg-[#202023] border border-[#303034] rounded-xl pl-8 pr-8 py-2.5 text-xs text-white placeholder-[#71717A] focus:outline-none focus:border-[#C6FF3D]"
+                            />
+                            {isStopDetailsLoading ? (
+                              <Loader2
+                                aria-label="Loading place details"
+                                className="w-3.5 h-3.5 animate-spin text-[#C6FF3D] absolute right-2.5 top-1/2 -translate-y-1/2"
+                              />
+                            ) : (
+                              dest.name && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDestinationInputChange(dest.uid, '')}
+                                  aria-label="Clear destination"
+                                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#71717A] hover:text-white cursor-pointer"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )
+                            )}
+                          </div>
+
+                          {idx > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveDestination(dest.uid, idx)}
+                              aria-label={`Remove stop ${idx + 1}`}
+                              className="p-2.5 rounded-xl bg-[#202023] hover:bg-rose-950/40 border border-[#303034] hover:border-rose-800 text-[#A1A1AA] hover:text-rose-400 transition-colors cursor-pointer flex-shrink-0"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        {isDropdownOpen && (
+                          <div
+                            id={`trip-dest-listbox-${dest.uid}`}
+                            role="listbox"
+                            className="absolute left-0 right-0 mt-1 z-30 bg-[#171719] border border-[#303034] rounded-xl shadow-2xl max-h-52 overflow-y-auto divide-y divide-[#26262A]"
+                          >
+                            {isSearchingDest ? (
+                              <div className="px-3.5 py-3 text-xs text-[#A1A1AA] flex items-center gap-2">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#C6FF3D]" />
+                                <span>Searching places in India...</span>
+                              </div>
+                            ) : destSuggestions.length > 0 ? (
+                              destSuggestions.map((s, sIdx) => (
+                                <button
+                                  key={`${s.placeId || s.fullText}-${sIdx}`}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={highlightedSuggestionIdx === sIdx}
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => handleSelectDestinationSuggestion(dest.uid, s)}
+                                  className={`w-full text-left px-3.5 py-2.5 transition-colors flex items-start gap-2.5 cursor-pointer ${
+                                    highlightedSuggestionIdx === sIdx
+                                      ? 'bg-[#26262A]'
+                                      : 'hover:bg-[#202023]'
+                                  }`}
+                                >
+                                  <MapPin className="w-3.5 h-3.5 text-[#C6FF3D] mt-0.5 flex-shrink-0" />
+                                  <div className="min-w-0">
+                                    <div className="text-xs font-bold text-white truncate">{s.mainText}</div>
+                                    {s.secondaryText && (
+                                      <div className="text-[10px] text-[#A1A1AA] truncate">{s.secondaryText}</div>
+                                    )}
+                                  </div>
+                                </button>
+                              ))
+                            ) : (
+                              <div className="px-3.5 py-2.5 text-[11px] text-[#A1A1AA]">
+                                No autocomplete matches found. You can continue with your typed place name.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  {/* Members */}
+                  {/* Passengers */}
                   <div>
                     <label className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA] block mb-1">
-                      Passengers
+                      Passengers (1–20)
                     </label>
                     <input
                       type="number"
@@ -398,7 +856,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
                     />
                   </div>
 
-                  {/* Days */}
+                  {/* Trip Duration */}
                   <div>
                     <label className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA] block mb-1">
                       Trip Duration (Days)
@@ -416,14 +874,15 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  {/* Travel Date */}
+                  {/* Start Date */}
                   <div>
                     <label className="text-[10px] font-bold uppercase tracking-wider text-[#A1A1AA] block mb-1">
-                      Travel Date
+                      Start Date
                     </label>
                     <input
                       type="date"
                       required
+                      min={getLocalTodayYmd()}
                       value={tripForm.tripDate}
                       onChange={(e) => setTripForm({ ...tripForm, tripDate: e.target.value })}
                       className="w-full bg-[#202023] border border-[#303034] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#C6FF3D]"
@@ -438,6 +897,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
                     <input
                       type="time"
                       required
+                      min={tripForm.tripDate === getLocalTodayYmd() ? getLocalNowHm() : undefined}
                       value={tripForm.pickupTime}
                       onChange={(e) => setTripForm({ ...tripForm, pickupTime: e.target.value })}
                       className="w-full bg-[#202023] border border-[#303034] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#C6FF3D]"
@@ -469,13 +929,18 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
 
                 <button
                   type="submit"
-                  disabled={isTripSubmitting}
-                  className="w-full py-3.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs rounded-xl transition-all shadow-glow-lime disabled:opacity-50 flex items-center justify-center gap-2"
+                  disabled={isTripSubmitting || isFetchingAnyDetails}
+                  className="w-full py-3.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs rounded-xl transition-all shadow-glow-lime disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {isTripSubmitting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
                       <span>Submitting Request...</span>
+                    </>
+                  ) : isFetchingAnyDetails ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Loading Place Details...</span>
                     </>
                   ) : (
                     <span>Submit Trip Request</span>
@@ -531,6 +996,18 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ navigate }
                         <div>
                           <p className="text-xs text-[#A1A1AA]">Ref: {trip.booking_reference}</p>
                           <h4 className="text-sm font-bold text-white">{trip.trip_place}</h4>
+                          {Array.isArray(trip.trip_destinations) && trip.trip_destinations.length > 1 && (
+                            <div className="mt-1.5 flex flex-wrap gap-1.5">
+                              {trip.trip_destinations.map((dest, idx) => (
+                                <span
+                                  key={`${trip.id}-stop-${idx}`}
+                                  className="inline-flex items-center px-2 py-0.5 rounded-lg bg-[#171719] border border-[#303034] text-[10px] font-semibold text-[#C6FF3D]"
+                                >
+                                  Stop {idx + 1}: {dest.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${statusInfo.color}`}>
                           {statusInfo.label}

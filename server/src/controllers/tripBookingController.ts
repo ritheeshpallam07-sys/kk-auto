@@ -15,6 +15,7 @@ export class TripBookingController {
         phoneNumber,
         members,
         tripPlace,
+        destinations,
         days,
         tripDate,
         pickupTime
@@ -25,6 +26,7 @@ export class TripBookingController {
         phoneNumber,
         members,
         tripPlace,
+        destinations,
         days,
         tripDate,
         pickupTime

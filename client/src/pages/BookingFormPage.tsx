@@ -3,6 +3,16 @@ import { useAuth } from '../context/AuthContext';
 import { api, FareEstimate } from '../api/client';
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
 import {
+  Coordinates,
+  PlaceSuggestion,
+  LOCATION_COORDINATES,
+  DEFAULT_MAP_CENTER,
+  GOOGLE_MAPS_API_KEY,
+  resolveLocalCoordinates,
+  searchPlacesNew as sharedSearchPlacesNew,
+  fetchPlaceDetailsNew as sharedFetchPlaceDetailsNew
+} from '../utils/places';
+import {
   MapPin,
   Clock,
   Calendar,
@@ -27,35 +37,8 @@ interface BookingFormPageProps {
   navigate: (path: string) => void;
 }
 
-interface Coordinates {
-  lat: number;
-  lng: number;
-}
-
-export const LOCATION_COORDINATES: Record<string, Coordinates> = {
-  'JNTUA': { lat: 13.6508, lng: 78.7860 },
-  'Cross': { lat: 13.6525, lng: 78.8035 },
-  'Bus Stand': { lat: 13.6455, lng: 78.8035 },
-  'Marava': { lat: 13.6408, lng: 78.8010 },
-  'Indiramma Colony': { lat: 13.6550, lng: 78.7960 },
-  'Cross Road': { lat: 13.6525, lng: 78.8035 },
-  'Railway Station': { lat: 13.6420, lng: 78.8080 },
-  'Main Bazaar': { lat: 13.6475, lng: 78.8020 }
-};
-
-const DEFAULT_MAP_CENTER: Coordinates = {
-  lat: 13.6480,
-  lng: 78.7950,
-};
-
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-
-export interface PlaceSuggestion {
-  placeId: string;
-  mainText: string;
-  secondaryText: string;
-  fullText: string;
-}
+export type { PlaceSuggestion };
+export { LOCATION_COORDINATES };
 
 export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) => {
   const { user, logout, refreshUser } = useAuth();
@@ -133,15 +116,7 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
   const [mapsError, setMapsError] = useState<string | null>(null);
   const [activePinMode, setActivePinMode] = useState<'pickup' | 'destination' | null>(null);
 
-  const resolveCoordinates = (name: string): Coordinates | null => {
-    const clean = name.trim();
-    if (LOCATION_COORDINATES[clean]) return LOCATION_COORDINATES[clean];
-    const match = Object.keys(LOCATION_COORDINATES).find(
-      k => k.toLowerCase() === clean.toLowerCase()
-    );
-    if (match) return LOCATION_COORDINATES[match];
-    return null;
-  };
+  const resolveCoordinates = (name: string): Coordinates | null => resolveLocalCoordinates(name);
 
   // 1. Initialize Google Maps with dark theme styling
   useEffect(() => {
@@ -329,201 +304,22 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
   }, []);
 
   // ── Places API (New) Autocomplete Search ──
-  const searchPlacesNew = async (
+  const searchPlacesNew = (
     query: string,
     biasCoords?: Coordinates | null
-  ): Promise<PlaceSuggestion[]> => {
-    const cleanQuery = query.trim();
-    if (!cleanQuery || cleanQuery.length < 2) return [];
-
-    const center = biasCoords || DEFAULT_MAP_CENTER;
-
-    // 1. Primary Engine: Google Maps JS SDK Places API (New) AutocompleteSuggestion
-    const google = (window as any).google;
-    const placesLib = google?.maps?.places;
-    if (placesLib?.AutocompleteSuggestion?.fetchAutocompleteSuggestions) {
-      try {
-        const response = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
-          input: cleanQuery,
-          includedRegionCodes: ['in'],
-          locationBias: {
-            lat: center.lat,
-            lng: center.lng
-          }
-        });
-
-        if (response?.suggestions && Array.isArray(response.suggestions)) {
-          const results: PlaceSuggestion[] = response.suggestions.map((s: any) => {
-            const pred = s.placePrediction;
-            const placeId = pred?.placeId || (pred?.place ? String(pred.place).replace('places/', '') : '');
-            const mainText = pred?.mainText?.toString() || pred?.text?.toString() || cleanQuery;
-            const secondaryText = pred?.secondaryText?.toString() || '';
-            const fullText = pred?.text?.toString() || `${mainText}${secondaryText ? ', ' + secondaryText : ''}`;
-            return { placeId, mainText, secondaryText, fullText };
-          });
-
-          if (results.length > 0) return results;
-        }
-      } catch (err: any) {
-        // SDK fetch error; silently fall through to REST
-      }
-    }
-
-    // 2. Secondary Engine: Direct REST Places API (New)
-    if (GOOGLE_MAPS_API_KEY) {
-      try {
-        const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY
-          },
-          body: JSON.stringify({
-            input: cleanQuery,
-            includedRegionCodes: ['in'],
-            locationBias: {
-              circle: {
-                center: { latitude: center.lat, longitude: center.lng },
-                radius: 35000.0
-              }
-            }
-          })
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.suggestions && Array.isArray(data.suggestions)) {
-            const results: PlaceSuggestion[] = data.suggestions.map((s: any) => {
-              const pred = s.placePrediction;
-              const placeId = pred?.placeId || (pred?.place ? String(pred.place).replace('places/', '') : '');
-              const mainText = pred?.structuredFormat?.mainText?.text || pred?.text?.text || cleanQuery;
-              const secondaryText = pred?.structuredFormat?.secondaryText?.text || '';
-              const fullText = pred?.text?.text || `${mainText}${secondaryText ? ', ' + secondaryText : ''}`;
-              return { placeId, mainText, secondaryText, fullText };
-            });
-
-            if (results.length > 0) return results;
-          }
-        }
-      } catch (err) {
-        // Fall through to local landmarks
-      }
-    }
-
-    // 3. Tertiary Engine: Local Landmark Fallback
-    return Object.keys(LOCATION_COORDINATES)
-      .filter((name) => name.toLowerCase().includes(cleanQuery.toLowerCase()))
-      .map((name) => ({
-        placeId: `local_${name}`,
-        mainText: name,
-        secondaryText: 'Madanapalle Service Area',
-        fullText: `${name}, Madanapalle`
-      }));
-  };
+  ): Promise<PlaceSuggestion[]> =>
+    sharedSearchPlacesNew(query, {
+      biasCoords,
+      useLocationBias: true,
+      includeLocalFallback: true
+    });
 
   // ── Places API (New) Fetch Place Details ──
-  const fetchPlaceDetailsNew = async (
+  const fetchPlaceDetailsNew = (
     placeId: string,
     fallbackText: string
-  ): Promise<{ address: string; coords: Coordinates } | null> => {
-    // Check local landmark prefix
-    if (placeId.startsWith('local_')) {
-      const name = placeId.replace('local_', '');
-      if (LOCATION_COORDINATES[name]) {
-        return {
-          address: `${name}, Madanapalle`,
-          coords: LOCATION_COORDINATES[name]
-        };
-      }
-    }
-
-    const localMatch = resolveCoordinates(fallbackText);
-
-    // 1. Primary Engine: Google Maps JS SDK Place class
-    const google = (window as any).google;
-    const placesLib = google?.maps?.places;
-    if (placesLib?.Place && placeId) {
-      try {
-        const place = new placesLib.Place({ id: placeId });
-        await place.fetchFields({
-          fields: ['location', 'formattedAddress', 'displayName']
-        });
-
-        if (place.location) {
-          const lat = typeof place.location.lat === 'function' ? place.location.lat() : place.location.lat;
-          const lng = typeof place.location.lng === 'function' ? place.location.lng() : place.location.lng;
-          const address = place.formattedAddress || (typeof place.displayName === 'string' ? place.displayName : place.displayName?.text) || fallbackText;
-          return { address, coords: { lat, lng } };
-        }
-      } catch (err) {
-        // Fall through to REST
-      }
-    }
-
-    // 2. Secondary Engine: Direct REST Places API (New)
-    if (GOOGLE_MAPS_API_KEY && placeId) {
-      try {
-        const res = await fetch(
-          `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?fields=id,formattedAddress,location,displayName`,
-          {
-            headers: {
-              'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY
-            }
-          }
-        );
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.location?.latitude && data?.location?.longitude) {
-            const address = data.formattedAddress || data.displayName?.text || fallbackText;
-            return {
-              address,
-              coords: {
-                lat: data.location.latitude,
-                lng: data.location.longitude
-              }
-            };
-          }
-        }
-      } catch (err) {
-        // Fall through to geocoder
-      }
-    }
-
-    // 3. Tertiary Engine: Google Maps Geocoder fallback
-    if (google?.maps?.Geocoder && fallbackText) {
-      try {
-        const geocoder = new google.maps.Geocoder();
-        const geoResult = await new Promise<any>((resolve) => {
-          geocoder.geocode({ address: fallbackText }, (results: any, status: any) => {
-            if (status === 'OK' && results && results[0]?.geometry?.location) {
-              resolve(results[0]);
-            } else {
-              resolve(null);
-            }
-          });
-        });
-
-        if (geoResult) {
-          return {
-            address: geoResult.formatted_address || fallbackText,
-            coords: {
-              lat: geoResult.geometry.location.lat(),
-              lng: geoResult.geometry.location.lng()
-            }
-          };
-        }
-      } catch (err) {
-        // Fall through
-      }
-    }
-
-    if (localMatch) {
-      return { address: fallbackText, coords: localMatch };
-    }
-
-    return null;
-  };
+  ): Promise<{ address: string; coords: Coordinates } | null> =>
+    sharedFetchPlaceDetailsNew(placeId, fallbackText);
 
   const handlePickupInputChange = (val: string) => {
     setFromLocation(val);

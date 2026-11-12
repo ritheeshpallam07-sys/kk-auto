@@ -269,7 +269,8 @@ CREATE TABLE IF NOT EXISTS trip_bookings (
   customer_name VARCHAR(255) NOT NULL,
   phone_number VARCHAR(50) NOT NULL,
   members INTEGER NOT NULL CHECK (members > 0),
-  trip_place VARCHAR(255) NOT NULL,
+  trip_place TEXT NOT NULL,
+  trip_destinations JSONB,
   days INTEGER NOT NULL CHECK (days > 0),
   trip_date VARCHAR(50) NOT NULL,
   pickup_time VARCHAR(50) NOT NULL,
@@ -431,6 +432,25 @@ CREATE TABLE IF NOT EXISTS support_messages (
 
 CREATE INDEX IF NOT EXISTS idx_support_messages_ticket_id ON support_messages(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_support_messages_created_at ON support_messages(created_at);
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = CURRENT_SCHEMA()
+      AND table_name = 'trip_bookings'
+      AND column_name = 'trip_place'
+      AND data_type <> 'text'
+  ) THEN
+    ALTER TABLE trip_bookings
+      ALTER COLUMN trip_place TYPE TEXT;
+  END IF;
+END $$;
+
+ALTER TABLE trip_bookings
+  ADD COLUMN IF NOT EXISTS trip_destinations JSONB;
+
 
 
 

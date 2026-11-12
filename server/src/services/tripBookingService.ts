@@ -1,6 +1,14 @@
 import { query } from '../config/db';
 import { Cashfree, CFEnvironment } from 'cashfree-pg';
 
+export interface TripDestination {
+  name: string;
+  address?: string;
+  placeId?: string;
+  lat?: number;
+  lng?: number;
+}
+
 export interface TripBooking {
   id: number;
   booking_reference: string;
@@ -9,6 +17,7 @@ export interface TripBooking {
   phone_number: string;
   members: number;
   trip_place: string;
+  trip_destinations?: TripDestination[];
   days: number;
   trip_date: string;
   pickup_time: string;
@@ -30,11 +39,161 @@ export interface CreateTripBookingInput {
   customerName: string;
   phoneNumber: string;
   members: number;
-  tripPlace: string;
+  tripPlace?: string;
+  destinations?: Array<TripDestination | string>;
   days: number;
   tripDate: string;
   pickupTime: string;
 }
+
+const MAX_TRIP_DESTINATIONS = 10;
+
+const normalizeDestinationsInput = (
+  destinations?: Array<TripDestination | string>,
+  fallbackPlace?: string
+): TripDestination[] => {
+  if (Array.isArray(destinations)) {
+    if (destinations.length > MAX_TRIP_DESTINATIONS) {
+      throw new Error(`You can add a maximum of ${MAX_TRIP_DESTINATIONS} destinations per trip.`);
+    }
+
+    if (destinations.length > 0) {
+      const normalized: TripDestination[] = [];
+      for (const entry of destinations) {
+        if (typeof entry === 'string') {
+          const name = entry.trim();
+          if (!name) {
+            throw new Error('Please fill in or remove empty destination fields.');
+          }
+          normalized.push({ name });
+          continue;
+        }
+
+        if (!entry || typeof entry !== 'object') {
+          throw new Error('Invalid destination entry provided.');
+        }
+
+        const name = (entry.name || entry.address || '').trim();
+        if (!name) {
+          throw new Error('Please fill in or remove empty destination fields.');
+        }
+
+        const item: TripDestination = { name };
+        if (typeof entry.address === 'string' && entry.address.trim()) {
+          item.address = entry.address.trim();
+        }
+        if (typeof entry.placeId === 'string' && entry.placeId.trim()) {
+          item.placeId = entry.placeId.trim();
+        }
+        if (typeof entry.lat === 'number' && Number.isFinite(entry.lat)) {
+          item.lat = entry.lat;
+        }
+        if (typeof entry.lng === 'number' && Number.isFinite(entry.lng)) {
+          item.lng = entry.lng;
+        }
+        normalized.push(item);
+      }
+      return normalized;
+    }
+
+    if (!(fallbackPlace || '').trim()) {
+      throw new Error('At least one destination is required.');
+    }
+  } else if (destinations !== undefined) {
+    throw new Error('Destinations must be provided as a valid list.');
+  }
+
+  const singlePlace = (fallbackPlace || '').trim();
+  if (!singlePlace) {
+    throw new Error('At least one destination is required.');
+  }
+  return [{ name: singlePlace }];
+};
+
+const normalizeTripBookingRow = (row: TripBooking): TripBooking => {
+  let parsedDestinations: TripDestination[] = [];
+  const raw = (row as any).trip_destinations;
+
+  if (Array.isArray(raw)) {
+    parsedDestinations = raw
+      .filter((d) => d && typeof d.name === 'string' && d.name.trim())
+      .map((d) => ({
+        name: d.name.trim(),
+        ...(d.address ? { address: String(d.address) } : {}),
+        ...(d.placeId ? { placeId: String(d.placeId) } : {}),
+        ...(typeof d.lat === 'number' && Number.isFinite(d.lat) ? { lat: d.lat } : {}),
+        ...(typeof d.lng === 'number' && Number.isFinite(d.lng) ? { lng: d.lng } : {})
+      }));
+  } else if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const json = JSON.parse(raw);
+      if (Array.isArray(json)) {
+        parsedDestinations = json
+          .filter((d) => d && typeof d.name === 'string' && d.name.trim())
+          .map((d) => ({
+            name: d.name.trim(),
+            ...(d.address ? { address: String(d.address) } : {}),
+            ...(d.placeId ? { placeId: String(d.placeId) } : {}),
+            ...(typeof d.lat === 'number' && Number.isFinite(d.lat) ? { lat: d.lat } : {}),
+            ...(typeof d.lng === 'number' && Number.isFinite(d.lng) ? { lng: d.lng } : {})
+          }));
+      }
+    } catch {
+      parsedDestinations = [];
+    }
+  }
+
+  if (parsedDestinations.length === 0 && typeof row.trip_place === 'string' && row.trip_place.trim()) {
+    parsedDestinations = [{ name: row.trip_place.trim() }];
+  }
+
+  return {
+    ...row,
+    trip_destinations: parsedDestinations
+  };
+};
+
+const validatePhoneNumber = (phoneNumber: string): void => {
+  const digits = phoneNumber.replace(/\D/g, '');
+  let national = digits;
+  if (digits.length === 12 && digits.startsWith('91')) {
+    national = digits.slice(2);
+  } else if (digits.length === 11 && digits.startsWith('0')) {
+    national = digits.slice(1);
+  }
+  if (!/^\d{10}$/.test(national) || /^(\d)\1{9}$/.test(national)) {
+    throw new Error('Please provide a valid 10-digit phone number.');
+  }
+};
+
+const validateTripDateAndTime = (tripDate: string, pickupTime: string): void => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(tripDate)) {
+    throw new Error('Please provide a valid travel date (YYYY-MM-DD).');
+  }
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(pickupTime)) {
+    throw new Error('Please provide a valid pickup time (HH:MM).');
+  }
+
+  const [year, month, day] = tripDate.split('-').map(Number);
+  const checkUtc = new Date(Date.UTC(year, month - 1, day));
+  if (
+    checkUtc.getUTCFullYear() !== year ||
+    checkUtc.getUTCMonth() + 1 !== month ||
+    checkUtc.getUTCDate() !== day
+  ) {
+    throw new Error('Please provide a valid calendar travel date.');
+  }
+
+  // Interpret trip date & pickup time in IST (+05:30) with a 60s submission grace window
+  const scheduledIst = new Date(`${tripDate}T${pickupTime}:00+05:30`);
+  if (isNaN(scheduledIst.getTime())) {
+    throw new Error('Invalid travel date or pickup time.');
+  }
+
+  if (scheduledIst.getTime() < Date.now() - 60_000) {
+    throw new Error('Travel date and pickup time cannot be in the past.');
+  }
+};
 
 export class TripBookingService {
   /**
@@ -77,7 +236,7 @@ export class TripBookingService {
   ): Promise<TripBooking> {
     const customerName = (data.customerName || '').trim();
     const phoneNumber = (data.phoneNumber || '').trim();
-    const tripPlace = (data.tripPlace || '').trim();
+    const rawTripPlace = (data.tripPlace || '').trim();
     const tripDate = (data.tripDate || '').trim();
     const pickupTime = (data.pickupTime || '').trim();
     const members = Number(data.members);
@@ -87,30 +246,28 @@ export class TripBookingService {
       throw new Error('Customer Name is required.');
     }
 
-    const cleanPhone = phoneNumber.replace(/\D/g, '');
-    if (!cleanPhone || cleanPhone.length < 10) {
-      throw new Error('Please provide a valid 10-digit phone number.');
+    validatePhoneNumber(phoneNumber);
+
+    if (!Number.isInteger(members) || members < 1 || members > 20) {
+      throw new Error('Number of passengers must be between 1 and 20.');
     }
 
-    if (!Number.isInteger(members) || members <= 0) {
-      throw new Error('Number of members must be a positive number.');
-    }
+    const destinations = normalizeDestinationsInput(data.destinations, rawTripPlace);
+    const tripPlace = destinations.map((d) => d.name).join(' → ');
 
-    if (!tripPlace) {
-      throw new Error('Trip Place is required.');
-    }
-
-    if (!Number.isInteger(days) || days <= 0) {
-      throw new Error('Number of days must be a positive number.');
+    if (!Number.isInteger(days) || days < 1 || days > 30) {
+      throw new Error('Trip duration must be between 1 and 30 days.');
     }
 
     if (!tripDate) {
-      throw new Error('Trip Date is required.');
+      throw new Error('Travel Date is required.');
     }
 
     if (!pickupTime) {
       throw new Error('Pickup Time is required.');
     }
+
+    validateTripDateAndTime(tripDate, pickupTime);
 
     // Generate unique booking reference: e.g. CB-104829
     let bookingReference = '';
@@ -137,6 +294,7 @@ export class TripBookingService {
         phone_number,
         members,
         trip_place,
+        trip_destinations,
         days,
         trip_date,
         pickup_time,
@@ -146,7 +304,7 @@ export class TripBookingService {
         created_at,
         updated_at
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, 'NEW', NULL, 'PENDING', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        $1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, 'NEW', NULL, 'PENDING', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
       ) RETURNING *`,
       [
         bookingReference,
@@ -155,13 +313,14 @@ export class TripBookingService {
         phoneNumber,
         members,
         tripPlace,
+        JSON.stringify(destinations),
         days,
         tripDate,
         pickupTime
       ]
     );
 
-    return result.rows[0];
+    return normalizeTripBookingRow(result.rows[0]);
   }
 
   /**
@@ -174,7 +333,7 @@ export class TripBookingService {
        ORDER BY created_at DESC`,
       [customerId]
     );
-    return result.rows;
+    return result.rows.map(normalizeTripBookingRow);
   }
 
   /**
@@ -190,7 +349,7 @@ export class TripBookingService {
       throw new Error('Trip booking request not found.');
     }
 
-    const trip = result.rows[0];
+    const trip = normalizeTripBookingRow(result.rows[0]);
     if (customerId && Number(trip.customer_id) !== Number(customerId)) {
       throw new Error('You are not authorized to view this trip booking.');
     }
@@ -208,7 +367,7 @@ export class TripBookingService {
        JOIN users u ON tb.customer_id = u.id
        ORDER BY tb.created_at DESC`
     );
-    return result.rows;
+    return result.rows.map(normalizeTripBookingRow);
   }
 
   /**
@@ -258,7 +417,7 @@ export class TripBookingService {
       [newPrice, newStatus, id]
     );
 
-    return result.rows[0];
+    return normalizeTripBookingRow(result.rows[0]);
   }
 
   /**
@@ -401,7 +560,7 @@ export class TripBookingService {
       [paymentRef, paymentMethod, tripId]
     );
 
-    return updated.rows[0];
+    return normalizeTripBookingRow(updated.rows[0]);
   }
 
   /**
@@ -451,7 +610,7 @@ export class TripBookingService {
       [tripBookingId]
     );
 
-    return result.rows[0];
+    return normalizeTripBookingRow(result.rows[0]);
   }
     
   

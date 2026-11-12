@@ -1198,11 +1198,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
                     if (tripStatusFilter !== 'all' && trip.status !== tripStatusFilter) return false;
                     const q = tripSearchQuery.trim().toLowerCase();
                     if (!q) return true;
+                    const destMatch = Array.isArray(trip.trip_destinations)
+                      ? trip.trip_destinations.some(
+                          (d) =>
+                            d.name.toLowerCase().includes(q) ||
+                            (d.address && d.address.toLowerCase().includes(q))
+                        )
+                      : false;
                     return (
                       trip.booking_reference.toLowerCase().includes(q) ||
                       trip.customer_name.toLowerCase().includes(q) ||
                       trip.phone_number.toLowerCase().includes(q) ||
-                      trip.trip_place.toLowerCase().includes(q)
+                      trip.trip_place.toLowerCase().includes(q) ||
+                      destMatch
                     );
                   })
                   .map((trip) => (
@@ -1229,7 +1237,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
                         <div className="font-bold text-white">
                           {trip.trip_place}
                         </div>
-                        <div className="text-[10px] text-[#A1A1AA]">
+                        {Array.isArray(trip.trip_destinations) && trip.trip_destinations.length > 1 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {trip.trip_destinations.map((dest, idx) => (
+                              <span
+                                key={`${trip.id}-dest-${idx}`}
+                                className="inline-flex items-center px-1.5 py-0.5 rounded bg-[#202023] border border-[#303034] text-[10px] text-[#C6FF3D]"
+                              >
+                                {idx + 1}. {dest.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="text-[10px] text-[#A1A1AA] mt-0.5">
                           {trip.members} member(s) • {trip.days} day(s)
                         </div>
                       </td>

@@ -115,6 +115,14 @@ destination_longitude?: number | null;
   updated_at: string;
 }
 
+export interface TripDestination {
+  name: string;
+  address?: string;
+  placeId?: string;
+  lat?: number;
+  lng?: number;
+}
+
 export interface TripBooking {
   id: number;
   booking_reference: string;
@@ -124,6 +132,7 @@ export interface TripBooking {
   members: number;
   email?: string;
   trip_place: string;
+  trip_destinations?: TripDestination[];
   days: number;
   trip_date: string;
   pickup_time: string;
@@ -180,6 +189,9 @@ export const getCashfreeMode = (orderEnvironment?: string): 'sandbox' | 'product
 
 export interface DriverEarningsSummary {
   todayEarnings: number;
+  todayRidesCount?: number;
+  averageRating?: number | null;
+  ratingCount?: number;
   totalEarnings: number;
   pendingSettlement: number;
   settledAmount: number;
@@ -702,6 +714,7 @@ savePushSubscription: (subscription: {
       phoneNumber: string;
       members: number;
       tripPlace: string;
+      destinations?: TripDestination[];
       days: number;
       tripDate: string;
       pickupTime: string;

@@ -18,6 +18,45 @@ let cashfree: any = new Cashfree(
   process.env.CASHFREE_SECRET_KEY || ''
 );
 cashfree.XApiVersion = '2025-01-01';
+const IST_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Kolkata',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit'
+});
+
+/**
+ * Converts a Date/ISO timestamp to its YYYY-MM-DD calendar date in Asia/Kolkata (IST).
+ */
+export function toIstDateString(value: Date | string | number): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (isNaN(date.getTime())) return '';
+  const parts = IST_DATE_FORMATTER.formatToParts(date);
+  const year = parts.find((p) => p.type === 'year')?.value;
+  const month = parts.find((p) => p.type === 'month')?.value;
+  const day = parts.find((p) => p.type === 'day')?.value;
+  return year && month && day ? `${year}-${month}-${day}` : '';
+}
+
+/**
+ * Returns the YYYY-MM-DD date string and UTC ISO [start, end) window for the
+ * Asia/Kolkata (IST) calendar day containing referenceDate (12:00 AM to next 12:00 AM IST).
+ */
+export function getIstDayBoundaries(referenceDate: Date = new Date()): {
+  dateStr: string;
+  startUtcIso: string;
+  endUtcIso: string;
+} {
+  const dateStr = toIstDateString(referenceDate);
+  const startUtc = new Date(`${dateStr}T00:00:00+05:30`);
+  const endUtc = new Date(startUtc.getTime() + 24 * 60 * 60 * 1000);
+  return {
+    dateStr,
+    startUtcIso: startUtc.toISOString(),
+    endUtcIso: endUtc.toISOString()
+  };
+}
+
 export interface WebhookResult {
   processed: boolean;
   payment?: PaymentRecord;
@@ -59,6 +98,9 @@ export interface PaymentRecord {
 
 export interface DriverEarningsSummary {
   todayEarnings: number;
+  todayRidesCount: number;
+  averageRating: number | null;
+  ratingCount: number;
   totalEarnings: number;
   pendingSettlement: number;
   settledAmount: number;
@@ -917,7 +959,10 @@ const driverAmount = Number((totalFare - ownerAmount).toFixed(2));
   /**
    * Driver earnings breakdown
    */
-  public static async getDriverEarnings(userId: number): Promise<DriverEarningsSummary> {
+  public static async getDriverEarnings(
+    userId: number,
+    referenceDate: Date = new Date()
+  ): Promise<DriverEarningsSummary> {
     // 1. Get driver record
     const driverRes = await query(
       `SELECT id, payout_upi, payout_bank_account, payout_ifsc FROM drivers WHERE user_id = $1 LIMIT 1`,
@@ -947,14 +992,15 @@ const driverAmount = Number((totalFare - ownerAmount).toFixed(2));
     let pendingSettlement = 0;
     let settledAmount = 0;
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const { dateStr: todayIstStr, startUtcIso: istStartUtcIso, endUtcIso: istEndUtcIso } =
+      getIstDayBoundaries(referenceDate);
 
     for (const p of payments) {
       const amount = Number(p.driver_amount);
       totalEarnings += amount;
 
-      const pDate = new Date(p.created_at).toISOString().split('T')[0];
-      if (pDate === todayStr) {
+      const pDateIst = toIstDateString(p.created_at);
+      if (pDateIst === todayIstStr) {
         todayEarnings += amount;
       }
 
@@ -965,8 +1011,38 @@ const driverAmount = Number((totalFare - ownerAmount).toFixed(2));
       }
     }
 
+    // 3. Today's completed rides count & driver average rating using exact Asia/Kolkata [00:00, +24h) SQL boundaries
+    const completedBookingsRes = await query<{ today_rides_count: number }>(
+      `SELECT COUNT(*)::int AS today_rides_count
+       FROM bookings
+       WHERE driver_id = $1
+         AND status = 'Ride Completed'
+         AND COALESCE(updated_at, created_at) >= $2::timestamptz
+         AND COALESCE(updated_at, created_at) < $3::timestamptz`,
+      [driverId, istStartUtcIso, istEndUtcIso]
+    );
+
+    const todayRidesCount = Number(completedBookingsRes.rows[0]?.today_rides_count || 0);
+
+    const ratingRes = await query<{ avg_rating: number | null; rating_count: number }>(
+      `SELECT AVG(rating)::double precision as avg_rating, COUNT(*)::int as rating_count
+       FROM ratings
+       WHERE driver_id = $1`,
+      [driverId]
+    );
+
+    const ratingRow = ratingRes.rows[0];
+    const ratingCount = Number(ratingRow?.rating_count || 0);
+    const averageRating =
+      ratingCount > 0 && ratingRow?.avg_rating !== null && ratingRow?.avg_rating !== undefined
+        ? Math.round(Number(ratingRow.avg_rating) * 10) / 10
+        : null;
+
     return {
       todayEarnings: Math.round(todayEarnings),
+      todayRidesCount,
+      averageRating,
+      ratingCount,
       totalEarnings: Math.round(totalEarnings),
       pendingSettlement: Math.round(pendingSettlement),
       settledAmount: Math.round(settledAmount),

@@ -2,6 +2,7 @@ import 'dotenv/config';
 import assert from 'node:assert/strict';
 import crypto from 'crypto';
 import { PaymentService } from '../src/services/paymentService';
+import { TripBookingService } from '../src/services/tripBookingService';
 import jwt from 'jsonwebtoken';
 import {
   getJwtSecret,
@@ -5355,6 +5356,282 @@ async function runTests() {
   assert.strictEqual(ctxPendingDriver.getResponse().statusCode, 200);
   assert.strictEqual(ctxPendingDriver.getResponse().responseData.data.approval_status, 'PENDING');
   console.log('✅ PASS 24.3: /api/drivers/me enforces 401 unauthenticated and returns exact APPROVED vs PENDING statuses');
+
+  // =========================================================================
+  // TEST SUITE 25: Driver Dashboard Real Stats & Plan a Trip Multi-Destination
+  // =========================================================================
+  console.log('\n--- 25. Testing Driver Dashboard Real Stats & Plan a Trip Multi-Destination ---');
+
+  // 25.1: Multi-destination Plan a Trip creation & persistence
+  const s25CustRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status)
+     VALUES ($1, $2, $3, 'hash', 'customer', 'ACTIVE') RETURNING id`,
+    [`Trip Cust ${Date.now()}`, `trip_cust_${Date.now()}@test.com`, `9888${Math.floor(100000 + Math.random() * 900000)}`]
+  );
+  const s25CustId = s25CustRes.rows[0].id;
+  const futureDate = new Date(Date.now() + 7 * 86400 * 1000).toISOString().split('T')[0];
+
+  const multiTripCtx = createMockContext(
+    { id: s25CustId, name: 'Trip Cust', email: 'tripcust@test.com', mobile: '9888000001', role: 'customer' },
+    {},
+    {
+      customerName: 'Trip Cust',
+      phoneNumber: '9888000001',
+      members: 6,
+      tripPlace: 'Tirupati → Kanipakam → Vellore',
+      destinations: [
+        { name: 'Tirupati', address: 'Tirupati, Andhra Pradesh, India', placeId: 'place_tpt', lat: 13.6288, lng: 79.4192 },
+        { name: 'Kanipakam', address: 'Kanipakam, Andhra Pradesh, India', placeId: 'place_knp', lat: 13.2856, lng: 79.0297 },
+        { name: 'Vellore Golden Temple', address: 'Sripuram, Vellore, Tamil Nadu, India', placeId: 'place_vlr', lat: 12.8712, lng: 79.0882 }
+      ],
+      days: 3,
+      tripDate: futureDate,
+      pickupTime: '08:30'
+    }
+  );
+  await TripBookingController.create(multiTripCtx.req, multiTripCtx.res);
+  assert.strictEqual(
+    multiTripCtx.getResponse().statusCode,
+    201,
+    `Multi-destination trip creation should return 201, got ${multiTripCtx.getResponse().statusCode}: ${JSON.stringify(multiTripCtx.getResponse().responseData)}`
+  );
+  const createdMultiTrip = multiTripCtx.getResponse().responseData.data;
+  assert.strictEqual(createdMultiTrip.trip_place, 'Tirupati → Kanipakam → Vellore Golden Temple');
+  assert.strictEqual(createdMultiTrip.trip_destinations?.length, 3, 'All 3 destinations must be saved');
+  assert.strictEqual(createdMultiTrip.trip_destinations[1].name, 'Kanipakam');
+
+  const fetchedMyTrips = await TripBookingService.getMyTripBookings(s25CustId);
+  assert.strictEqual(fetchedMyTrips[0].trip_destinations?.length, 3, 'Persisted trip must reload all 3 destinations');
+  console.log('✅ PASS 25.1: Multi-destination Plan a Trip saves and reloads all structured stops');
+
+  // 25.2: Legacy single tripPlace backwards compatibility
+  const singleTrip = await TripBookingService.createTripBooking(s25CustId, {
+    customerName: 'Trip Cust',
+    phoneNumber: '9888000001',
+    members: 4,
+    tripPlace: 'Araku Valley',
+    days: 2,
+    tripDate: futureDate,
+    pickupTime: '09:00'
+  });
+  assert.strictEqual(singleTrip.trip_place, 'Araku Valley');
+  assert.deepStrictEqual(singleTrip.trip_destinations, [{ name: 'Araku Valley' }]);
+  console.log('✅ PASS 25.2: Single-destination backwards compatibility preserved');
+
+  // 25.3: Validation rejections (empty stop, members > 20, days > 30, past date, bad phone)
+  await assert.rejects(
+    TripBookingService.createTripBooking(s25CustId, {
+      customerName: 'Trip Cust',
+      phoneNumber: '9888000001',
+      members: 4,
+      destinations: [{ name: 'Tirupati' }, { name: '   ' }],
+      days: 2,
+      tripDate: futureDate,
+      pickupTime: '09:00'
+    }),
+    /empty destination/i
+  );
+  await assert.rejects(
+    TripBookingService.createTripBooking(s25CustId, {
+      customerName: 'Trip Cust',
+      phoneNumber: '9888000001',
+      members: 21,
+      tripPlace: 'Tirupati',
+      days: 2,
+      tripDate: futureDate,
+      pickupTime: '09:00'
+    }),
+    /between 1 and 20/i
+  );
+  await assert.rejects(
+    TripBookingService.createTripBooking(s25CustId, {
+      customerName: 'Trip Cust',
+      phoneNumber: '9888000001',
+      members: 2,
+      tripPlace: 'Tirupati',
+      days: 31,
+      tripDate: futureDate,
+      pickupTime: '09:00'
+    }),
+    /between 1 and 30/i
+  );
+  await assert.rejects(
+    TripBookingService.createTripBooking(s25CustId, {
+      customerName: 'Trip Cust',
+      phoneNumber: '9888000001',
+      members: 2,
+      tripPlace: 'Tirupati',
+      days: 2,
+      tripDate: '2020-01-01',
+      pickupTime: '09:00'
+    }),
+    /past/i
+  );
+  await assert.rejects(
+    TripBookingService.createTripBooking(s25CustId, {
+      customerName: 'Trip Cust',
+      phoneNumber: '12345',
+      members: 2,
+      tripPlace: 'Tirupati',
+      days: 2,
+      tripDate: futureDate,
+      pickupTime: '09:00'
+    }),
+    /10-digit phone/i
+  );
+  console.log('✅ PASS 25.3: Plan a Trip server validation rejects empty stops, out-of-range members/days, past dates, invalid phones');
+
+  // 25.4: Driver todayRidesCount and real averageRating/ratingCount
+  const unratedSummary = await PaymentService.getDriverEarnings(s24ApprovedId);
+  assert.strictEqual(unratedSummary.todayRidesCount, 0);
+  assert.strictEqual(unratedSummary.averageRating, null, 'Unrated driver must have null averageRating');
+  assert.strictEqual(unratedSummary.ratingCount, 0);
+
+  const s25DrvRow = (await query(`SELECT id FROM drivers WHERE user_id = $1`, [s24ApprovedId])).rows[0];
+  const yesterdayIso = new Date(Date.now() - 2 * 86400 * 1000).toISOString();
+
+  // Insert 1 completed ride today and 1 completed ride 2 days ago
+  const todayRide = await query(
+    `INSERT INTO bookings (booking_reference, customer_id, driver_id, pickup_address, destination_address, pickup_datetime, estimated_fare, status, created_at, updated_at)
+     VALUES ($1, $2, $3, 'Bus Stand', 'JNTUA', CURRENT_TIMESTAMP, 80, 'Ride Completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id`,
+    [`KK-25T-${Date.now()}`, s25CustId, s25DrvRow.id]
+  );
+  const oldRide = await query(
+    `INSERT INTO bookings (booking_reference, customer_id, driver_id, pickup_address, destination_address, pickup_datetime, estimated_fare, status, created_at, updated_at)
+     VALUES ($1, $2, $3, 'Cross', 'Bus Stand', $4, 60, 'Ride Completed', $4, $4) RETURNING id`,
+    [`KK-25O-${Date.now()}`, s25CustId, s25DrvRow.id, yesterdayIso]
+  );
+
+  // Add real customer ratings (5 and 4 -> avg 4.5 across 2 reviews)
+  await query(
+    `INSERT INTO ratings (booking_id, customer_id, driver_id, rating, review) VALUES ($1, $2, $3, 5, 'Great'), ($4, $2, $3, 4, 'Good')`,
+    [todayRide.rows[0].id, s25CustId, s25DrvRow.id, oldRide.rows[0].id]
+  );
+
+  const ratedSummary = await PaymentService.getDriverEarnings(s24ApprovedId);
+  assert.strictEqual(ratedSummary.todayRidesCount, 1, 'todayRidesCount must count only rides completed today');
+  assert.strictEqual(ratedSummary.averageRating, 4.5, 'averageRating must compute real average from ratings table');
+  assert.strictEqual(ratedSummary.ratingCount, 2, 'ratingCount must return exact review count');
+  console.log('✅ PASS 25.4: Driver todayRidesCount and real averageRating/ratingCount computed accurately from DB');
+
+  // 25.5: IST (Asia/Kolkata) boundary verification: 11:59 PM IST, 12:00 AM IST, 5:29 AM IST, 5:30 AM IST
+  const istUserRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status)
+     VALUES ($1, $2, $3, 'hash', 'driver', 'ACTIVE') RETURNING id`,
+    [`IST Driver ${Date.now()}`, `ist_drv_${Date.now()}@test.com`, `9755${Math.floor(100000 + Math.random() * 900000)}`]
+  );
+  const istDriverUserId = istUserRes.rows[0].id;
+  const istDrvInsert = await query(
+    `INSERT INTO drivers (user_id, auto_number, availability_status, approval_status)
+     VALUES ($1, 'AP-25-IST', 'available', 'APPROVED') RETURNING id`,
+    [istDriverUserId]
+  );
+  const istDriverId = istDrvInsert.rows[0].id;
+
+  const boundarySamples = [
+    { ref: `KK-IST-2359-${Date.now()}`, ts: '2026-11-11T18:29:00.000Z', driverAmt: 100 }, // 11:59 PM IST Nov 11
+    { ref: `KK-IST-0000-${Date.now()}`, ts: '2026-11-11T18:30:00.000Z', driverAmt: 110 }, // 12:00 AM IST Nov 12
+    { ref: `KK-IST-0529-${Date.now()}`, ts: '2026-11-11T23:59:00.000Z', driverAmt: 120 }, // 05:29 AM IST Nov 12
+    { ref: `KK-IST-0530-${Date.now()}`, ts: '2026-11-12T00:00:00.000Z', driverAmt: 130 }  // 05:30 AM IST Nov 12
+  ];
+
+  for (let i = 0; i < boundarySamples.length; i++) {
+    const sample = boundarySamples[i];
+    const bRes = await query(
+      `INSERT INTO bookings (booking_reference, customer_id, driver_id, pickup_address, destination_address, pickup_datetime, estimated_fare, status, created_at, updated_at)
+       VALUES ($1, $2, $3, 'Bus Stand', 'JNTUA', $4::timestamptz, 150, 'Ride Completed', $4::timestamptz, $4::timestamptz) RETURNING id`,
+      [sample.ref, s25CustId, istDriverId, sample.ts]
+    );
+    await query(
+      `INSERT INTO payments (booking_id, customer_id, driver_id, total_amount, driver_amount, owner_amount, commission_amount, payment_status, settlement_status, transaction_reference, created_at, updated_at)
+       VALUES ($1, $2, $3, 150, $4, 30, 30, 'COMPLETED', 'PENDING', $5, $6::timestamptz, $6::timestamptz)`,
+      [bRes.rows[0].id, s25CustId, istDriverId, sample.driverAmt, `TXN-${sample.ref}`, sample.ts]
+    );
+  }
+
+  // At 11:59:30 PM IST on Nov 11 (= 18:29:30 UTC Nov 11): only the 11:59 PM IST ride is "today"
+  const nov11Summary = await PaymentService.getDriverEarnings(istDriverUserId, new Date('2026-11-11T18:29:30.000Z'));
+  assert.strictEqual(nov11Summary.todayRidesCount, 1, '11:59 PM IST Nov 11 must count only Nov 11 IST ride');
+  assert.strictEqual(nov11Summary.todayEarnings, 100, '11:59 PM IST Nov 11 earnings must equal 100');
+
+  // At 12:30 AM IST on Nov 12 (= 19:00 UTC Nov 11, still previous UTC date): Nov 12 IST rides (00:00, 05:29, 05:30 IST) must be counted, 11:59 PM Nov 11 excluded
+  const nov12EarlyIstSummary = await PaymentService.getDriverEarnings(istDriverUserId, new Date('2026-11-11T19:00:00.000Z'));
+  assert.strictEqual(nov12EarlyIstSummary.todayRidesCount, 3, '12:00 AM IST boundary must reset count and include 00:00, 05:29, 05:30 AM IST');
+  assert.strictEqual(nov12EarlyIstSummary.todayEarnings, 360, 'Nov 12 IST todayEarnings must sum 110+120+130=360');
+
+  // At 05:29:30 AM IST on Nov 12 (= 23:59:30 UTC Nov 11) and 05:30:30 AM IST on Nov 12 (= 00:00:30 UTC Nov 12): both reflect same Nov 12 IST totals
+  const ist0529Summary = await PaymentService.getDriverEarnings(istDriverUserId, new Date('2026-11-11T23:59:30.000Z'));
+  const ist0530Summary = await PaymentService.getDriverEarnings(istDriverUserId, new Date('2026-11-12T00:00:30.000Z'));
+  assert.strictEqual(ist0529Summary.todayRidesCount, 3, '05:29 AM IST must include all Nov 12 IST rides');
+  assert.strictEqual(ist0529Summary.todayEarnings, 360);
+  assert.strictEqual(ist0530Summary.todayRidesCount, 3, '05:30 AM IST must not reset or lose earlier morning IST rides');
+  assert.strictEqual(ist0530Summary.todayEarnings, 360);
+  console.log('✅ PASS 25.5: IST (Asia/Kolkata) boundaries verified at 11:59 PM, 12:00 AM, 5:29 AM, and 5:30 AM IST for Today Trips & Today Earnings');
+
+  // 25.6: Max 10 destinations accepted, 11 rejected, canonical trip_place derivation ignores conflicting tripPlace
+  const tenStops = Array.from({ length: 10 }, (_, idx) => ({ name: `Stop ${idx + 1}` }));
+  const tenTrip = await TripBookingService.createTripBooking(s25CustId, {
+    customerName: 'Trip Cust',
+    phoneNumber: '9888000001',
+    members: 4,
+    tripPlace: 'Conflicting Client String',
+    destinations: tenStops,
+    days: 3,
+    tripDate: futureDate,
+    pickupTime: '09:00'
+  });
+  assert.strictEqual(tenTrip.trip_destinations?.length, 10, '10 destinations must be accepted');
+  assert.ok(
+    tenTrip.trip_place.startsWith('Stop 1 → Stop 2') && !tenTrip.trip_place.includes('Conflicting'),
+    'trip_place must be canonically derived from destinations array rather than conflicting client tripPlace'
+  );
+
+  const elevenStops = Array.from({ length: 11 }, (_, idx) => ({ name: `Stop ${idx + 1}` }));
+  await assert.rejects(
+    TripBookingService.createTripBooking(s25CustId, {
+      customerName: 'Trip Cust',
+      phoneNumber: '9888000001',
+      members: 4,
+      destinations: elevenStops,
+      days: 3,
+      tripDate: futureDate,
+      pickupTime: '09:00'
+    }),
+    /maximum of 10 destinations/i
+  );
+  console.log('✅ PASS 25.6: 10 destinations accepted, 11 rejected, and canonical trip_place ignores conflicting client string');
+
+  // 25.7: Legacy NULL trip_destinations row normalization across mutations + conditional DB migration preserves records
+  const legacyRef = `CB-LEG-${Date.now()}`;
+  const legacyInsert = await query(
+    `INSERT INTO trip_bookings (booking_reference, customer_id, customer_name, phone_number, members, trip_place, trip_destinations, days, trip_date, pickup_time, status, quoted_price, payment_status)
+     VALUES ($1, $2, 'Legacy Customer', '9888000002', 3, 'Horsley Hills', NULL, 1, $3, '10:00', 'NEW', NULL, 'PENDING') RETURNING id`,
+    [legacyRef, s25CustId, futureDate]
+  );
+  const legacyId = legacyInsert.rows[0].id;
+
+  const ownerUpdatedLegacy = await TripBookingService.updateTripBookingByOwner(legacyId, {
+    quotedPrice: 2500,
+    status: 'CONFIRMED'
+  });
+  assert.deepStrictEqual(ownerUpdatedLegacy.trip_destinations, [{ name: 'Horsley Hills' }], 'updateTripBookingByOwner must normalize legacy row');
+
+  const confirmedLegacy = await TripBookingService.confirmTripBooking(legacyId, s25CustId);
+  assert.deepStrictEqual(confirmedLegacy.trip_destinations, [{ name: 'Horsley Hills' }], 'confirmTripBooking must normalize legacy row');
+
+  const paidLegacy = await TripBookingService.processTripSandboxPayment(legacyId, s25CustId, 'UPI');
+  assert.deepStrictEqual(paidLegacy.trip_destinations, [{ name: 'Horsley Hills' }], 'processTripSandboxPayment must normalize legacy row');
+
+  // Re-run initDb() and test VARCHAR(255) -> TEXT upgrade on an existing populated table
+  await query(`ALTER TABLE trip_bookings ALTER COLUMN trip_place TYPE VARCHAR(255)`);
+  await initDb();
+  const colCheckRes = await query<{ data_type: string }>(
+    `SELECT data_type FROM information_schema.columns WHERE table_name = 'trip_bookings' AND column_name = 'trip_place'`
+  );
+  assert.strictEqual(colCheckRes.rows[0]?.data_type, 'text', 'Conditional migration must upgrade VARCHAR(255) trip_place to TEXT');
+  const preservedLegacy = await TripBookingService.getTripBookingById(legacyId, s25CustId);
+  assert.strictEqual(preservedLegacy.trip_place, 'Horsley Hills', 'Existing trip records must be preserved by migration');
+  console.log('✅ PASS 25.7: Legacy mutation normalization & conditional DB migration data preservation verified');
 
   console.log('\n=========================================');
   console.log('🎉 ALL SECURITY PHASE 1 TESTS PASSED!');

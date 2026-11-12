@@ -26,7 +26,8 @@ import {
   ArrowLeft,
   Settings,
   History,
-  LifeBuoy
+  LifeBuoy,
+  Bell
 } from 'lucide-react';
 import QRCode from 'qrcode';
 
@@ -218,12 +219,15 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const isAuthErrorRef = React.useRef(false);
   const hasProfileRef = React.useRef(false);
+  const dismissedRequestIdsRef = React.useRef<Set<number>>(new Set());
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
     typeof Notification !== 'undefined' ? Notification.permission : 'default'
   );
   const [isNotificationEnabled, setIsNotificationEnabled] = useState(false);
+  const [isEnablingNotifications, setIsEnablingNotifications] = useState(false);
+  const [notificationError, setNotificationError] = useState<string | null>(null);
 
   // Driver profile & payment editing state
   const [profileName, setProfileName] = useState('');
@@ -275,7 +279,11 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
           return;
         }
 
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (!registration) {
+          setIsNotificationEnabled(false);
+          return;
+        }
         const subscription = await registration.pushManager.getSubscription();
 
         setIsNotificationEnabled(!!subscription);
@@ -322,7 +330,9 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
         return;
       }
       if (earnRes.success && earnRes.data) setEarnings(earnRes.data);
-      if (reqRes.success && reqRes.data) setRequests(reqRes.data);
+      if (reqRes.success && reqRes.data) {
+        setRequests(reqRes.data.filter(r => !dismissedRequestIdsRef.current.has(r.id)));
+      }
 
       if (myRidesRes.success && myRidesRes.data) {
         const ongoing = myRidesRes.data.find(b =>
@@ -443,15 +453,30 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
   };
 
   const handleEnableNotifications = async () => {
-    try {
-      setActionError(null);
+    setIsEnablingNotifications(true);
+    setNotificationError(null);
+    setActionError(null);
 
+    try {
       if (
         !('Notification' in window) ||
         !('serviceWorker' in navigator) ||
         !('PushManager' in window)
       ) {
-        setActionError('Push notifications are not supported on this browser/device.');
+        const msg = 'Push notifications are not supported on this browser/device.';
+        setNotificationError(msg);
+        setActionError(msg);
+        setIsNotificationEnabled(false);
+        return;
+      }
+
+      if (Notification.permission === 'denied') {
+        setNotificationPermission('denied');
+        const msg =
+          'Notifications are blocked in browser settings. Please allow notifications for this site and try again.';
+        setNotificationError(msg);
+        setActionError(msg);
+        setIsNotificationEnabled(false);
         return;
       }
 
@@ -459,7 +484,10 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
       setNotificationPermission(permission);
 
       if (permission !== 'granted') {
-        setActionError('Notification permission was not granted.');
+        const msg = 'Notification permission was not granted. Please allow alerts to receive ride requests.';
+        setNotificationError(msg);
+        setActionError(msg);
+        setIsNotificationEnabled(false);
         return;
       }
 
@@ -467,11 +495,29 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
       const vapidPublicKey = vapidRes.data?.publicKey;
 
       if (!vapidPublicKey) {
-        setActionError('Missing VAPID public key from backend server.');
+        const msg = 'Push alerts are unavailable because the notification server key is missing.';
+        setNotificationError(msg);
+        setActionError(msg);
+        setIsNotificationEnabled(false);
         return;
       }
 
-      const registration = await navigator.serviceWorker.ready;
+      let registration = await navigator.serviceWorker.getRegistration();
+      if (!registration) {
+        registration = await Promise.race<ServiceWorkerRegistration | undefined>([
+          navigator.serviceWorker.ready,
+          new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 4000))
+        ]);
+      }
+
+      if (!registration) {
+        const msg = 'Background service worker is not ready yet. Please refresh the page and try again.';
+        setNotificationError(msg);
+        setActionError(msg);
+        setIsNotificationEnabled(false);
+        return;
+      }
+
       let subscription = await registration.pushManager.getSubscription();
 
       if (!subscription) {
@@ -483,7 +529,10 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
 
       const rawSub = subscription.toJSON();
       if (!rawSub.endpoint || !rawSub.keys?.p256dh || !rawSub.keys?.auth) {
-        setActionError('Incomplete push subscription payload.');
+        const msg = 'Incomplete push subscription payload returned by browser.';
+        setNotificationError(msg);
+        setActionError(msg);
+        setIsNotificationEnabled(false);
         return;
       }
 
@@ -497,25 +546,39 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
       });
 
       if (!saveRes.success) {
-        setActionError(saveRes.error || 'Failed to save push subscription.');
+        const msg = saveRes.error || 'Failed to save push subscription on server.';
+        setNotificationError(msg);
+        setActionError(msg);
+        setIsNotificationEnabled(false);
         return;
       }
 
       setIsNotificationEnabled(true);
+      setNotificationError(null);
 
-      await registration.showNotification('Clik2Go Driver Console', {
-        body: 'Push alerts are now enabled for incoming ride bookings.',
-        icon: '/pwa-192x192.png',
-        badge: '/pwa-192x192.png'
-      });
+      try {
+        await registration.showNotification('Clik2Go Driver Console', {
+          body: 'Push alerts are now enabled for incoming ride bookings.',
+          icon: '/pwa-192x192.png',
+          badge: '/pwa-192x192.png'
+        });
+      } catch {
+        // Subscription saved even if immediate preview notification fails
+      }
     } catch (error: any) {
       console.error('Push notification setup error:', error);
-      setActionError(error.message || 'Unable to enable push notifications.');
+      const msg = error?.message || 'Unable to enable push notifications.';
+      setNotificationError(msg);
+      setActionError(msg);
+      setIsNotificationEnabled(false);
+    } finally {
+      setIsEnablingNotifications(false);
     }
   };
 
   const handleToggleAvailability = async () => {
     if (!profile) return;
+    setActionError(null);
     const newStatus = profile.availability_status === 'available' ? 'offline' : 'available';
     setIsUpdatingStatus(true);
     const res = await api.driver.updateStatus(newStatus);
@@ -523,6 +586,8 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
 
     if (res.success) {
       setProfile({ ...profile, availability_status: newStatus as any });
+    } else {
+      setActionError(res.error || 'Failed to update online status. Please try again.');
     }
   };
 
@@ -530,6 +595,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
     setActionError(null);
     const res = await api.driver.acceptRide(bookingId);
     if (res.success && res.data) {
+      dismissedRequestIdsRef.current.delete(bookingId);
       setActiveRide(res.data);
       loadDriverData();
     } else {
@@ -538,6 +604,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
   };
 
   const handleRejectRide = (bookingId: number) => {
+    dismissedRequestIdsRef.current.add(bookingId);
     setRequests(prev => prev.filter(r => r.id !== bookingId));
   };
 
@@ -682,17 +749,41 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
   }
 
   const isAvailable = profile.availability_status === 'available';
+  const isOnRide = profile.availability_status === 'on_ride';
   const approvalStatus = (profile.approval_status || '').toUpperCase();
   const isApproved = approvalStatus === 'APPROVED' || approvalStatus === 'ACTIVE';
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    return 'Good Evening';
   };
   const driverRealName = profile?.name?.trim() || 'Driver Partner';
   const mostRecentRide = activeRide || (completedRides.length > 0 ? completedRides[0] : null);
-  const todayRidesCount = earnings?.completedRidesCount ?? completedRides.length;
+  const toIstDateStr = (value: Date | string | number): string => {
+    const d = value instanceof Date ? value : new Date(value);
+    if (isNaN(d.getTime())) return '';
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(d);
+    const y = parts.find((p) => p.type === 'year')?.value;
+    const m = parts.find((p) => p.type === 'month')?.value;
+    const day = parts.find((p) => p.type === 'day')?.value;
+    return y && m && day ? `${y}-${m}-${day}` : '';
+  };
+  const todayIstDate = toIstDateStr(new Date());
+  const todayCompletedRidesFallback = completedRides.filter(
+    (b) => toIstDateStr(b.updated_at || b.created_at) === todayIstDate
+  ).length;
+  const todayRidesCount = earnings?.todayRidesCount ?? todayCompletedRidesFallback;
+  const averageRating =
+    earnings?.averageRating !== undefined && earnings?.averageRating !== null
+      ? Number(earnings.averageRating)
+      : null;
+  const ratingCount = Number(earnings?.ratingCount ?? 0);
 
   const renderPaymentQrSection = () => {
     if (!completedRideForPayment) return null;
@@ -1197,16 +1288,17 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
                 {isNotificationEnabled ? (
                   <div className="flex-1 sm:flex-none px-3.5 py-2.5 rounded-xl font-bold text-xs bg-[#C6FF3D]/10 text-[#C6FF3D] border border-[#C6FF3D]/30 flex items-center justify-center gap-1.5 shadow-subtle">
                     <CheckCircle2 className="w-3.5 h-3.5 text-[#C6FF3D]" />
-                    <span>Alerts Active</span>
+                    <span>Alerts Enabled</span>
                   </div>
                 ) : (
                   <button
                     type="button"
                     onClick={handleEnableNotifications}
-                    className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-bold text-xs bg-[#202023] hover:bg-[#26262A] text-white border border-[#303034] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    disabled={isEnablingNotifications}
+                    className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-bold text-xs bg-[#202023] hover:bg-[#26262A] text-white border border-[#303034] hover:border-[#C6FF3D]/50 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                   >
-                    <span>🔔</span>
-                    <span>Enable Alerts</span>
+                    <Bell className="w-3.5 h-3.5 text-[#C6FF3D]" />
+                    <span>{isEnablingNotifications ? 'Enabling...' : 'Enable Alerts'}</span>
                   </button>
                 )}
 
@@ -1214,16 +1306,20 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
                   <button
                     type="button"
                     onClick={handleToggleAvailability}
-                    disabled={isUpdatingStatus || profile?.availability_status === 'on_ride'}
+                    disabled={isUpdatingStatus || isOnRide}
                     className={`flex-1 sm:flex-none px-5 py-2.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2.5 border cursor-pointer ${
-                      isAvailable
+                      isAvailable || isOnRide
                         ? 'bg-[#C6FF3D] text-[#0B0B0D] border-[#C6FF3D] hover:bg-[#B5F028] shadow-glow-lime'
                         : 'bg-[#202023] text-[#A1A1AA] border-[#303034] hover:text-white'
                     } disabled:opacity-50`}
                   >
-                    <span className={`w-2 h-2 rounded-full ${isAvailable ? 'bg-[#0B0B0D] animate-pulse' : 'bg-[#71717A]'}`} />
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        isAvailable || isOnRide ? 'bg-[#0B0B0D] animate-pulse' : 'bg-[#71717A]'
+                      }`}
+                    />
                     <Power className="w-3.5 h-3.5" />
-                    <span>{isAvailable ? 'Online' : 'Offline'}</span>
+                    <span>{isOnRide ? 'Online (On Ride)' : isAvailable ? 'Online' : 'Offline'}</span>
                   </button>
                 ) : (
                   <div className="px-4 py-2.5 rounded-xl bg-amber-950/40 border border-amber-800 text-amber-300 text-xs font-bold flex items-center gap-2">
@@ -1234,12 +1330,28 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
               </div>
             </div>
 
-            {/* 3 Metric Cards */}
+            {notificationError && !isNotificationEnabled && (
+              <div className="mt-4 p-3 rounded-xl bg-amber-950/40 border border-amber-800/80 text-amber-200 text-xs flex items-center justify-between gap-3">
+                <span>
+                  {notificationError}
+                  {notificationPermission === 'denied' ? ' (Browser permission: Denied)' : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setNotificationError(null)}
+                  className="text-amber-300 hover:text-white text-[11px] font-bold flex-shrink-0 cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
+            {/* 3 Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
-              {/* Today's Rides */}
+              {/* Today's Trips */}
               <div className="bg-[#202023] rounded-2xl p-5 border border-[#303034] flex items-center justify-between">
                 <div>
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#A1A1AA]">Today's Rides</span>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#A1A1AA]">Today's Trips</span>
                   <div className="text-2xl sm:text-3xl font-black text-white mt-1">{todayRidesCount}</div>
                 </div>
                 <div className="w-12 h-12 rounded-xl bg-[#171719] text-[#C6FF3D] border border-[#303034] flex items-center justify-center">
@@ -1247,7 +1359,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
                 </div>
               </div>
 
-              {/* Earnings */}
+              {/* Today's Earnings */}
               <div className="bg-[#202023] rounded-2xl p-5 border border-[#303034] flex items-center justify-between">
                 <div>
                   <span className="text-[11px] font-bold uppercase tracking-wider text-[#A1A1AA]">Today's Earnings</span>
@@ -1262,13 +1374,25 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
               <div className="bg-[#202023] rounded-2xl p-5 border border-[#303034] flex items-center justify-between">
                 <div>
                   <span className="text-[11px] font-bold uppercase tracking-wider text-[#A1A1AA]">Rating</span>
-                  <div className="text-2xl sm:text-3xl font-black text-white mt-1 flex items-baseline gap-1">
-                    <span>4.9</span>
-                    <span className="text-[#C6FF3D] text-base">★</span>
-                  </div>
+                  {averageRating !== null && ratingCount > 0 ? (
+                    <div className="mt-1">
+                      <div className="text-2xl sm:text-3xl font-black text-white flex items-baseline gap-1">
+                        <span>{averageRating.toFixed(1)}</span>
+                        <span className="text-[#C6FF3D] text-base">★</span>
+                      </div>
+                      <div className="text-[11px] text-[#A1A1AA] mt-0.5">
+                        {ratingCount} {ratingCount === 1 ? 'review' : 'reviews'}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-1">
+                      <div className="text-lg sm:text-xl font-black text-[#A1A1AA]">No ratings yet</div>
+                      <div className="text-[11px] text-[#71717A] mt-0.5">From completed rides</div>
+                    </div>
+                  )}
                 </div>
                 <div className="w-12 h-12 rounded-xl bg-[#171719] text-[#C6FF3D] border border-[#303034] flex items-center justify-center">
-                  <Star className="w-6 h-6 fill-[#C6FF3D]" />
+                  <Star className={`w-6 h-6 ${averageRating !== null && ratingCount > 0 ? 'fill-[#C6FF3D]' : ''}`} />
                 </div>
               </div>
             </div>
@@ -1361,27 +1485,71 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
               </button>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
               <div className="p-4 bg-[#202023] border border-[#303034] rounded-2xl">
-                <span className="text-[10px] font-bold uppercase text-[#C6FF3D]">Today's Earnings</span>
-                <div className="text-xl sm:text-2xl font-black text-[#C6FF3D] mt-1">₹{earnings?.todayEarnings ?? 0}</div>
-              </div>
-
-              <div className="p-4 bg-[#202023] border border-[#303034] rounded-2xl">
-                <span className="text-[10px] font-bold uppercase text-[#A1A1AA]">Lifetime Earnings</span>
+                <span className="text-[10px] font-bold uppercase text-[#C6FF3D]">Available / Total Earnings</span>
                 <div className="text-xl sm:text-2xl font-black text-white mt-1">₹{earnings?.totalEarnings ?? 0}</div>
+                <p className="text-[11px] text-[#71717A] mt-1">Across {earnings?.completedRidesCount ?? 0} settled/paid ride{(earnings?.completedRidesCount ?? 0) === 1 ? '' : 's'}</p>
               </div>
 
               <div className="p-4 bg-[#202023] border border-[#303034] rounded-2xl">
-                <span className="text-[10px] font-bold uppercase text-amber-400">Pending Payout Settlements</span>
+                <span className="text-[10px] font-bold uppercase text-emerald-400">Settled / Paid Amount</span>
+                <div className="text-xl sm:text-2xl font-black text-emerald-400 mt-1">₹{earnings?.settledAmount ?? 0}</div>
+                <p className="text-[11px] text-[#71717A] mt-1">Transferred to your payout account</p>
+              </div>
+
+              <div className="p-4 bg-[#202023] border border-[#303034] rounded-2xl">
+                <span className="text-[10px] font-bold uppercase text-amber-400">Pending Settlement</span>
                 <div className="text-xl sm:text-2xl font-black text-amber-400 mt-1">₹{earnings?.pendingSettlement ?? 0}</div>
-              </div>
-
-              <div className="p-4 bg-[#202023] border border-[#303034] rounded-2xl">
-                <span className="text-[10px] font-bold uppercase text-[#A1A1AA]">Settled Payouts</span>
-                <div className="text-xl sm:text-2xl font-black text-white mt-1">₹{earnings?.settledAmount ?? 0}</div>
+                <p className="text-[11px] text-[#71717A] mt-1">Awaiting payout settlement</p>
               </div>
             </div>
+
+            {earnings?.payments && earnings.payments.length > 0 ? (
+              <div className="pt-4 border-t border-[#303034] space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#A1A1AA]">
+                    Recent Settlement Records
+                  </span>
+                  <span className="text-[11px] text-[#71717A]">
+                    Showing latest {Math.min(3, earnings.payments.length)} of {earnings.payments.length}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {earnings.payments.slice(0, 3).map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-[#202023] border border-[#303034] text-xs"
+                    >
+                      <div className="min-w-0">
+                        <span className="font-mono font-bold text-white">
+                          {(p as any).booking_reference || p.transaction_reference || `#${p.booking_id}`}
+                        </span>
+                        <span className="text-[#71717A] ml-2">
+                          {new Date(p.settled_at || p.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2.5">
+                        <span className="font-black text-[#C6FF3D]">₹{Math.round(Number(p.driver_amount || 0))}</span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            p.settlement_status === 'SETTLED'
+                              ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800'
+                              : 'bg-amber-950/60 text-amber-300 border border-amber-800'
+                          }`}
+                        >
+                          {p.settlement_status === 'SETTLED' ? 'Settled' : 'Pending'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="pt-3 border-t border-[#303034] text-xs text-[#71717A]">
+                No completed payment settlement records yet.
+              </div>
+            )}
           </div>
 
           {/* ACTIVE ONGOING RIDE CONTROLLER */}
