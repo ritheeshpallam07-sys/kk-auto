@@ -58,7 +58,7 @@ export interface PlaceSuggestion {
 }
 
 export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) => {
-  const { user } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
 
   const params = new URLSearchParams(window.location.search);
   const initialPickup = params.get('pickup') || '';
@@ -830,6 +830,15 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
 
       if (res.success && res.data) {
         navigate(`/booking/${res.data.id}`);
+      } else if (res.status === 401 || res.status === 403) {
+        const verifiedUser = await refreshUser();
+        setIsBooking(false);
+        if (!verifiedUser) {
+          await logout();
+          navigate('/login');
+          return;
+        }
+        setRouteError(res.error || 'Authentication check failed. Please try confirming your ride again.');
       } else {
         setRouteError(res.error || 'Booking failed. Please try again.');
         setIsBooking(false);

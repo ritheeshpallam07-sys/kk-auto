@@ -1,3 +1,5 @@
+import { safeGetLocal, safeRemoveLocal } from '../utils/storage';
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 export interface ApiResponse<T = any> {
   success: boolean;
@@ -16,6 +18,7 @@ export interface ApiResponse<T = any> {
   };
   error?: string;
   status?: number;
+  valid?: boolean;
 }
 
 export interface User {
@@ -344,9 +347,13 @@ let inMemoryCsrfToken: string | null = null;
 let csrfFetchPromise: Promise<string | null> | null = null;
 
 function getCsrfTokenFromCookie(): string | null {
-  if (typeof document === 'undefined' || !document.cookie) return null;
-  const match = document.cookie.match(/(?:^|;\s*)kk_csrf=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : null;
+  try {
+    if (typeof document === 'undefined' || !document.cookie) return null;
+    const match = document.cookie.match(/(?:^|;\s*)kk_csrf=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function getStoredCsrfToken(): string | null {
@@ -391,8 +398,8 @@ async function request<T>(
   timeoutMs: number = 10000
 ): Promise<ApiResponse<T>> {
   // Proactive migration safeguard: scrub any legacy localStorage token
-  if (typeof localStorage !== 'undefined' && localStorage.getItem('kk_token')) {
-    localStorage.removeItem('kk_token');
+  if (safeGetLocal('kk_token')) {
+    safeRemoveLocal('kk_token');
   }
 
   const headers: Record<string, string> = {

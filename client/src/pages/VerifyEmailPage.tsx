@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { Logo } from '../components/Logo';
 import { Mail, CheckCircle2, AlertCircle } from 'lucide-react';
 
@@ -8,6 +9,7 @@ interface VerifyEmailPageProps {
 }
 
 export const VerifyEmailPage: React.FC<VerifyEmailPageProps> = ({ navigate }) => {
+  const { refreshUser } = useAuth();
   const params = new URLSearchParams(window.location.search);
   const email = params.get('email') || '';
 
@@ -32,6 +34,11 @@ export const VerifyEmailPage: React.FC<VerifyEmailPageProps> = ({ navigate }) =>
       const res = await api.auth.verifyEmailOtp(email, otp);
 
       if (res.success && res.data) {
+        const verifiedUser = await refreshUser();
+        if (!verifiedUser) {
+          setError('Email verified, but your browser blocked the session cookie. Please allow cookies and log in again.');
+          return;
+        }
         setMessage('Email verified successfully! Proceeding to Terms...');
 
         setTimeout(() => {

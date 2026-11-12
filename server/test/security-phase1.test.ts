@@ -18,7 +18,7 @@ import {
   generateCsrfToken
 } from '../src/middleware/auth';
 import { AuthService } from '../src/services/authService';
-import { AuthController, getClientIp } from '../src/controllers/authController';
+import { AuthController, getClientIp, resolveTrustedFrontendUrl } from '../src/controllers/authController';
 import { EmailService } from '../src/services/emailService';
 import { DriverController } from '../src/controllers/driverController';
 import { BookingController } from '../src/controllers/bookingController';
@@ -5188,6 +5188,173 @@ async function runTests() {
 
   // Clean support rate limits after test
   await query(`DELETE FROM rate_limits WHERE key LIKE 'support_%'`);
+
+  // =========================================================================
+  // TEST SUITE 24: Production Incident Fixes — Reset Origin Trust, Token Shape & Driver Profile
+  // =========================================================================
+  console.log('\n--- 24. Testing Incident Fixes (Trusted Reset URLs, Token Shape & Driver Profile Status) ---');
+
+  await query(`DELETE FROM rate_limits WHERE key LIKE 'forgot_%' OR key LIKE 'verify_reset_%'`);
+
+  const s24Email = `incident_cust_${Date.now()}@test.com`;
+  const s24Hash = await AuthService.hashPassword('IncidentPass2026!');
+  const s24UserRes = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status)
+     VALUES ($1, $2, $3, $4, 'customer', 'ACTIVE') RETURNING id`,
+    ['Incident Test Customer', s24Email, `9755${Math.floor(100000 + Math.random() * 900000)}`, s24Hash]
+  );
+  const s24UserId = s24UserRes.rows[0].id;
+
+  let s24CapturedLinks: string[] = [];
+  EmailService.setResetSender(async (_email: string, link: string) => {
+    s24CapturedLinks.push(link);
+  });
+
+  try {
+    // 24.1a: Host header must NEVER be used as reset link fallback
+    const ctxHostPoison = {
+      body: { email: s24Email },
+      headers: { host: 'kk-auto.onrender.com', 'x-forwarded-proto': 'https' },
+      ip: '127.0.0.41'
+    } as any;
+    let hostPoisonStatus = 200;
+    let hostPoisonBody: any = null;
+    await AuthController.forgotPassword(ctxHostPoison, {
+      status(code: number) { hostPoisonStatus = code; return this; },
+      json(data: any) { hostPoisonBody = data; return this; },
+      set() { return this; }
+    } as any);
+    assert.strictEqual(hostPoisonStatus, 200);
+    assert.strictEqual(hostPoisonBody.success, true);
+    assert.strictEqual(s24CapturedLinks.length, 1);
+    assert.ok(!s24CapturedLinks[0].includes('kk-auto.onrender.com'), 'Must not use backend Host header in reset link');
+    assert.match(s24CapturedLinks[0], /^http:\/\/localhost:5173\/reset-password\?token=[a-f0-9]{64}$/);
+
+    // 24.1b: Untrusted Origin header must also be ignored
+    await query(`DELETE FROM rate_limits WHERE key LIKE 'forgot_%'`);
+    await query(`DELETE FROM password_resets WHERE user_id = $1`, [s24UserId]);
+    const ctxUntrustedOrigin = {
+      body: { email: s24Email },
+      headers: { origin: 'https://evil.example', host: 'evil.example' },
+      ip: '127.0.0.42'
+    } as any;
+    let untrustedStatus = 200;
+    await AuthController.forgotPassword(ctxUntrustedOrigin, {
+      status(code: number) { untrustedStatus = code; return this; },
+      json() { return this; },
+      set() { return this; }
+    } as any);
+    assert.strictEqual(untrustedStatus, 200);
+    assert.strictEqual(s24CapturedLinks.length, 2);
+    assert.ok(!s24CapturedLinks[1].includes('evil.example'), 'Must ignore untrusted Origin and Host headers');
+
+    // 24.1c: Trusted clik2go.in Origin is preserved
+    await query(`DELETE FROM rate_limits WHERE key LIKE 'forgot_%'`);
+    await query(`DELETE FROM password_resets WHERE user_id = $1`, [s24UserId]);
+    const ctxTrustedOrigin = {
+      body: { email: s24Email },
+      headers: { origin: 'https://www.clik2go.in', host: 'kk-auto.onrender.com' },
+      ip: '127.0.0.43'
+    } as any;
+    let trustedStatus = 200;
+    await AuthController.forgotPassword(ctxTrustedOrigin, {
+      status(code: number) { trustedStatus = code; return this; },
+      json() { return this; },
+      set() { return this; }
+    } as any);
+    assert.strictEqual(trustedStatus, 200);
+    assert.strictEqual(s24CapturedLinks.length, 3);
+    assert.match(s24CapturedLinks[2], /^https:\/\/www\.clik2go\.in\/reset-password\?token=[a-f0-9]{64}$/);
+
+    // 24.1d: Production mode strictly rejects localhost and accepts https://clik2go.in
+    const prevNodeEnv = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = 'production';
+      assert.strictEqual(resolveTrustedFrontendUrl({ headers: { origin: 'https://clik2go.in' } } as any), 'https://clik2go.in');
+      assert.strictEqual(resolveTrustedFrontendUrl({ headers: { origin: 'https://www.clik2go.in' } } as any), 'https://www.clik2go.in');
+      assert.strictEqual(resolveTrustedFrontendUrl({ headers: { origin: 'http://localhost:5173' } } as any), undefined);
+      assert.strictEqual(resolveTrustedFrontendUrl({ headers: { host: 'kk-auto.onrender.com' } } as any), undefined);
+    } finally {
+      process.env.NODE_ENV = prevNodeEnv;
+    }
+    console.log('✅ PASS 24.1: forgot-password strictly rejects Host/untrusted Origin and uses trusted frontend URL');
+
+    // 24.2: verifyResetToken returns top-level valid: true for valid token and HTTP 400 for invalid token
+    const rawTokenMatch = s24CapturedLinks[2].match(/token=([a-f0-9]{64})/);
+    assert.ok(rawTokenMatch, 'Captured reset link must contain 64-hex token');
+    const validRes = await testVerifyResetToken(rawTokenMatch[1], '127.0.0.44');
+    assert.strictEqual(validRes.status, 200);
+    assert.strictEqual(validRes.body.success, true);
+    assert.strictEqual(validRes.body.valid, true, 'verifyResetToken must return top-level valid: true');
+
+    const invalidRes = await testVerifyResetToken('0'.repeat(64), '127.0.0.45');
+    assert.strictEqual(invalidRes.status, 400);
+    assert.strictEqual(invalidRes.body.success, false);
+    assert.notStrictEqual(invalidRes.body.valid, true);
+    console.log('✅ PASS 24.2: verifyResetToken returns top-level valid: true and rejects invalid token with HTTP 400');
+  } finally {
+    EmailService.setResetSender(null);
+    await query(`DELETE FROM rate_limits WHERE key LIKE 'forgot_%' OR key LIKE 'verify_reset_%'`);
+  }
+
+  // 24.3: Driver /api/drivers/me auth middleware 401 and APPROVED vs PENDING profile status
+  let unauthStatus = 0;
+  let unauthBody: any = null;
+  await authenticateToken(
+    { headers: {}, cookies: {} } as any,
+    {
+      status(code: number) { unauthStatus = code; return this; },
+      json(data: any) { unauthBody = data; return this; }
+    } as any,
+    () => { throw new Error('authenticateToken must not call next() without token'); }
+  );
+  assert.strictEqual(unauthStatus, 401, 'Missing session on /api/drivers/me must fail with 401');
+  assert.strictEqual(unauthBody.success, false);
+
+  const s24ApprovedUser = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status)
+     VALUES ($1, $2, $3, 'hash', 'driver', 'ACTIVE') RETURNING id`,
+    [`Driver App ${Date.now()}`, `drv_app_${Date.now()}@test.com`, `9766${Math.floor(100000 + Math.random() * 900000)}`]
+  );
+  const s24ApprovedId = s24ApprovedUser.rows[0].id;
+  await query(
+    `INSERT INTO drivers (user_id, auto_number, availability_status, approval_status)
+     VALUES ($1, 'AP-24-APP', 'available', 'APPROVED')`,
+    [s24ApprovedId]
+  );
+  const ctxApprovedDriver = createMockContext({
+    id: s24ApprovedId,
+    name: 'Driver App',
+    email: 'drv_app@test.com',
+    mobile: '9766000001',
+    role: 'driver'
+  });
+  await DriverController.getDriverProfile(ctxApprovedDriver.req, ctxApprovedDriver.res);
+  assert.strictEqual(ctxApprovedDriver.getResponse().statusCode, 200);
+  assert.strictEqual(ctxApprovedDriver.getResponse().responseData.data.approval_status, 'APPROVED');
+
+  const s24PendingUser = await query(
+    `INSERT INTO users (name, email, mobile, password_hash, role, status)
+     VALUES ($1, $2, $3, 'hash', 'driver', 'ACTIVE') RETURNING id`,
+    [`Driver Pen ${Date.now()}`, `drv_pen_${Date.now()}@test.com`, `9777${Math.floor(100000 + Math.random() * 900000)}`]
+  );
+  const s24PendingId = s24PendingUser.rows[0].id;
+  await query(
+    `INSERT INTO drivers (user_id, auto_number, availability_status, approval_status)
+     VALUES ($1, 'AP-24-PEN', 'offline', 'PENDING')`,
+    [s24PendingId]
+  );
+  const ctxPendingDriver = createMockContext({
+    id: s24PendingId,
+    name: 'Driver Pen',
+    email: 'drv_pen@test.com',
+    mobile: '9777000002',
+    role: 'driver'
+  });
+  await DriverController.getDriverProfile(ctxPendingDriver.req, ctxPendingDriver.res);
+  assert.strictEqual(ctxPendingDriver.getResponse().statusCode, 200);
+  assert.strictEqual(ctxPendingDriver.getResponse().responseData.data.approval_status, 'PENDING');
+  console.log('✅ PASS 24.3: /api/drivers/me enforces 401 unauthenticated and returns exact APPROVED vs PENDING statuses');
 
   console.log('\n=========================================');
   console.log('🎉 ALL SECURITY PHASE 1 TESTS PASSED!');

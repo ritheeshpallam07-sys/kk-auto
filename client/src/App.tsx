@@ -4,6 +4,8 @@ import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { SplashScreen } from './components/SplashScreen';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { safeGetSession, safeSetSession } from './utils/storage';
 
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
@@ -24,18 +26,26 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { SupportPage } from './pages/SupportPage';
 
+function normalizePath(path: string): string {
+  const stripped = path.split('?')[0] || '/';
+  if (stripped.length > 1) {
+    return stripped.replace(/\/+$/, '') || '/';
+  }
+  return stripped;
+}
+
 export const App: React.FC = () => {
   const [currentPath, setCurrentPath] = useState<string>(
-    () => window.location.pathname || '/'
+    () => normalizePath(window.location.pathname || '/')
   );
 
   const [showSplash, setShowSplash] = useState<boolean>(() => {
-    return !sessionStorage.getItem('kk_splash_seen');
+    return !safeGetSession('kk_splash_seen');
   });
 
   useEffect(() => {
     const onPopState = () => {
-      setCurrentPath(window.location.pathname || '/');
+      setCurrentPath(normalizePath(window.location.pathname || '/'));
     };
 
     window.addEventListener('popstate', onPopState);
@@ -47,7 +57,7 @@ export const App: React.FC = () => {
 
   const navigate = (path: string) => {
     window.history.pushState({}, '', path);
-    setCurrentPath(path.split('?')[0]);
+    setCurrentPath(normalizePath(path));
     window.dispatchEvent(new Event('popstate'));
     window.scrollTo(0, 0);
   };
@@ -266,36 +276,40 @@ export const App: React.FC = () => {
   };
 
   return (
-    <AuthProvider>
-      <div className="min-h-screen flex flex-col bg-[#0B0B0D] text-white font-sans antialiased">
+    <ErrorBoundary>
+      <AuthProvider>
+        <div className="min-h-screen flex flex-col bg-[#0B0B0D] text-white font-sans antialiased">
 
-        {/* Splash screen on fresh browser open */}
-        {showSplash && (
-          <SplashScreen
-            onComplete={() => {
-              sessionStorage.setItem('kk_splash_seen', 'true');
-              setShowSplash(false);
-            }}
-          />
-        )}
+          {/* Splash screen on fresh browser open */}
+          {showSplash && (
+            <SplashScreen
+              onComplete={() => {
+                safeSetSession('kk_splash_seen', 'true');
+                setShowSplash(false);
+              }}
+            />
+          )}
 
-        {/* Top Navbar */}
-        {!isOwnerRoute && (
-          <Navbar
-            currentPath={currentPath}
-            navigate={navigate}
-          />
-        )}
+          {/* Top Navbar */}
+          {!isOwnerRoute && (
+            <Navbar
+              currentPath={currentPath}
+              navigate={navigate}
+            />
+          )}
 
-        <main className="flex-1">
-          {renderContent()}
-        </main>
+          <main className="flex-1">
+            <ErrorBoundary>
+              {renderContent()}
+            </ErrorBoundary>
+          </main>
 
-        {/* Footer (hidden on Owner console and Book Auto screens) */}
-        {!isOwnerRoute && !isBookingRoute && (
-          <Footer navigate={navigate} currentPath={currentPath} />
-        )}
-      </div>
-    </AuthProvider>
+          {/* Footer (hidden on Owner console and Book Auto screens) */}
+          {!isOwnerRoute && !isBookingRoute && (
+            <Footer navigate={navigate} currentPath={currentPath} />
+          )}
+        </div>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
+import { safeGetLocal } from '../utils/storage';
 import { Logo } from '../components/Logo';
 import { 
   User, 
@@ -47,7 +48,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
     if (res.success) {
       const user = res.data?.user;
       // Check if user has accepted terms version 1.0
-      const termsAccepted = user?.terms_version === '1.0' || localStorage.getItem(`kk_terms_accepted_${user?.id}`) === '1.0';
+      const termsAccepted = user?.terms_version === '1.0' || safeGetLocal(`kk_terms_accepted_${user?.id}`) === '1.0';
 
       if (!termsAccepted) {
         navigate('/accept-terms');

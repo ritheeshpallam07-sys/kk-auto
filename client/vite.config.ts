@@ -7,6 +7,13 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: true,
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/api\//]
+      },
       manifest: {
         name: 'Kk_Auto',
         short_name: 'Kk_Auto',

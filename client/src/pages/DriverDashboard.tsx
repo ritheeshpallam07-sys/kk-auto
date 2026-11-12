@@ -205,7 +205,7 @@ interface DriverDashboardProps {
 }
 
 export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) => {
-  const { refreshUser } = useAuth();
+  const { logout, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState<DriverTab>(getDriverTabFromUrl);
   const [profile, setProfile] = useState<DriverProfile | null>(null);
   const [earnings, setEarnings] = useState<DriverEarningsSummary | null>(null);
@@ -214,6 +214,10 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
   const [completedRides, setCompletedRides] = useState<Booking[]>([]);
   const [completedRideForPayment, setCompletedRideForPayment] = useState<Booking | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [profileAuthError, setProfileAuthError] = useState<string | null>(null);
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
+  const isAuthErrorRef = React.useRef(false);
+  const hasProfileRef = React.useRef(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
@@ -247,7 +251,11 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
 
   useEffect(() => {
     loadDriverData();
-    const interval = setInterval(loadDriverData, 6000);
+    const interval = setInterval(() => {
+      if (!isAuthErrorRef.current) {
+        loadDriverData();
+      }
+    }, 6000);
     return () => clearInterval(interval);
   }, []);
 
@@ -280,6 +288,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
   }, []);
 
   const loadDriverData = async () => {
+    if (isAuthErrorRef.current) return;
     try {
       const [profRes, reqRes, myRidesRes, earnRes] = await Promise.all([
         api.driver.getProfile(),
@@ -289,13 +298,28 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
       ]);
 
       if (profRes.success && profRes.data) {
+        hasProfileRef.current = true;
         setProfile(profRes.data);
+        setProfileAuthError(null);
+        setProfileLoadError(null);
         if (!isFormInitialized) {
           setProfileName(profRes.data.name || '');
           setProfileMobile(profRes.data.mobile || '');
           setProfileUpi(profRes.data.payout_upi || '');
           setIsFormInitialized(true);
         }
+      } else if (profRes.status === 401 || profRes.status === 403) {
+        isAuthErrorRef.current = true;
+        setProfileAuthError(
+          profRes.error || 'Your driver session expired or could not be verified. Please sign in again.'
+        );
+        setProfileLoadError(null);
+        return;
+      } else if (!hasProfileRef.current) {
+        setProfileLoadError(
+          profRes.error || 'Unable to load your driver profile from Clik2Go servers.'
+        );
+        return;
       }
       if (earnRes.success && earnRes.data) setEarnings(earnRes.data);
       if (reqRes.success && reqRes.data) setRequests(reqRes.data);
@@ -317,6 +341,9 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
       }
     } catch (err: any) {
       console.error('Driver dashboard fetch error:', err);
+      if (!hasProfileRef.current) {
+        setProfileLoadError('Network error while loading your driver profile. Please retry.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -587,8 +614,75 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
     return <div className="py-20 text-center text-xs text-[#A1A1AA] bg-[#0B0B0D]">Loading driver terminal...</div>;
   }
 
-  const isAvailable = profile?.availability_status === 'available';
-  const approvalStatus = (profile?.approval_status || 'PENDING').toUpperCase();
+  if (profileAuthError) {
+    return (
+      <div className="min-h-[65vh] bg-[#0B0B0D] text-white flex items-center justify-center px-6">
+        <div className="max-w-md w-full bg-[#171719] border border-[#303034] rounded-3xl p-8 text-center space-y-5 shadow-card">
+          <div className="w-12 h-12 mx-auto rounded-2xl bg-amber-950/60 border border-amber-700/60 flex items-center justify-center text-amber-400">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-lg font-black text-white">Session Verification Required</h2>
+            <p className="text-xs text-[#A1A1AA] leading-relaxed">{profileAuthError}</p>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              await logout();
+              navigate('/login');
+            }}
+            className="w-full py-3 px-4 rounded-xl bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs uppercase tracking-wider transition-colors cursor-pointer"
+          >
+            Sign In Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="min-h-[65vh] bg-[#0B0B0D] text-white flex items-center justify-center px-6">
+        <div className="max-w-md w-full bg-[#171719] border border-[#303034] rounded-3xl p-8 text-center space-y-5 shadow-card">
+          <div className="w-12 h-12 mx-auto rounded-2xl bg-[#202023] border border-[#303034] flex items-center justify-center text-amber-400">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-lg font-black text-white">Unable to Load Driver Profile</h2>
+            <p className="text-xs text-[#A1A1AA] leading-relaxed">
+              {profileLoadError || 'Could not load your driver account details right now.'}
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setProfileLoadError(null);
+                setIsLoading(true);
+                loadDriverData();
+              }}
+              className="flex-1 py-3 px-4 rounded-xl bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs uppercase tracking-wider transition-colors cursor-pointer"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                await logout();
+                navigate('/login');
+              }}
+              className="flex-1 py-3 px-4 rounded-xl bg-[#202023] hover:bg-[#26262A] border border-[#303034] text-white font-bold text-xs transition-colors cursor-pointer"
+            >
+              Sign In Again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const isAvailable = profile.availability_status === 'available';
+  const approvalStatus = (profile.approval_status || '').toUpperCase();
   const isApproved = approvalStatus === 'APPROVED' || approvalStatus === 'ACTIVE';
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -836,8 +930,8 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
           </div>
           <div className="p-3 rounded-xl bg-[#202023]/60 border border-[#303034]">
             <span className="text-[10px] uppercase font-bold text-[#A1A1AA] block">Verification Status</span>
-            <span className={`font-bold text-xs ${profile?.approval_status === 'APPROVED' || profile?.approval_status === 'ACTIVE' ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {profile?.approval_status || 'PENDING'}
+            <span className={`font-bold text-xs ${isApproved ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {profile.approval_status || 'UNKNOWN'}
             </span>
           </div>
           <div className="p-3 rounded-xl bg-[#202023]/60 border border-[#303034]">

@@ -40,8 +40,12 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ navigate }
   // Security: Immediately sanitize the visible URL to prevent token leakage via browser history,
   // copy-paste, shoulder surfing, or Referer headers.
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.location.search.includes('token=')) {
-      window.history.replaceState({}, document.title, window.location.pathname);
+    try {
+      if (typeof window !== 'undefined' && window.location.search.includes('token=')) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    } catch {
+      // Ignore history manipulation restrictions in embedded WebViews
     }
   }, []);
 
@@ -63,7 +67,8 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ navigate }
         const res = await api.auth.verifyResetToken(token.trim());
         if (isMounted) {
           setIsVerifying(false);
-          if (res.success && res.data?.valid) {
+          const isTokenValid = Boolean(res.success && (res.valid ?? res.data?.valid));
+          if (isTokenValid) {
             setTokenValid(true);
             setTokenError(null);
           } else {

@@ -23,6 +23,52 @@ export function getClientIp(req: Request): string {
   return req.ip || req.socket?.remoteAddress || '127.0.0.1';
 }
 
+/**
+ * Resolves the trusted frontend origin for password reset links without trusting Host headers.
+ */
+export function resolveTrustedFrontendUrl(req: Request): string | undefined {
+  const originHeader = req.headers ? req.headers['origin'] : undefined;
+  if (typeof originHeader !== 'string' || !originHeader.trim()) {
+    return undefined;
+  }
+
+  let parsedOrigin: string;
+  try {
+    const parsed = new URL(originHeader.trim());
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return undefined;
+    }
+    parsedOrigin = parsed.origin;
+  } catch {
+    return undefined;
+  }
+
+  const allowedOrigins = new Set<string>([
+    'https://clik2go.in',
+    'https://www.clik2go.in'
+  ]);
+
+  if (process.env.FRONTEND_URL) {
+    try {
+      const configured = new URL(process.env.FRONTEND_URL.trim());
+      const isLocalHost = configured.hostname === 'localhost' || configured.hostname === '127.0.0.1';
+      if (process.env.NODE_ENV !== 'production' || !isLocalHost) {
+        allowedOrigins.add(configured.origin);
+      }
+    } catch {
+      // Ignore malformed FRONTEND_URL environment variable
+    }
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    allowedOrigins.add('http://localhost:5173');
+    allowedOrigins.add('http://127.0.0.1:5173');
+    allowedOrigins.add('http://localhost:3000');
+  }
+
+  return allowedOrigins.has(parsedOrigin) ? parsedOrigin : undefined;
+}
+
 export class AuthController {
   public static async register(req: Request, res: Response) {
     try {
@@ -669,16 +715,8 @@ export class AuthController {
         });
       }
 
-      // Determine client base URL from Host/Origin headers if appropriate, fallback to default
-      const originHeader = req.headers['origin'];
-      const hostHeader = req.headers['host'];
-      let clientBase: string | undefined;
-      if (typeof originHeader === 'string' && originHeader.startsWith('http')) {
-        clientBase = originHeader;
-      } else if (typeof hostHeader === 'string') {
-        const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
-        clientBase = `${protocol}://${hostHeader}`;
-      }
+      // Resolve trusted frontend origin only; never fall back to req.headers.host
+      const clientBase = resolveTrustedFrontendUrl(req);
 
       const result = await AuthService.requestPasswordReset(cleanEmail, clientBase);
 

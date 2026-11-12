@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, api, setStoredCsrfToken } from '../api/client';
+import { safeGetLocal, safeRemoveLocal, safeSetLocal } from '../utils/storage';
 
 interface AuthContextType {
   user: User | null;
@@ -21,7 +22,7 @@ interface AuthContextType {
     email?: string;
   }>;
   logout: () => void | Promise<void>;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<User | null>;
   sessionError: string | null;
   retrySession: () => Promise<void>;
   isCustomer: boolean;
@@ -59,8 +60,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSessionError(err.message || 'Connection error');
     } finally {
       // Proactively scrub any legacy localStorage token during session check
-      if (typeof localStorage !== 'undefined' && localStorage.getItem('kk_token')) {
-        localStorage.removeItem('kk_token');
+      if (safeGetLocal('kk_token')) {
+        safeRemoveLocal('kk_token');
       }
       isCheckingRef.current = false;
       setIsLoading(false);
@@ -71,17 +72,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     checkSession();
   }, []);
 
+  /** Confirms the HttpOnly session cookie persisted immediately after login or direct registration. */
+  const verifyPersistedSession = async (): Promise<
+    { ok: true; user: User } | { ok: false; error: string }
+  > => {
+    const meRes = await api.auth.me();
+    if (meRes.success && meRes.data) {
+      setUser(meRes.data);
+      setSessionError(null);
+      return { ok: true, user: meRes.data };
+    }
+
+    setUser(null);
+    if (meRes.status === 401 || meRes.status === 403) {
+      setStoredCsrfToken(null);
+      return {
+        ok: false,
+        error:
+          'Your browser blocked the login session cookie. Enable cookies / allow cross-site cookies or open clik2go.in directly and try again.'
+      };
+    }
+
+    return {
+      ok: false,
+      error: meRes.error || 'Could not confirm your login session with Clik2Go servers. Please try again.'
+    };
+  };
+
   const login = async (identifier: string, pass: string) => {
     setIsLoading(true);
     setSessionError(null);
-    const res = await api.auth.login(identifier, pass);
-    setIsLoading(false);
+    try {
+      const res = await api.auth.login(identifier, pass);
 
-    if (res.success && res.data) {
-      setUser(res.data.user);
-      return { success: true, data: res.data };
+      if (res.success && res.data) {
+        const verified = await verifyPersistedSession();
+        if (!verified.ok) {
+          return { success: false, error: verified.error };
+        }
+        return { success: true, data: { user: verified.user } };
+      }
+      return { success: false, error: res.error || 'Login failed' };
+    } finally {
+      setIsLoading(false);
     }
-    return { success: false, error: res.error || 'Login failed' };
   };
 
   const register = async (data: any) => {
@@ -111,7 +145,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Driver or direct registration:
       if ('user' in res.data) {
-        setUser(res.data.user);
+        const verified = await verifyPersistedSession();
+        if (!verified.ok) {
+          return {
+            success: false,
+            error: verified.error
+          };
+        }
         return { success: true };
       }
 
@@ -135,31 +175,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err) {
       console.error('[Auth] Server logout notification failed:', err);
     } finally {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.removeItem('kk_token');
-      }
+      safeRemoveLocal('kk_token');
       setStoredCsrfToken(null);
       setUser(null);
       setSessionError(null);
     }
   };
 
-  const refreshUser = async () => {
+  const refreshUser = async (): Promise<User | null> => {
     const res = await api.auth.me();
 
     if (res.success && res.data) {
       setUser(res.data);
       setSessionError(null);
-    } else if (res.status === 401 || res.status === 403) {
-      logout();
+      return res.data;
     }
+
+    if (res.status === 401 || res.status === 403) {
+      await logout();
+    }
+    return null;
   };
 
   const TERMS_CURRENT_VERSION = '1.0';
 
   const hasAcceptedTerms = Boolean(
     (user?.terms_version === TERMS_CURRENT_VERSION) ||
-    (user?.id && localStorage.getItem(`kk_terms_accepted_${user.id}`) === TERMS_CURRENT_VERSION)
+    (user?.id && safeGetLocal(`kk_terms_accepted_${user.id}`) === TERMS_CURRENT_VERSION)
   );
 
   const acceptTerms = async (version: string = TERMS_CURRENT_VERSION): Promise<boolean> => {
@@ -175,7 +217,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
       }
       if (user?.id) {
-        localStorage.setItem(`kk_terms_accepted_${user.id}`, version);
+        safeSetLocal(`kk_terms_accepted_${user.id}`, version);
       }
       return true;
     } catch {
@@ -185,7 +227,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           terms_version: version,
           terms_accepted_at: new Date().toISOString()
         });
-        localStorage.setItem(`kk_terms_accepted_${user.id}`, version);
+        safeSetLocal(`kk_terms_accepted_${user.id}`, version);
         return true;
       }
       return false;
