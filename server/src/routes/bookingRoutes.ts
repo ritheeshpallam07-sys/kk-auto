@@ -4,8 +4,9 @@ import { authenticateToken } from '../middleware/auth';
 
 const router = Router();
 
-// Public location list and fare check
+// Public location list, fare zones, and fare check
 router.get('/locations', BookingController.getLocations);
+router.get('/zones', BookingController.getFareZones);
 router.post('/fare-estimate', BookingController.calculateFareEstimate);
 
 // Protected customer booking routes

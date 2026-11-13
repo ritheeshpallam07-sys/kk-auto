@@ -19,6 +19,11 @@ export const LOCATION_COORDINATES: Record<string, Coordinates> = {
   'Marava': { lat: 13.6408, lng: 78.8010 },
   'Indiramma Colony': { lat: 13.6550, lng: 78.7960 },
   'Cross Road': { lat: 13.6525, lng: 78.8035 },
+  'Cross Road Apollo': { lat: 13.6525, lng: 78.8035 },
+  'Apollo Cross Road': { lat: 13.6525, lng: 78.8035 },
+  'Apollo Pharmacy Cross': { lat: 13.6525, lng: 78.8035 },
+  'JNTUA Main Gate': { lat: 13.6508, lng: 78.7860 },
+  'Marava Circle': { lat: 13.6408, lng: 78.8010 },
   'Railway Station': { lat: 13.6420, lng: 78.8080 },
   'Main Bazaar': { lat: 13.6475, lng: 78.8020 }
 };

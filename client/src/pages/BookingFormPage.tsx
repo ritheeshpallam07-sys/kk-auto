@@ -115,6 +115,7 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [mapsError, setMapsError] = useState<string | null>(null);
   const [activePinMode, setActivePinMode] = useState<'pickup' | 'destination' | null>(null);
+  const [isDraggingPin, setIsDraggingPin] = useState(false);
 
   const resolveCoordinates = (name: string): Coordinates | null => resolveLocalCoordinates(name);
 
@@ -407,6 +408,27 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
     }
   };
 
+  // Handle destination marker dragend to fine-tune exact drop-off spot
+  const handleDestinationPinMoved = (newLat: number, newLng: number) => {
+    setDestCoords({ lat: newLat, lng: newLng });
+    setIsResolvingPlace(true);
+    const google = (window as any).google;
+    if (google?.maps?.Geocoder) {
+      const geocoder = new google.maps.Geocoder();
+      geocoder.geocode({ location: { lat: newLat, lng: newLng } }, (results: any, status: any) => {
+        setIsResolvingPlace(false);
+        if (status === 'OK' && results && results[0]) {
+          setToLocation(results[0].formatted_address);
+        } else {
+          setToLocation(`Pinned Location (${newLat.toFixed(5)}, ${newLng.toFixed(5)})`);
+        }
+      });
+    } else {
+      setIsResolvingPlace(false);
+      setToLocation(`Pinned Location (${newLat.toFixed(5)}, ${newLng.toFixed(5)})`);
+    }
+  };
+
   // 2. Update Map Markers & Route Path
   useEffect(() => {
     if (!mapsLoaded || !mapInstanceRef.current || !(window as any).google) return;
@@ -436,12 +458,14 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
       });
     }
 
-    // Destination Marker (White square with lime border)
+    // Destination Marker (White square with lime border) - Draggable for precise drop-off
     if (destCoords) {
       destMarkerRef.current = new google.maps.Marker({
         position: destCoords,
         map,
-        title: `Destination: ${toLocation || 'Destination'}`,
+        title: `Destination: ${toLocation || 'Destination'} (Drag to adjust drop-off spot)`,
+        draggable: true,
+        cursor: 'grab',
         icon: {
           path: 'M -6,-6 L 6,-6 L 6,6 L -6,6 Z',
           scale: 1.1,
@@ -450,6 +474,19 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
           strokeColor: '#C6FF3D',
           strokeWeight: 2.5,
         },
+      });
+
+      destMarkerRef.current.addListener('dragstart', () => {
+        setIsDraggingPin(true);
+      });
+
+      destMarkerRef.current.addListener('dragend', (e: any) => {
+        setIsDraggingPin(false);
+        if (e && e.latLng) {
+          const newLat = e.latLng.lat();
+          const newLng = e.latLng.lng();
+          handleDestinationPinMoved(newLat, newLng);
+        }
       });
     }
 
@@ -460,6 +497,7 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
         const directionsRenderer = new google.maps.DirectionsRenderer({
           map,
           suppressMarkers: true,
+          preserveViewport: true,
           polylineOptions: {
             strokeColor: '#C6FF3D',
             strokeOpacity: 0.95,
@@ -550,12 +588,16 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
           setRouteError(null);
         } else {
           setFareEstimate(null);
-          setRouteError('Fare not configured for this route. Please contact the admin.');
+          const errorMsg =
+            res.error ||
+            (res.data as any)?.error ||
+            'Fare not configured for this location';
+          setRouteError(errorMsg);
         }
       } catch (err: any) {
         if (!isCancelled) {
           setFareEstimate(null);
-          setRouteError(err.message || 'Error checking fare estimate.');
+          setRouteError(err.message || 'Fare not configured for this location');
         }
       } finally {
         if (!isCancelled) setIsCalculating(false);
@@ -590,7 +632,7 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
     }
 
     if (!fareEstimate || !fareEstimate.available) {
-      setRouteError('Fare not configured for this route. Please contact the admin.');
+      setRouteError(routeError || 'Fare not configured for this location');
       return;
     }
 
@@ -727,6 +769,20 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
             >
               Done
             </button>
+          </div>
+        )}
+
+        {/* Draggable Destination Pin Hint */}
+        {destCoords && !activePinMode && (
+          <div className="absolute bottom-4 left-4 right-4 sm:left-auto sm:right-4 p-2.5 rounded-xl bg-[#0B0B0D]/90 border border-[#303034] text-[11px] text-[#A1A1AA] font-medium shadow-card backdrop-blur-md flex items-center gap-2 pointer-events-none">
+            <div className={`w-2 h-2 rounded-full ${isDraggingPin || isResolvingPlace ? 'bg-amber-400 animate-ping' : 'bg-[#C6FF3D] animate-pulse'} flex-shrink-0`} />
+            <span className="text-white">
+              {isDraggingPin
+                ? 'Moving drop-off pin...'
+                : isResolvingPlace
+                ? 'Updating drop-off address...'
+                : 'Drag the destination pin to fine-tune exact drop-off spot'}
+            </span>
           </div>
         )}
       </div>

@@ -21,6 +21,21 @@ export class BookingController {
   }
 
   /**
+   * Public endpoint to get all approved canonical fare zones and aliases
+   */
+  public static async getFareZones(req: Request, res: Response) {
+    try {
+      const zones = await RouteService.getApprovedZones();
+      return res.json({ success: true, data: zones });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Failed to fetch fare zones.' : err.message
+      });
+    }
+  }
+
+  /**
    * Server-side fixed route fare check against fare_routes table
    */
   public static async calculateFareEstimate(req: Request, res: Response) {
@@ -45,27 +60,55 @@ export class BookingController {
         });
       }
 
-      // 1. Check fixed route in database fare_routes table first
-      const fixedResult = await RouteService.getRouteFare(fromLoc, toLoc);
+      const pickupLatitude = req.body.pickupLatitude !== undefined ? Number(req.body.pickupLatitude) : undefined;
+      const pickupLongitude = req.body.pickupLongitude !== undefined ? Number(req.body.pickupLongitude) : undefined;
+      const destinationLatitude = req.body.destinationLatitude !== undefined ? Number(req.body.destinationLatitude) : undefined;
+      const destinationLongitude = req.body.destinationLongitude !== undefined ? Number(req.body.destinationLongitude) : undefined;
+
+      // 1. Check fixed route in database using canonical zone IDs
+      const fixedResult = await RouteService.getRouteFare(
+        fromLoc,
+        toLoc,
+        pickupLatitude,
+        pickupLongitude,
+        destinationLatitude,
+        destinationLongitude
+      );
+
       if (fixedResult.available && fixedResult.fare !== undefined) {
         return res.json({
           success: true,
           data: {
             available: true,
-            pickupAddress: fixedResult.fromLocation || fromLoc,
-            destinationAddress: fixedResult.toLocation || toLoc,
+            pickupAddress: fromLoc,
+            destinationAddress: toLoc,
+            pickupZone: fixedResult.fromLocation,
+            destinationZone: fixedResult.toLocation,
+            pickupZoneId: fixedResult.fromZoneId,
+            destinationZoneId: fixedResult.toZoneId,
             passengers,
             estimatedFare: Number(fixedResult.fare) * passengers
           }
         });
       }
 
-      // 2. Fallback: GPS coordinate area calculation if coordinates provided
-      const pickupLatitude = Number(req.body.pickupLatitude);
-      const pickupLongitude = Number(req.body.pickupLongitude);
-      const destinationLatitude = Number(req.body.destinationLatitude);
-      const destinationLongitude = Number(req.body.destinationLongitude);
+      if (fixedResult.error === 'Pickup and destination cannot be the same location.') {
+        return res.status(400).json({
+          success: false,
+          available: false,
+          error: 'Pickup and destination cannot be the same location.'
+        });
+      }
 
+      if (fixedResult.error === 'Fare not configured for this location') {
+        return res.status(404).json({
+          success: false,
+          available: false,
+          error: 'Fare not configured for this location'
+        });
+      }
+
+      // 2. Fallback: GPS coordinate area calculation if coordinates provided
       if (
         Number.isFinite(pickupLatitude) &&
         Number.isFinite(pickupLongitude) &&
@@ -86,8 +129,10 @@ export class BookingController {
             success: true,
             data: {
               available: true,
-              pickupAddress: result.fromLocation || fromLoc,
-              destinationAddress: result.toLocation || toLoc,
+              pickupAddress: fromLoc,
+              destinationAddress: toLoc,
+              pickupZone: result.fromLocation,
+              destinationZone: result.toLocation,
               passengers,
               estimatedFare: (result.fare ?? 0) * passengers
             }
@@ -98,7 +143,7 @@ export class BookingController {
       return res.status(404).json({
         success: false,
         available: false,
-        error: 'Fare not configured for this route. Please contact the admin.'
+        error: fixedResult.error || 'Fare not configured for this location'
       });
     } catch (err: any) {
       return res.status(500).json({
@@ -200,14 +245,21 @@ export class BookingController {
       let pickupAreaName: string | undefined;
       let destinationAreaName: string | undefined;
 
-      // 1. Check fixed route in database first
-      const fixedRoute = await RouteService.getRouteFare(pickupAddress, destinationAddress);
+      // 1. Check fixed route in database using canonical zone IDs
+      const fixedRoute = await RouteService.getRouteFare(
+        pickupAddress,
+        destinationAddress,
+        pickupLatitude,
+        pickupLongitude,
+        destinationLatitude,
+        destinationLongitude
+      );
       if (fixedRoute.available && fixedRoute.fare !== undefined) {
         estimatedFare = Number(fixedRoute.fare) * numPassengers;
         pickupAreaName = fixedRoute.fromLocation || pickupAddress;
         destinationAreaName = fixedRoute.toLocation || destinationAddress;
       } else {
-        // 2. Fallback GPS check
+        // 2. Fallback GPS check via FareService
         if (
           !Number.isFinite(pickupLatitude) ||
           !Number.isFinite(pickupLongitude) ||
@@ -232,7 +284,7 @@ export class BookingController {
         if (!fareResult.available || fareResult.fare === undefined) {
           return res.status(400).json({
             success: false,
-            error: 'Fare not configured for this route. Please contact the admin.'
+            error: fixedRoute.error || fareResult.error || 'Fare not configured for this location'
           });
         }
 

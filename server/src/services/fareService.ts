@@ -105,6 +105,20 @@ export class FareService {
     destinationLatitude?: number,
     destinationLongitude?: number
   ): Promise<RouteFareResult> {
+    // 1. First check canonical zone route fare via RouteService
+    const routeFare = await RouteService.getRouteFare(
+      fromLocation,
+      toLocation,
+      pickupLatitude,
+      pickupLongitude,
+      destinationLatitude,
+      destinationLongitude
+    );
+
+    if (routeFare.available && routeFare.fare !== undefined) {
+      return routeFare;
+    }
+
     if (
       pickupLatitude === undefined ||
       pickupLongitude === undefined ||
@@ -115,7 +129,7 @@ export class FareService {
         available: false,
         fromLocation,
         toLocation,
-        error: 'Pickup and destination GPS locations are required.'
+        error: routeFare.error || 'Pickup and destination GPS locations are required.'
       };
     }
 
@@ -148,7 +162,7 @@ export class FareService {
         available: false,
         fromLocation,
         toLocation,
-        error: 'Fare not configured for this route. Please contact the admin.'
+        error: 'Fare not configured for this location'
       };
     }
 
@@ -157,7 +171,7 @@ export class FareService {
         available: false,
         fromLocation: pickupArea.name,
         toLocation: destinationArea.name,
-        error: 'Fare not configured for this route. Please contact the admin.'
+        error: 'Pickup and destination cannot be the same location.'
       };
     }
 

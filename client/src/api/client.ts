@@ -76,6 +76,19 @@ export interface FareEstimate {
   destinationAddress: string;
   estimatedFare: number;
   passengers: number;
+  pickupZone?: string;
+  destinationZone?: string;
+  pickupZoneId?: number;
+  destinationZoneId?: number;
+}
+
+export interface FareZone {
+  id: number;
+  name: string;
+  latitude: number | null;
+  longitude: number | null;
+  radius_meters: number;
+  aliases: string[];
 }
 
 export interface Booking {
@@ -544,6 +557,7 @@ export const api = {
   },
   bookings: {
     getLocations: () => request<string[]>('/bookings/locations'),
+    getFareZones: () => request<FareZone[]>('/bookings/zones'),
     getFareEstimate: (params: {
       fromLocation: string;
       toLocation: string;

@@ -456,6 +456,30 @@ UPDATE platform_settings
 SET value = 'supportclik2go@gmail.com', updated_at = CURRENT_TIMESTAMP
 WHERE key = 'support_email' AND value = 'support@clik2go.in';
 
+-- Location / Zone Aliases for flexible matching
+CREATE TABLE IF NOT EXISTS location_aliases (
+  id SERIAL PRIMARY KEY,
+  location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+  alias VARCHAR(150) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT unique_location_alias UNIQUE (location_id, alias)
+);
 
+CREATE INDEX IF NOT EXISTS idx_location_aliases_alias ON location_aliases(LOWER(alias));
+CREATE INDEX IF NOT EXISTS idx_location_aliases_location_id ON location_aliases(location_id);
 
+-- Coordinates and radius on canonical locations
+ALTER TABLE locations
+  ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS radius_meters DOUBLE PRECISION DEFAULT 1200;
+
+-- Link fare_routes to canonical location IDs
+ALTER TABLE fare_routes
+  ADD COLUMN IF NOT EXISTS from_location_id INTEGER REFERENCES locations(id),
+  ADD COLUMN IF NOT EXISTS to_location_id INTEGER REFERENCES locations(id);
+
+-- Link fare_areas to canonical location IDs
+ALTER TABLE fare_areas
+  ADD COLUMN IF NOT EXISTS location_id INTEGER REFERENCES locations(id);
 

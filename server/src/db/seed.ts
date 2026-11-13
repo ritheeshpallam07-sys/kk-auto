@@ -34,10 +34,87 @@ export async function initPlatformDefaults() {
      WHERE key = 'support_email' AND value = 'support@clik2go.in'`
   );
 
-  // 2. Locations - insert missing locations only
-  const locations = ['JNTUA', 'Cross', 'Bus Stand', 'Marava'];
-  for (const loc of locations) {
-    await query('INSERT INTO locations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [loc]);
+  // 2. Locations - canonical approved fare zones with coordinates
+  const canonicalZones = [
+    { name: 'JNTUA', lat: 13.6508, lng: 78.7860, radius: 1200 },
+    { name: 'Cross', lat: 13.6525, lng: 78.8035, radius: 1200 },
+    { name: 'Bus Stand', lat: 13.6455, lng: 78.8035, radius: 1200 },
+    { name: 'Marava', lat: 13.6408, lng: 78.8010, radius: 1200 }
+  ];
+  for (const z of canonicalZones) {
+    await query(
+      `INSERT INTO locations (name, latitude, longitude, radius_meters)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (name) DO UPDATE
+       SET latitude = COALESCE(locations.latitude, EXCLUDED.latitude),
+           longitude = COALESCE(locations.longitude, EXCLUDED.longitude),
+           radius_meters = COALESCE(locations.radius_meters, EXCLUDED.radius_meters)`,
+      [z.name, z.lat, z.lng, z.radius]
+    );
+  }
+
+  // 2b. Location / Fare Zone Aliases (Maps multiple Google Places suggestions to canonical zones)
+  const zoneAliases: Record<string, string[]> = {
+    'Cross': [
+      'Cross',
+      'Cross Road',
+      'Cross Road Apollo',
+      'Apollo Cross Road',
+      'Apollo Pharmacy Cross',
+      'Apollo Pharmacy, Cross Road',
+      'Cross Circle',
+      'Cross Junction',
+      'Madanapalle Cross',
+      'Madanapalle Cross Road',
+      'Cross Center',
+      'Indiramma Colony',
+      'Beedi Colony'
+    ],
+    'JNTUA': [
+      'JNTUA',
+      'JNTU',
+      'JNTU-A',
+      'JNTUA Main Gate',
+      'JNTUA Girls Hostel',
+      'JNTUA Boys Hostel',
+      'JNTU College of Engineering',
+      'JNTUA College',
+      'JNTU Engineering College',
+      'JNTUA College of Engineering, Pulivendula Road'
+    ],
+    'Bus Stand': [
+      'Bus Stand',
+      'APSRTC Bus Stand',
+      'RTC Bus Stand',
+      'Old Bus Stand',
+      'New Bus Stand',
+      'Bus Station',
+      'Madanapalle Bus Stand',
+      'RTC Bus Station'
+    ],
+    'Marava': [
+      'Marava',
+      'Marava Circle',
+      'Marava Junction',
+      'Marava Road',
+      'Marava Gate',
+      'Marava Bus Stop'
+    ]
+  };
+
+  for (const [zoneName, aliases] of Object.entries(zoneAliases)) {
+    const locRes = await query<{ id: number }>('SELECT id FROM locations WHERE name = $1 LIMIT 1', [zoneName]);
+    if (locRes.rows.length > 0) {
+      const locId = locRes.rows[0].id;
+      for (const alias of aliases) {
+        await query(
+          `INSERT INTO location_aliases (location_id, alias)
+           VALUES ($1, $2)
+           ON CONFLICT (location_id, alias) DO NOTHING`,
+          [locId, alias]
+        );
+      }
+    }
   }
 
   // 3. Authorized Fixed Routes - insert missing routes only; preserve existing prices and statuses
@@ -51,13 +128,43 @@ export async function initPlatformDefaults() {
   ];
 
   for (const r of routes) {
+    const l1 = await query<{ id: number }>('SELECT id FROM locations WHERE name = $1 LIMIT 1', [r.from]);
+    const l2 = await query<{ id: number }>('SELECT id FROM locations WHERE name = $1 LIMIT 1', [r.to]);
+    const fromId = l1.rows[0]?.id;
+    const toId = l2.rows[0]?.id;
+
     await query(
-      `INSERT INTO fare_routes (from_location, to_location, fare, is_active, updated_at)
-       VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP)
+      `INSERT INTO fare_routes (from_location, to_location, fare, is_active, updated_at, from_location_id, to_location_id)
+       VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP, $4, $5)
        ON CONFLICT (from_location, to_location) DO NOTHING`,
-      [r.from, r.to, r.fare]
+      [r.from, r.to, r.fare, fromId, toId]
     );
   }
+
+  // Backfill canonical IDs for any existing routes
+  await query(
+    `UPDATE fare_routes
+     SET from_location_id = l1.id,
+         to_location_id = l2.id
+     FROM locations l1, locations l2
+     WHERE LOWER(TRIM(fare_routes.from_location)) = LOWER(TRIM(l1.name))
+       AND LOWER(TRIM(fare_routes.to_location)) = LOWER(TRIM(l2.name))
+       AND (fare_routes.from_location_id IS NULL OR fare_routes.to_location_id IS NULL)`
+  );
+
+  // Link fare_areas to canonical locations where applicable
+  await query(
+    `UPDATE fare_areas
+     SET location_id = l.id
+     FROM locations l
+     WHERE fare_areas.location_id IS NULL
+       AND (
+         (LOWER(fare_areas.name) = 'cross road' AND LOWER(l.name) = 'cross')
+         OR (LOWER(fare_areas.name) LIKE '%jntua%' AND LOWER(l.name) = 'jntua')
+         OR (LOWER(fare_areas.name) = 'bus stand' AND LOWER(l.name) = 'bus stand')
+         OR (LOWER(fare_areas.name) = 'marava' AND LOWER(l.name) = 'marava')
+       )`
+  );
 
   console.log('[Bootstrap] Essential platform defaults verified.');
 }
