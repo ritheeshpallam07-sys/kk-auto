@@ -37,9 +37,10 @@ export async function initPlatformDefaults() {
   // 2. Locations - canonical approved fare zones with coordinates
   const canonicalZones = [
     { name: 'JNTUA', lat: 13.6508, lng: 78.7860, radius: 1200 },
-    { name: 'Cross', lat: 13.6525, lng: 78.8035, radius: 1200 },
-    { name: 'Bus Stand', lat: 13.6455, lng: 78.8035, radius: 1200 },
-    { name: 'Marava', lat: 13.6408, lng: 78.8010, radius: 1200 }
+    { name: 'Cross', lat: 13.6525, lng: 78.8035, radius: 900 },
+    { name: 'Bus Stand', lat: 13.6455, lng: 78.8035, radius: 1000 },
+    { name: 'Marava', lat: 13.6408, lng: 78.8010, radius: 1000 },
+    { name: 'Indiramma Colony', lat: 13.6550, lng: 78.7960, radius: 800 }
   ];
   for (const z of canonicalZones) {
     await query(
@@ -50,6 +51,16 @@ export async function initPlatformDefaults() {
            longitude = COALESCE(locations.longitude, EXCLUDED.longitude),
            radius_meters = COALESCE(locations.radius_meters, EXCLUDED.radius_meters)`,
       [z.name, z.lat, z.lng, z.radius]
+    );
+  }
+
+  // Remove any legacy/incorrect mapping of Indiramma Colony pointing to Cross
+  const crossLoc = await query<{ id: number }>('SELECT id FROM locations WHERE name = $1 LIMIT 1', ['Cross']);
+  if (crossLoc.rows.length > 0) {
+    await query(
+      `DELETE FROM location_aliases
+       WHERE LOWER(TRIM(alias)) = 'indiramma colony' AND location_id = $1`,
+      [crossLoc.rows[0].id]
     );
   }
 
@@ -66,9 +77,12 @@ export async function initPlatformDefaults() {
       'Cross Junction',
       'Madanapalle Cross',
       'Madanapalle Cross Road',
-      'Cross Center',
+      'Cross Center'
+    ],
+    'Indiramma Colony': [
       'Indiramma Colony',
-      'Beedi Colony'
+      'Indiramma Colony Circle',
+      'Indiramma Colony Madanapalle'
     ],
     'JNTUA': [
       'JNTUA',
@@ -124,7 +138,13 @@ export async function initPlatformDefaults() {
     { from: 'JNTUA', to: 'Bus Stand', fare: 25.0 },
     { from: 'Bus Stand', to: 'JNTUA', fare: 25.0 },
     { from: 'JNTUA', to: 'Marava', fare: 30.0 },
-    { from: 'Marava', to: 'JNTUA', fare: 30.0 }
+    { from: 'Marava', to: 'JNTUA', fare: 30.0 },
+    { from: 'Indiramma Colony', to: 'Cross', fare: 10.0 },
+    { from: 'Cross', to: 'Indiramma Colony', fare: 10.0 },
+    { from: 'Indiramma Colony', to: 'Bus Stand', fare: 10.0 },
+    { from: 'Bus Stand', to: 'Indiramma Colony', fare: 10.0 },
+    { from: 'Indiramma Colony', to: 'Marava', fare: 22.0 },
+    { from: 'Marava', to: 'Indiramma Colony', fare: 22.0 }
   ];
 
   for (const r of routes) {
@@ -149,7 +169,8 @@ export async function initPlatformDefaults() {
      FROM locations l1, locations l2
      WHERE LOWER(TRIM(fare_routes.from_location)) = LOWER(TRIM(l1.name))
        AND LOWER(TRIM(fare_routes.to_location)) = LOWER(TRIM(l2.name))
-       AND (fare_routes.from_location_id IS NULL OR fare_routes.to_location_id IS NULL)`
+       AND (fare_routes.from_location_id IS NULL OR fare_routes.to_location_id IS NULL
+            OR fare_routes.from_location_id != l1.id OR fare_routes.to_location_id != l2.id)`
   );
 
   // Link fare_areas to canonical locations where applicable
@@ -157,12 +178,13 @@ export async function initPlatformDefaults() {
     `UPDATE fare_areas
      SET location_id = l.id
      FROM locations l
-     WHERE fare_areas.location_id IS NULL
+     WHERE (fare_areas.location_id IS NULL OR LOWER(fare_areas.name) = 'indiramma colony')
        AND (
          (LOWER(fare_areas.name) = 'cross road' AND LOWER(l.name) = 'cross')
          OR (LOWER(fare_areas.name) LIKE '%jntua%' AND LOWER(l.name) = 'jntua')
          OR (LOWER(fare_areas.name) = 'bus stand' AND LOWER(l.name) = 'bus stand')
          OR (LOWER(fare_areas.name) = 'marava' AND LOWER(l.name) = 'marava')
+         OR (LOWER(fare_areas.name) = 'indiramma colony' AND LOWER(l.name) = 'indiramma colony')
        )`
   );
 

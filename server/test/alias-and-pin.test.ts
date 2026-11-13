@@ -22,7 +22,9 @@ async function runTests() {
     { input: 'Bus Stand', expected: 'Bus Stand' },
     { input: 'RTC Bus Stand', expected: 'Bus Stand' },
     { input: 'Marava', expected: 'Marava' },
-    { input: 'Marava Circle', expected: 'Marava' }
+    { input: 'Marava Circle', expected: 'Marava' },
+    { input: 'Indiramma Colony', expected: 'Indiramma Colony' },
+    { input: 'Indiramma Colony Circle', expected: 'Indiramma Colony' }
   ];
 
   for (const t of testAliases) {
@@ -36,6 +38,9 @@ async function runTests() {
   // Test 2: Route Fare with Aliases
   console.log('\n[2] Testing route fare calculation with canonical zones & aliases:');
   const testRoutes = [
+    { from: 'Indiramma Colony', to: 'Cross', expectedFare: 10 },
+    { from: 'Cross', to: 'Indiramma Colony', expectedFare: 10 },
+    { from: 'JNTUA Main Gate', to: 'Cross', expectedFare: 20 },
     { from: 'JNTUA', to: 'Cross Road Apollo', expectedFare: 20 },
     { from: 'JNTUA', to: 'Apollo Cross Road', expectedFare: 20 },
     { from: 'Apollo Cross Road', to: 'JNTUA', expectedFare: 20 },
@@ -58,6 +63,12 @@ async function runTests() {
     throw new Error(`FAIL: Same zone should be rejected. Got: ${JSON.stringify(sameRes)}`);
   }
   console.log(`  ✓ "Cross" -> "Apollo Cross Road" correctly rejected: "${sameRes.error}"`);
+
+  const sameRes2 = await RouteService.getRouteFare('Indiramma Colony', 'Indiramma Colony Circle');
+  if (sameRes2.available || !sameRes2.error?.includes('same location')) {
+    throw new Error(`FAIL: Same zone should be rejected. Got: ${JSON.stringify(sameRes2)}`);
+  }
+  console.log(`  ✓ "Indiramma Colony" -> "Indiramma Colony Circle" correctly rejected: "${sameRes2.error}"`);
 
   // Test 4: Unapproved Locations Rejection
   console.log('\n[4] Testing unapproved locations rejection:');

@@ -222,7 +222,8 @@ export class BookingController {
         'jntua': { lat: 13.6508, lng: 78.7860 },
         'cross': { lat: 13.6525, lng: 78.8035 },
         'bus stand': { lat: 13.6455, lng: 78.8035 },
-        'marava': { lat: 13.6408, lng: 78.8010 }
+        'marava': { lat: 13.6408, lng: 78.8010 },
+        'indiramma colony': { lat: 13.6550, lng: 78.7960 }
       };
 
       if (!Number.isFinite(pickupLatitude)) {

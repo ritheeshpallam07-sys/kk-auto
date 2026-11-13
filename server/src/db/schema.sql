@@ -483,3 +483,30 @@ ALTER TABLE fare_routes
 ALTER TABLE fare_areas
   ADD COLUMN IF NOT EXISTS location_id INTEGER REFERENCES locations(id);
 
+-- Ensure Indiramma Colony is an independent canonical location
+INSERT INTO locations (name, latitude, longitude, radius_meters)
+VALUES ('Indiramma Colony', 13.6550, 78.7960, 800)
+ON CONFLICT (name) DO UPDATE
+SET latitude = COALESCE(locations.latitude, EXCLUDED.latitude),
+    longitude = COALESCE(locations.longitude, EXCLUDED.longitude),
+    radius_meters = COALESCE(locations.radius_meters, EXCLUDED.radius_meters);
+
+-- Remove incorrectly mapped Indiramma Colony alias from Cross
+DELETE FROM location_aliases
+WHERE LOWER(TRIM(alias)) = 'indiramma colony'
+  AND location_id != (SELECT id FROM locations WHERE name = 'Indiramma Colony' LIMIT 1);
+
+-- Map Indiramma Colony to its own canonical zone
+INSERT INTO location_aliases (location_id, alias)
+SELECT id, 'Indiramma Colony'
+FROM locations
+WHERE name = 'Indiramma Colony'
+ON CONFLICT (location_id, alias) DO NOTHING;
+
+-- Link Indiramma Colony polygon in fare_areas to its canonical location
+UPDATE fare_areas
+SET location_id = l.id
+FROM locations l
+WHERE LOWER(TRIM(fare_areas.name)) = 'indiramma colony'
+  AND LOWER(TRIM(l.name)) = 'indiramma colony';
+
