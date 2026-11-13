@@ -51,7 +51,7 @@ export const SupportPage: React.FC<SupportPageProps> = ({ navigate }) => {
 
   // Support Config (Phone, WhatsApp, Email)
   const [supportConfig, setSupportConfig] = useState<SupportConfig>({
-    email: 'support@clik2go.in',
+    email: 'supportclik2go@gmail.com',
     phone: null,
     whatsapp: null,
     phoneConfigured: false,
@@ -272,7 +272,7 @@ export const SupportPage: React.FC<SupportPageProps> = ({ navigate }) => {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Email Support */}
             <a
-              href="mailto:support@clik2go.in"
+              href={`mailto:${supportConfig.email || 'supportclik2go@gmail.com'}`}
               className="p-5 bg-[#171719] hover:bg-[#202023] border border-[#303034] hover:border-[#C6FF3D]/40 rounded-2xl flex flex-col justify-between transition-all group shadow-card"
             >
               <div className="space-y-3">
@@ -284,8 +284,8 @@ export const SupportPage: React.FC<SupportPageProps> = ({ navigate }) => {
                   <p className="text-xs text-[#A1A1AA] mt-0.5">24/7 Support Desk</p>
                 </div>
               </div>
-              <div className="mt-4 pt-3 border-t border-[#303034] text-xs font-mono text-white">
-                support@clik2go.in
+              <div className="mt-4 pt-3 border-t border-[#303034] text-xs font-mono text-white truncate">
+                {supportConfig.email || 'supportclik2go@gmail.com'}
               </div>
             </a>
 
@@ -652,7 +652,7 @@ export const SupportPage: React.FC<SupportPageProps> = ({ navigate }) => {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {/* Email */}
           <a
-            href="mailto:support@clik2go.in"
+            href={`mailto:${supportConfig.email || 'supportclik2go@gmail.com'}`}
             className="p-3.5 bg-[#171719] hover:bg-[#202023] border border-[#303034] rounded-2xl flex items-center gap-3 transition-colors"
           >
             <div className="w-8 h-8 rounded-xl bg-[#202023] text-[#C6FF3D] flex items-center justify-center flex-shrink-0">
@@ -660,7 +660,7 @@ export const SupportPage: React.FC<SupportPageProps> = ({ navigate }) => {
             </div>
             <div className="min-w-0">
               <p className="text-[10px] uppercase font-bold text-[#A1A1AA]">Email Help</p>
-              <p className="text-xs font-bold text-white truncate">support@clik2go.in</p>
+              <p className="text-xs font-bold text-white truncate">{supportConfig.email || 'supportclik2go@gmail.com'}</p>
             </div>
           </a>
 

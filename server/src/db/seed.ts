@@ -17,14 +17,21 @@ export async function initPlatformDefaults() {
      ON CONFLICT (key) DO NOTHING`
   );
 
-  // Support contact defaults (support@clik2go.in is official, phone/WhatsApp require verified config)
+  // Support contact defaults (supportclik2go@gmail.com is official, phone/WhatsApp require verified config)
   await query(
     `INSERT INTO platform_settings (key, value, description, updated_at)
      VALUES 
-       ('support_email', 'support@clik2go.in', 'Official Clik2Go customer & driver support email', CURRENT_TIMESTAMP),
+       ('support_email', 'supportclik2go@gmail.com', 'Official Clik2Go customer & driver support email', CURRENT_TIMESTAMP),
        ('support_phone', '', 'Configured support helpline phone number (leave empty if not configured)', CURRENT_TIMESTAMP),
        ('support_whatsapp', '', 'Configured support WhatsApp number (leave empty if not configured)', CURRENT_TIMESTAMP)
      ON CONFLICT (key) DO NOTHING`
+  );
+
+  // Safely update legacy default support email to the new official support address without touching custom overrides
+  await query(
+    `UPDATE platform_settings
+     SET value = 'supportclik2go@gmail.com', updated_at = CURRENT_TIMESTAMP
+     WHERE key = 'support_email' AND value = 'support@clik2go.in'`
   );
 
   // 2. Locations - insert missing locations only

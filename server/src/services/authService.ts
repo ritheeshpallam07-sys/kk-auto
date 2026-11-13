@@ -386,7 +386,7 @@ export class AuthService {
     // After password verification, enforce deactivation policy securely
     if (row.status === 'DEACTIVATED') {
       const deactErr: any = new Error(
-        'This account has been deactivated. For inquiries or reactivation, please contact support@clik2go.in.'
+        'This account has been deactivated. For inquiries or reactivation, please contact supportclik2go@gmail.com.'
       );
       deactErr.statusCode = 403;
       throw deactErr;

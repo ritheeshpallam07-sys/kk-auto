@@ -110,7 +110,7 @@ export class SupportService {
       settings[row.key] = row.value;
     }
 
-    const email = settings['support_email'] || 'support@clik2go.in';
+    const email = (process.env.SUPPORT_EMAIL || '').trim() || settings['support_email'] || 'supportclik2go@gmail.com';
     const rawPhone = process.env.SUPPORT_PHONE || settings['support_phone'] || '';
     const rawWhatsapp = process.env.SUPPORT_WHATSAPP || settings['support_whatsapp'] || '';
 

@@ -943,7 +943,7 @@ export class AuthController {
       if (existingRequest.rows.length > 0) {
         return res.status(400).json({
           success: false,
-          error: 'An account deletion request is already pending review for this account. For questions or assistance, please contact support@clik2go.in.'
+          error: 'An account deletion request is already pending review for this account. For questions or assistance, please contact supportclik2go@gmail.com.'
         });
       }
 
@@ -987,7 +987,7 @@ export class AuthController {
 
       return res.status(201).json({
         success: true,
-        message: 'Your account deletion request has been submitted successfully. In accordance with statutory requirements, financial and ride transaction records are archived for legal compliance. For questions, contact support@clik2go.in.',
+        message: 'Your account deletion request has been submitted successfully. In accordance with statutory requirements, financial and ride transaction records are archived for legal compliance. For questions, contact supportclik2go@gmail.com.',
         data: insertResult.rows[0]
       });
     } catch (err: any) {

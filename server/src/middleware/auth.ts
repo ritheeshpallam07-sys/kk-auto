@@ -236,7 +236,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
       }
       return res.status(403).json({
         success: false,
-        error: 'Your account has been deactivated. Access is denied. Contact support@clik2go.in.'
+        error: 'Your account has been deactivated. Access is denied. Contact supportclik2go@gmail.com.'
       });
     }
 

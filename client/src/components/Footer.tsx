@@ -149,8 +149,8 @@ export const Footer: React.FC<FooterProps> = ({ navigate, currentPath }) => {
                   </div>
                   <div>
                     <div className="text-[10px] uppercase font-bold text-[#A1A1AA]">Email</div>
-                    <a href="mailto:support@clik2go.in" className="font-semibold text-white hover:text-[#C6FF3D] transition-colors">
-                      support@clik2go.in
+                    <a href="mailto:supportclik2go@gmail.com" className="font-semibold text-white hover:text-[#C6FF3D] transition-colors">
+                      supportclik2go@gmail.com
                     </a>
                   </div>
                 </li>

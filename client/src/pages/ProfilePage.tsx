@@ -285,7 +285,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate }) => {
 
           <div className="pt-2 border-t border-amber-800/40 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs">
             <span className="text-[#A1A1AA]">
-              Questions or changes? Contact <a href="mailto:support@clik2go.in" className="text-[#C6FF3D] underline">support@clik2go.in</a>
+              Questions or changes? Contact <a href="mailto:supportclik2go@gmail.com" className="text-[#C6FF3D] underline">supportclik2go@gmail.com</a>
             </span>
             <button
               type="button"
@@ -669,7 +669,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ navigate }) => {
                   </li>
                 )}
                 <li>
-                  <strong className="text-white">Support Inquiries:</strong> You can reach our administration at <a href="mailto:support@clik2go.in" className="text-[#C6FF3D] underline">support@clik2go.in</a> for questions regarding your account status.
+                  <strong className="text-white">Support Inquiries:</strong> You can reach our administration at <a href="mailto:supportclik2go@gmail.com" className="text-[#C6FF3D] underline">supportclik2go@gmail.com</a> for questions regarding your account status.
                 </li>
               </ul>
             </div>

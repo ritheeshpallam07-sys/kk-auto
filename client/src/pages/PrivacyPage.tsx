@@ -275,7 +275,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ navigate }) => {
                 <strong className="text-white">Consequences of Deletion:</strong> Once processed by administration, your account access is permanently closed and you will not be able to log in or book rides. Driver partners are immediately taken offline and removed from dispatch queues. Non-personal financial and tax audit records are archived as required by law.
               </li>
               <li>
-                <strong className="text-white">Assistance:</strong> For any inquiries or expedited assistance regarding account deletion, you may also email <a href="mailto:support@clik2go.in" className="text-[#C6FF3D] underline">support@clik2go.in</a>.
+                <strong className="text-white">Assistance:</strong> For any inquiries or expedited assistance regarding account deletion, you may also email <a href="mailto:supportclik2go@gmail.com" className="text-[#C6FF3D] underline">supportclik2go@gmail.com</a>.
               </li>
             </ul>
           </section>
@@ -323,8 +323,8 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ navigate }) => {
                 </div>
                 <div>
                   <div className="text-[10px] uppercase font-bold text-[#A1A1AA]">Clik2Go Support & Privacy Desk</div>
-                  <a href="mailto:support@clik2go.in" className="text-sm font-bold text-white hover:text-[#C6FF3D] transition-colors">
-                    support@clik2go.in
+                  <a href="mailto:supportclik2go@gmail.com" className="text-sm font-bold text-white hover:text-[#C6FF3D] transition-colors">
+                    supportclik2go@gmail.com
                   </a>
                 </div>
               </div>

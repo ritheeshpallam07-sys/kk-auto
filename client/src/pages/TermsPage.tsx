@@ -262,7 +262,7 @@ export const TermsPage: React.FC<TermsPageProps> = ({ navigate }) => {
                 <strong className="text-white">Eligibility for Duplicate Payments:</strong> If a customer is charged more than once for the same booking due to a technical error or double transfer, the duplicate transaction is <strong className="text-white">eligible for review for a refund</strong>.
               </li>
               <li>
-                <strong className="text-white">Review Process:</strong> The customer must notify Clik2Go by emailing <a href="mailto:support@clik2go.in" className="text-[#C6FF3D] underline">support@clik2go.in</a> with the booking reference ID, payment transaction references, UPI UTR numbers, and banking proof of debit.
+                <strong className="text-white">Review Process:</strong> The customer must notify Clik2Go by emailing <a href="mailto:supportclik2go@gmail.com" className="text-[#C6FF3D] underline">supportclik2go@gmail.com</a> with the booking reference ID, payment transaction references, UPI UTR numbers, and banking proof of debit.
               </li>
               <li>
                 <strong className="text-white">No Automatic Refund Promise:</strong> Clik2Go does not promise automated instant refunds or a fixed turnaround timeframe. Each duplicate payment claim is individually investigated against banking and driver ledger logs.
@@ -303,7 +303,7 @@ export const TermsPage: React.FC<TermsPageProps> = ({ navigate }) => {
             </p>
             <ul className="list-disc list-inside space-y-2 pl-2 text-xs text-[#A1A1AA]">
               <li>
-                Disputes should be promptly reported to <a href="mailto:support@clik2go.in" className="text-[#C6FF3D] underline">support@clik2go.in</a> with the relevant booking reference.
+                Disputes should be promptly reported to <a href="mailto:supportclik2go@gmail.com" className="text-[#C6FF3D] underline">supportclik2go@gmail.com</a> with the relevant booking reference.
               </li>
               <li>
                 The <strong className="text-white">Owner/Admin</strong> investigates and resolves customer-driver disputes based on digital trip logs, pickup timestamps, and established committee fare tables.
@@ -355,8 +355,8 @@ export const TermsPage: React.FC<TermsPageProps> = ({ navigate }) => {
                 </div>
                 <div>
                   <div className="text-[10px] uppercase font-bold text-[#A1A1AA]">Customer & Driver Support Email</div>
-                  <a href="mailto:support@clik2go.in" className="text-sm font-bold text-white hover:text-[#C6FF3D] transition-colors">
-                    support@clik2go.in
+                  <a href="mailto:supportclik2go@gmail.com" className="text-sm font-bold text-white hover:text-[#C6FF3D] transition-colors">
+                    supportclik2go@gmail.com
                   </a>
                 </div>
               </div>

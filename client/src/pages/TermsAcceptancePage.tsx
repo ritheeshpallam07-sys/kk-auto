@@ -89,7 +89,7 @@ export const TermsAcceptancePage: React.FC<TermsAcceptancePageProps> = ({ naviga
                 <p><strong className="text-white">1. Committee-Decided Fares:</strong> All ride fares strictly follow the rates decided by the local drivers&apos; committee with zero surge charges.</p>
                 <p><strong className="text-white">2. Service Area:</strong> Operates strictly within our designated local operating town/city and authorized zone routes.</p>
                 <p><strong className="text-white">3. Cancellations:</strong> Free customer cancellation before a driver is assigned. Driver cancellations after acceptance may incur a penalty determined by the Owner/Admin.</p>
-                <p><strong className="text-white">4. Payment:</strong> Direct Cash or driver UPI QR payments upon ride completion. Duplicate payments are eligible for review at support@clik2go.in.</p>
+                <p><strong className="text-white">4. Payment:</strong> Direct Cash or driver UPI QR payments upon ride completion. Duplicate payments are eligible for review at supportclik2go@gmail.com.</p>
                 <p><strong className="text-white">5. Disputes & Misuse:</strong> Disputes are resolved by the Owner/Admin. Account misuse may result in restrictions or suspension.</p>
                 <div className="pt-1">
                   <button
@@ -132,7 +132,7 @@ export const TermsAcceptancePage: React.FC<TermsAcceptancePageProps> = ({ naviga
               <div className="px-4 pb-4 pt-1 text-xs text-[#A1A1AA] border-t border-[#303034] space-y-2 max-h-48 overflow-y-auto">
                 <p><strong className="text-white">1. Information Collected:</strong> Name, 10-digit mobile number, and email address. Passwords are securely hashed with bcrypt (never stored in plain text).</p>
                 <p><strong className="text-white">2. Access Controls:</strong> Customer pickup/drop details are visible to the assigned driver only after that driver accepts the booking.</p>
-                <p><strong className="text-white">3. Retention & Deletion:</strong> Ride history is retained while accounts are active. Deletion requests can be submitted via Profile settings or support@clik2go.in; financial and statutory records are archived as required by law.</p>
+                <p><strong className="text-white">3. Retention & Deletion:</strong> Ride history is retained while accounts are active. Deletion requests can be submitted via Profile settings or supportclik2go@gmail.com; financial and statutory records are archived as required by law.</p>
                 <p><strong className="text-white">4. Notifications:</strong> Delivered via website alerts and transactional verification emails.</p>
                 <div className="pt-1">
                   <button

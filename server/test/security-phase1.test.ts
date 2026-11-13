@@ -5163,7 +5163,7 @@ async function runTests() {
   // 23.11: WhatsApp/call configuration behavior
   const config = await SupportService.getSupportConfig();
   assert.strictEqual(typeof config.email, 'string');
-  assert.strictEqual(config.email, 'support@clik2go.in');
+  assert.strictEqual(config.email, 'supportclik2go@gmail.com');
   assert.strictEqual(typeof config.phoneConfigured, 'boolean');
   assert.strictEqual(typeof config.whatsappConfigured, 'boolean');
   console.log('✅ PASS 23.11: Support configuration sanitization and fallback indicators verified');
@@ -5190,7 +5190,7 @@ async function runTests() {
   const ctxPublicConfig = createMockContext(undefined);
   await SupportController.getConfig(ctxPublicConfig.req, ctxPublicConfig.res);
   assert.strictEqual(ctxPublicConfig.getResponse().statusCode, 200, 'Public support config must be accessible unauthenticated');
-  assert.strictEqual(ctxPublicConfig.getResponse().responseData.data.email, 'support@clik2go.in');
+  assert.strictEqual(ctxPublicConfig.getResponse().responseData.data.email, 'supportclik2go@gmail.com');
   console.log('✅ PASS 23.14: Public/guest support config endpoint accessible without authentication');
 
   // Clean support rate limits after test

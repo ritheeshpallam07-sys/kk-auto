@@ -451,6 +451,11 @@ END $$;
 ALTER TABLE trip_bookings
   ADD COLUMN IF NOT EXISTS trip_destinations JSONB;
 
+-- Safe idempotent migration for official support email update
+UPDATE platform_settings
+SET value = 'supportclik2go@gmail.com', updated_at = CURRENT_TIMESTAMP
+WHERE key = 'support_email' AND value = 'support@clik2go.in';
+
 
 
 
