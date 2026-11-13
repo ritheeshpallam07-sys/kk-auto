@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { query, withTransaction } from '../config/db';
 import { RouteService } from '../services/routeService';
 import { PaymentService } from '../services/paymentService';
+import { PlatformSettingsService } from '../services/platformSettingsService';
 import { AuthService } from '../services/authService';
 import { AuditService } from '../services/auditService';
 import { getClientIp } from './authController';
@@ -659,6 +660,52 @@ export class AdminController {
         success: true,
         message: `Platform commission updated to ₹${updated} per trip.`,
         data: { commissionPerTrip: updated }
+      });
+    } catch (err: any) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  }
+
+  /**
+   * Get automatic fare calculation settings
+   */
+  public static async getAutoFareSettings(req: Request, res: Response) {
+    try {
+      const settings = await PlatformSettingsService.getAutoFareSettings();
+      return res.json({ success: true, data: settings });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? 'Internal server error.' : err.message
+      });
+    }
+  }
+
+  /**
+   * Update automatic fare calculation settings
+   */
+  public static async updateAutoFareSettings(req: Request, res: Response) {
+    try {
+      const updates = req.body || {};
+      const updated = await PlatformSettingsService.updateAutoFareSettings(updates);
+
+      // Audit log successful settings update
+      await AuditService.logAction({
+        adminId: req.user?.id,
+        adminEmail: req.user?.email || 'admin@clik2go.in',
+        action: 'UPDATE_AUTO_FARE_SETTINGS',
+        targetType: 'platform_config',
+        targetId: 'auto_fare_settings',
+        details: {
+          updatedSettings: updated
+        },
+        clientIp: getClientIp(req)
+      });
+
+      return res.json({
+        success: true,
+        message: 'Automatic fare settings updated successfully.',
+        data: updated
       });
     } catch (err: any) {
       return res.status(400).json({ success: false, error: err.message });

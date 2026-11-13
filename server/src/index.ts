@@ -109,7 +109,9 @@ app.use(
           'https://sandbox.cashfree.com',
           'https://api.cashfree.com',
           'https://payments.cashfree.com',
-          'https://maps.googleapis.com'
+          'https://maps.googleapis.com',
+          'https://places.googleapis.com',
+          'https://routes.googleapis.com'
         ],
         frameSrc: [
           "'self'",

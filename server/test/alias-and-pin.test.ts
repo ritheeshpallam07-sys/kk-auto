@@ -18,13 +18,16 @@ async function runTests() {
     { input: 'Apollo Cross Road', expected: 'Cross' },
     { input: 'Apollo Pharmacy Cross', expected: 'Cross' },
     { input: 'JNTUA', expected: 'JNTUA' },
-    { input: 'JNTUA Main Gate', expected: 'JNTUA' },
+    { input: 'JNTUA Main Gate', expected: 'JNTUA Main Gate' },
+    { input: 'JNTUA Girls Hostel', expected: 'JNTUA Girls Hostel' },
+    { input: 'JNTUA Boys Hostel', expected: 'JNTUA Boys Hostel' },
     { input: 'Bus Stand', expected: 'Bus Stand' },
     { input: 'RTC Bus Stand', expected: 'Bus Stand' },
     { input: 'Marava', expected: 'Marava' },
     { input: 'Marava Circle', expected: 'Marava' },
     { input: 'Indiramma Colony', expected: 'Indiramma Colony' },
-    { input: 'Indiramma Colony Circle', expected: 'Indiramma Colony' }
+    { input: 'Indiramma Colony Circle', expected: 'Indiramma Colony' },
+    { input: 'Beedi Colony', expected: 'Beedi Colony' }
   ];
 
   for (const t of testAliases) {
@@ -40,12 +43,15 @@ async function runTests() {
   const testRoutes = [
     { from: 'Indiramma Colony', to: 'Cross', expectedFare: 10 },
     { from: 'Cross', to: 'Indiramma Colony', expectedFare: 10 },
-    { from: 'JNTUA Main Gate', to: 'Cross', expectedFare: 20 },
+    { from: 'JNTUA', to: 'Cross', expectedFare: 20 },
     { from: 'JNTUA', to: 'Cross Road Apollo', expectedFare: 20 },
     { from: 'JNTUA', to: 'Apollo Cross Road', expectedFare: 20 },
     { from: 'Apollo Cross Road', to: 'JNTUA', expectedFare: 20 },
     { from: 'JNTUA', to: 'RTC Bus Stand', expectedFare: 25 },
-    { from: 'JNTUA', to: 'Marava Circle', expectedFare: 30 }
+    { from: 'JNTUA', to: 'Marava Circle', expectedFare: 30 },
+    { from: 'JNTUA Main Gate', to: 'Cross', expectedFare: 30 },
+    { from: 'JNTUA Girls Hostel', to: 'Cross', expectedFare: 50 },
+    { from: 'JNTUA Boys Hostel', to: 'Cross', expectedFare: 30 }
   ];
 
   for (const tr of testRoutes) {
@@ -92,15 +98,15 @@ async function runTests() {
   console.log(`  ✓ Dragged pin at (13.6530, 78.8040) correctly resolved to zone: "${draggedWithinZone.name}"`);
 
   const fareForDragged = await RouteService.getRouteFare(
-    'JNTUA',
+    'JNTUA Main Gate',
     'Custom Pinned Drop-off Spot',
     13.6508,
     78.7860,
     13.6530,
     78.8040
   );
-  if (!fareForDragged.available || fareForDragged.fare !== 20) {
-    throw new Error(`FAIL: Dragged pin fare expected 20. Got: ${JSON.stringify(fareForDragged)}`);
+  if (!fareForDragged.available || fareForDragged.fare !== 30) {
+    throw new Error(`FAIL: Dragged pin fare expected 30. Got: ${JSON.stringify(fareForDragged)}`);
   }
   console.log(`  ✓ Fare for dragged pin drop-off spot: ₹${fareForDragged.fare} (${fareForDragged.fromLocation} -> ${fareForDragged.toLocation})`);
 

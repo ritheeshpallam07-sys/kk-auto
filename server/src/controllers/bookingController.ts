@@ -65,8 +65,7 @@ export class BookingController {
       const destinationLatitude = req.body.destinationLatitude !== undefined ? Number(req.body.destinationLatitude) : undefined;
       const destinationLongitude = req.body.destinationLongitude !== undefined ? Number(req.body.destinationLongitude) : undefined;
 
-      // 1. Check fixed route in database using canonical zone IDs
-      const fixedResult = await RouteService.getRouteFare(
+      const result = await FareService.calculateFare(
         fromLoc,
         toLoc,
         pickupLatitude,
@@ -75,24 +74,28 @@ export class BookingController {
         destinationLongitude
       );
 
-      if (fixedResult.available && fixedResult.fare !== undefined) {
+      if (result.available && result.fare !== undefined) {
         return res.json({
           success: true,
           data: {
             available: true,
             pickupAddress: fromLoc,
             destinationAddress: toLoc,
-            pickupZone: fixedResult.fromLocation,
-            destinationZone: fixedResult.toLocation,
-            pickupZoneId: fixedResult.fromZoneId,
-            destinationZoneId: fixedResult.toZoneId,
+            pickupZone: result.fromLocation,
+            destinationZone: result.toLocation,
+            pickupZoneId: result.fromZoneId,
+            destinationZoneId: result.toZoneId,
             passengers,
-            estimatedFare: Number(fixedResult.fare) * passengers
+            estimatedFare: Number(result.fare) * passengers,
+            distanceKm: result.distanceKm,
+            durationSeconds: result.durationSeconds,
+            fareSource: result.fareSource || 'fixed',
+            isAutoFare: Boolean(result.isAutoFare)
           }
         });
       }
 
-      if (fixedResult.error === 'Pickup and destination cannot be the same location.') {
+      if (result.error === 'Pickup and destination cannot be the same location.') {
         return res.status(400).json({
           success: false,
           available: false,
@@ -100,7 +103,10 @@ export class BookingController {
         });
       }
 
-      if (fixedResult.error === 'Fare not configured for this location') {
+      if (
+        result.error === 'Fare not configured for this location' ||
+        result.error === 'Fare not configured for this route. Please contact the admin.'
+      ) {
         return res.status(404).json({
           success: false,
           available: false,
@@ -108,42 +114,10 @@ export class BookingController {
         });
       }
 
-      // 2. Fallback: GPS coordinate area calculation if coordinates provided
-      if (
-        Number.isFinite(pickupLatitude) &&
-        Number.isFinite(pickupLongitude) &&
-        Number.isFinite(destinationLatitude) &&
-        Number.isFinite(destinationLongitude)
-      ) {
-        const result = await FareService.calculateFare(
-          fromLoc,
-          toLoc,
-          pickupLatitude,
-          pickupLongitude,
-          destinationLatitude,
-          destinationLongitude
-        );
-
-        if (result.available && result.fare !== undefined) {
-          return res.json({
-            success: true,
-            data: {
-              available: true,
-              pickupAddress: fromLoc,
-              destinationAddress: toLoc,
-              pickupZone: result.fromLocation,
-              destinationZone: result.toLocation,
-              passengers,
-              estimatedFare: (result.fare ?? 0) * passengers
-            }
-          });
-        }
-      }
-
-      return res.status(404).json({
+      return res.status(400).json({
         success: false,
         available: false,
-        error: fixedResult.error || 'Fare not configured for this location'
+        error: result.error || 'Unable to calculate fare estimate.'
       });
     } catch (err: any) {
       return res.status(500).json({
@@ -245,9 +219,11 @@ export class BookingController {
       let estimatedFare: number;
       let pickupAreaName: string | undefined;
       let destinationAreaName: string | undefined;
+      let distanceKm: number | null = null;
+      let fareSource: string = 'fixed';
 
-      // 1. Check fixed route in database using canonical zone IDs
-      const fixedRoute = await RouteService.getRouteFare(
+      // Unified server-side calculation: fixed route priority -> automatic distance fallback
+      const fareResult = await FareService.calculateFare(
         pickupAddress,
         destinationAddress,
         pickupLatitude,
@@ -255,85 +231,64 @@ export class BookingController {
         destinationLatitude,
         destinationLongitude
       );
-      if (fixedRoute.available && fixedRoute.fare !== undefined) {
-        estimatedFare = Number(fixedRoute.fare) * numPassengers;
-        pickupAreaName = fixedRoute.fromLocation || pickupAddress;
-        destinationAreaName = fixedRoute.toLocation || destinationAddress;
-      } else {
-        // 2. Fallback GPS check via FareService
-        if (
-          !Number.isFinite(pickupLatitude) ||
-          !Number.isFinite(pickupLongitude) ||
-          !Number.isFinite(destinationLatitude) ||
-          !Number.isFinite(destinationLongitude)
-        ) {
-          return res.status(400).json({
-            success: false,
-            error: fixedRoute.error || 'Valid pickup and destination locations are required.'
-          });
-        }
 
-        const fareResult = await FareService.calculateFare(
+      if (!fareResult.available || fareResult.fare === undefined) {
+        return res.status(400).json({
+          success: false,
+          error: fareResult.error || 'Fare not configured for this location'
+        });
+      }
+
+      estimatedFare = Number(fareResult.fare) * numPassengers;
+      pickupAreaName = fareResult.fromLocation || pickupAddress;
+      destinationAreaName = fareResult.toLocation || destinationAddress;
+      distanceKm = fareResult.distanceKm ?? null;
+      fareSource = fareResult.fareSource || (fareResult.isAutoFare ? 'distance' : 'fixed');
+
+      const insertResult = await query(
+        `INSERT INTO bookings (
+          booking_reference,
+          customer_id,
+          pickup_address,
+          destination_address,
+          pickup_area_name,
+          destination_area_name,
+          pickup_latitude,
+          pickup_longitude,
+          destination_latitude,
+          destination_longitude,
+          pickup_datetime,
+          passengers,
+          estimated_fare,
+          status,
+          distance_km,
+          fare_source,
+          created_at,
+          updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+          CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        )
+        RETURNING *;`,
+        [
+          bookingReference,
+          customerId,
           pickupAddress,
           destinationAddress,
+          pickupAreaName,
+          destinationAreaName,
           pickupLatitude,
           pickupLongitude,
           destinationLatitude,
-          destinationLongitude
-        );
-
-        if (!fareResult.available || fareResult.fare === undefined) {
-          return res.status(400).json({
-            success: false,
-            error: fixedRoute.error || fareResult.error || 'Fare not configured for this location'
-          });
-        }
-
-        estimatedFare = Number(fareResult.fare) * numPassengers;
-        pickupAreaName = fareResult.fromLocation;
-        destinationAreaName = fareResult.toLocation;
-      }
-
-const insertResult = await query(
-  `INSERT INTO bookings (
-    booking_reference,
-    customer_id,
-    pickup_address,
-    destination_address,
-    pickup_area_name,
-    destination_area_name,
-    pickup_latitude,
-    pickup_longitude,
-    destination_latitude,
-    destination_longitude,
-    pickup_datetime,
-    passengers,
-    estimated_fare,
-    status,
-    created_at,
-    updated_at
-  ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-  )
-  RETURNING *;`,
-  [
-    bookingReference,
-    customerId,
-    pickupAddress,
-    destinationAddress,
-    pickupAreaName,
-    destinationAreaName,
-    pickupLatitude,
-    pickupLongitude,
-    destinationLatitude,
-    destinationLongitude,
-    scheduledTime.toISOString(),
-    numPassengers,
-    estimatedFare,
-    'Searching for Auto'
-  ]
-);
+          destinationLongitude,
+          scheduledTime.toISOString(),
+          numPassengers,
+          estimatedFare,
+          'Searching for Auto',
+          distanceKm,
+          fareSource
+        ]
+      );
 
       const booking = insertResult.rows[0];
       console.log('BOOKING AREA NAMES:', {

@@ -16,6 +16,11 @@ export interface RouteFareResult {
   fromZoneId?: number;
   toZoneId?: number;
   error?: string;
+  fareSource?: 'fixed' | 'distance';
+  isAutoFare?: boolean;
+  distanceKm?: number;
+  rawFare?: number;
+  durationSeconds?: number;
 }
 
 export interface FareRouteRecord {
@@ -336,7 +341,39 @@ export class RouteService {
         fromLocation: fromZone.name,
         toLocation: toZone.name,
         fromZoneId: fromZone.id,
-        toZoneId: toZone.id
+        toZoneId: toZone.id,
+        fareSource: 'fixed',
+        isAutoFare: false
+      };
+    }
+
+    // Also check existing zone-to-zone fixed fares in area_fares
+    const areaFareRes = await query<{ fare: number }>(
+      `SELECT af.fare
+       FROM area_fares af
+       JOIN fare_areas fa1 ON fa1.id = af.pickup_area_id
+       JOIN fare_areas fa2 ON fa2.id = af.destination_area_id
+       WHERE af.is_active = TRUE
+         AND (
+           (fa1.location_id = $1 AND fa2.location_id = $2)
+           OR (fa1.location_id = $2 AND fa2.location_id = $1)
+           OR (LOWER(TRIM(fa1.name)) = LOWER($3) AND LOWER(TRIM(fa2.name)) = LOWER($4))
+           OR (LOWER(TRIM(fa1.name)) = LOWER($4) AND LOWER(TRIM(fa2.name)) = LOWER($3))
+         )
+       LIMIT 1`,
+      [fromZone.id, toZone.id, fromZone.name, toZone.name]
+    );
+
+    if (areaFareRes.rows.length > 0) {
+      return {
+        available: true,
+        fare: Number(areaFareRes.rows[0].fare),
+        fromLocation: fromZone.name,
+        toLocation: toZone.name,
+        fromZoneId: fromZone.id,
+        toZoneId: toZone.id,
+        fareSource: 'fixed',
+        isAutoFare: false
       };
     }
 

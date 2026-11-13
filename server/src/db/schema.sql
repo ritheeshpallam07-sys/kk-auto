@@ -510,3 +510,84 @@ FROM locations l
 WHERE LOWER(TRIM(fare_areas.name)) = 'indiramma colony'
   AND LOWER(TRIM(l.name)) = 'indiramma colony';
 
+-- ==============================================================================
+-- Hybrid Fare System & 8 Separate Canonical Fare Zones Migration (Phase 10)
+-- ==============================================================================
+
+-- 1. Default automatic fare settings in platform_settings
+INSERT INTO platform_settings (key, value, description, updated_at)
+VALUES
+  ('auto_fare_enabled', 'true', 'Enable or disable automatic distance-based fare calculation when no fixed route exists', CURRENT_TIMESTAMP),
+  ('auto_fare_base', '10.0', 'Base fare in INR for automatic distance-based calculation', CURRENT_TIMESTAMP),
+  ('auto_fare_per_km', '15.0', 'Per-kilometre rate in INR for automatic distance-based calculation', CURRENT_TIMESTAMP),
+  ('auto_fare_max_distance_km', '15.0', 'Maximum allowed road distance in kilometers for automatic fare calculation', CURRENT_TIMESTAMP),
+  ('auto_fare_rounding_increment', '10.0', 'Rounding increment in INR (nearest multiple) for automatic fare calculation', CURRENT_TIMESTAMP)
+ON CONFLICT (key) DO NOTHING;
+
+-- 2. Preserve and ensure all 8 original separate zones in locations
+INSERT INTO locations (name, latitude, longitude, radius_meters)
+VALUES
+  ('Indiramma Colony', 13.6550, 78.7960, 800),
+  ('Beedi Colony', 13.6540, 78.8006, 600),
+  ('Cross', 13.6525, 78.8035, 900),
+  ('Bus Stand', 13.6455, 78.8035, 1000),
+  ('Marava', 13.6408, 78.8010, 1000),
+  ('JNTUA Main Gate', 13.6508, 78.7860, 800),
+  ('JNTUA Girls Hostel', 13.6542, 78.7833, 800),
+  ('JNTUA Boys Hostel', 13.6543, 78.7897, 800),
+  ('JNTUA', 13.6508, 78.7860, 1200)
+ON CONFLICT (name) DO UPDATE
+SET latitude = COALESCE(locations.latitude, EXCLUDED.latitude),
+    longitude = COALESCE(locations.longitude, EXCLUDED.longitude),
+    radius_meters = COALESCE(locations.radius_meters, EXCLUDED.radius_meters);
+
+-- Merge any legacy 'Cross Road' in locations into 'Cross'
+DELETE FROM locations WHERE name = 'Cross Road';
+
+-- 3. Remove JNTUA Main Gate, Girls Hostel, Boys Hostel aliases from generic JNTUA
+DELETE FROM location_aliases
+WHERE LOWER(TRIM(alias)) IN (
+  'jntua main gate', 'jntu main gate', 'jntua gate', 'jntua arch',
+  'jntua girls hostel', 'girls hostel jntua', 'jntua women hostel', 'jntu girls hostel',
+  'jntua boys hostel', 'boys hostel jntua', 'jntua men hostel', 'jntu boys hostel'
+)
+AND location_id = (SELECT id FROM locations WHERE name = 'JNTUA' LIMIT 1);
+
+-- 4. Map distinct aliases to their respective canonical zones
+INSERT INTO location_aliases (location_id, alias)
+SELECT l.id, v.alias
+FROM (
+  VALUES
+    ('JNTUA Main Gate', 'JNTUA Main Gate'),
+    ('JNTUA Main Gate', 'JNTU Main Gate'),
+    ('JNTUA Main Gate', 'JNTUA Gate'),
+    ('JNTUA Main Gate', 'JNTUA Arch'),
+    ('JNTUA Girls Hostel', 'JNTUA Girls Hostel'),
+    ('JNTUA Girls Hostel', 'Girls Hostel JNTUA'),
+    ('JNTUA Girls Hostel', 'JNTUA Women Hostel'),
+    ('JNTUA Girls Hostel', 'JNTU Girls Hostel'),
+    ('JNTUA Boys Hostel', 'JNTUA Boys Hostel'),
+    ('JNTUA Boys Hostel', 'Boys Hostel JNTUA'),
+    ('JNTUA Boys Hostel', 'JNTUA Men Hostel'),
+    ('JNTUA Boys Hostel', 'JNTU Boys Hostel'),
+    ('Beedi Colony', 'Beedi Colony'),
+    ('Beedi Colony', 'Beedi Colony Madanapalle')
+) AS v(zone_name, alias)
+JOIN locations l ON l.name = v.zone_name
+ON CONFLICT (location_id, alias) DO NOTHING;
+
+-- 5. Link all 8 fare_areas to canonical locations
+UPDATE fare_areas fa
+SET location_id = l.id
+FROM locations l
+WHERE LOWER(TRIM(fa.name)) = LOWER(TRIM(l.name));
+
+UPDATE fare_areas fa
+SET location_id = l.id
+FROM locations l
+WHERE LOWER(TRIM(fa.name)) = 'cross road' AND LOWER(TRIM(l.name)) = 'cross' AND fa.location_id IS NULL;
+
+-- 6. Add distance_km and fare_source to bookings table
+ALTER TABLE bookings
+  ADD COLUMN IF NOT EXISTS distance_km DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS fare_source VARCHAR(50) DEFAULT 'fixed';

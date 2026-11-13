@@ -31,6 +31,10 @@ router.patch('/fare-config', AdminController.updateFareConfig);
 router.post('/routes', AdminController.addRoute);
 router.patch('/routes/:id/toggle', AdminController.toggleRoute);
 
+// Hybrid Automatic Fare Settings
+router.get('/auto-fare-settings', AdminController.getAutoFareSettings);
+router.patch('/auto-fare-settings', AdminController.updateAutoFareSettings);
+
 // Platform Commission
 router.get('/commission', AdminController.getCommission);
 router.patch('/commission', AdminController.updateCommission);

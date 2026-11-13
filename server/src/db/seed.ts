@@ -27,6 +27,18 @@ export async function initPlatformDefaults() {
      ON CONFLICT (key) DO NOTHING`
   );
 
+  // Hybrid Fare System defaults in platform_settings (preserve existing custom admin settings)
+  await query(
+    `INSERT INTO platform_settings (key, value, description, updated_at)
+     VALUES
+       ('auto_fare_enabled', 'true', 'Enable or disable automatic distance-based fare calculation when no fixed route exists', CURRENT_TIMESTAMP),
+       ('auto_fare_base', '10.0', 'Base fare in INR for automatic distance-based calculation', CURRENT_TIMESTAMP),
+       ('auto_fare_per_km', '15.0', 'Per-kilometre rate in INR for automatic distance-based calculation', CURRENT_TIMESTAMP),
+       ('auto_fare_max_distance_km', '15.0', 'Maximum allowed road distance in kilometers for automatic fare calculation', CURRENT_TIMESTAMP),
+       ('auto_fare_rounding_increment', '10.0', 'Rounding increment in INR (nearest multiple) for automatic fare calculation', CURRENT_TIMESTAMP)
+     ON CONFLICT (key) DO NOTHING`
+  );
+
   // Safely update legacy default support email to the new official support address without touching custom overrides
   await query(
     `UPDATE platform_settings
@@ -34,13 +46,17 @@ export async function initPlatformDefaults() {
      WHERE key = 'support_email' AND value = 'support@clik2go.in'`
   );
 
-  // 2. Locations - canonical approved fare zones with coordinates
+  // 2. Locations - preserve all 8 original separate zones + JNTUA with coordinates
   const canonicalZones = [
-    { name: 'JNTUA', lat: 13.6508, lng: 78.7860, radius: 1200 },
+    { name: 'Indiramma Colony', lat: 13.6550, lng: 78.7960, radius: 800 },
+    { name: 'Beedi Colony', lat: 13.6540, lng: 78.8006, radius: 600 },
     { name: 'Cross', lat: 13.6525, lng: 78.8035, radius: 900 },
     { name: 'Bus Stand', lat: 13.6455, lng: 78.8035, radius: 1000 },
     { name: 'Marava', lat: 13.6408, lng: 78.8010, radius: 1000 },
-    { name: 'Indiramma Colony', lat: 13.6550, lng: 78.7960, radius: 800 }
+    { name: 'JNTUA Main Gate', lat: 13.6508, lng: 78.7860, radius: 800 },
+    { name: 'JNTUA Girls Hostel', lat: 13.6542, lng: 78.7833, radius: 800 },
+    { name: 'JNTUA Boys Hostel', lat: 13.6543, lng: 78.7897, radius: 800 },
+    { name: 'JNTUA', lat: 13.6508, lng: 78.7860, radius: 1200 }
   ];
   for (const z of canonicalZones) {
     await query(
@@ -54,6 +70,9 @@ export async function initPlatformDefaults() {
     );
   }
 
+  // Ensure 'Cross Road' is merged into canonical 'Cross' location
+  await query(`DELETE FROM locations WHERE name = 'Cross Road'`);
+
   // Remove any legacy/incorrect mapping of Indiramma Colony pointing to Cross
   const crossLoc = await query<{ id: number }>('SELECT id FROM locations WHERE name = $1 LIMIT 1', ['Cross']);
   if (crossLoc.rows.length > 0) {
@@ -61,6 +80,20 @@ export async function initPlatformDefaults() {
       `DELETE FROM location_aliases
        WHERE LOWER(TRIM(alias)) = 'indiramma colony' AND location_id = $1`,
       [crossLoc.rows[0].id]
+    );
+  }
+
+  // Remove JNTUA Girls Hostel, Boys Hostel, and Main Gate from generic JNTUA aliases
+  const jntuaLoc = await query<{ id: number }>('SELECT id FROM locations WHERE name = $1 LIMIT 1', ['JNTUA']);
+  if (jntuaLoc.rows.length > 0) {
+    await query(
+      `DELETE FROM location_aliases
+       WHERE LOWER(TRIM(alias)) IN (
+         'jntua main gate', 'jntu main gate', 'jntua gate', 'jntua arch',
+         'jntua girls hostel', 'girls hostel jntua', 'jntua women hostel', 'jntu girls hostel',
+         'jntua boys hostel', 'boys hostel jntua', 'jntua men hostel', 'jntu boys hostel'
+       ) AND location_id = $1`,
+      [jntuaLoc.rows[0].id]
     );
   }
 
@@ -84,13 +117,32 @@ export async function initPlatformDefaults() {
       'Indiramma Colony Circle',
       'Indiramma Colony Madanapalle'
     ],
+    'Beedi Colony': [
+      'Beedi Colony',
+      'Beedi Colony Madanapalle'
+    ],
+    'JNTUA Main Gate': [
+      'JNTUA Main Gate',
+      'JNTU Main Gate',
+      'JNTUA Gate',
+      'JNTUA Arch'
+    ],
+    'JNTUA Girls Hostel': [
+      'JNTUA Girls Hostel',
+      'Girls Hostel JNTUA',
+      'JNTUA Women Hostel',
+      'JNTU Girls Hostel'
+    ],
+    'JNTUA Boys Hostel': [
+      'JNTUA Boys Hostel',
+      'Boys Hostel JNTUA',
+      'JNTUA Men Hostel',
+      'JNTU Boys Hostel'
+    ],
     'JNTUA': [
       'JNTUA',
       'JNTU',
       'JNTU-A',
-      'JNTUA Main Gate',
-      'JNTUA Girls Hostel',
-      'JNTUA Boys Hostel',
       'JNTU College of Engineering',
       'JNTUA College',
       'JNTU Engineering College',
@@ -173,19 +225,21 @@ export async function initPlatformDefaults() {
             OR fare_routes.from_location_id != l1.id OR fare_routes.to_location_id != l2.id)`
   );
 
-  // Link fare_areas to canonical locations where applicable
+  // Link fare_areas to canonical locations for all 8 separate zones
   await query(
-    `UPDATE fare_areas
+    `UPDATE fare_areas fa
      SET location_id = l.id
      FROM locations l
-     WHERE (fare_areas.location_id IS NULL OR LOWER(fare_areas.name) = 'indiramma colony')
-       AND (
-         (LOWER(fare_areas.name) = 'cross road' AND LOWER(l.name) = 'cross')
-         OR (LOWER(fare_areas.name) LIKE '%jntua%' AND LOWER(l.name) = 'jntua')
-         OR (LOWER(fare_areas.name) = 'bus stand' AND LOWER(l.name) = 'bus stand')
-         OR (LOWER(fare_areas.name) = 'marava' AND LOWER(l.name) = 'marava')
-         OR (LOWER(fare_areas.name) = 'indiramma colony' AND LOWER(l.name) = 'indiramma colony')
-       )`
+     WHERE LOWER(TRIM(fa.name)) = LOWER(TRIM(l.name))`
+  );
+
+  await query(
+    `UPDATE fare_areas fa
+     SET location_id = l.id
+     FROM locations l
+     WHERE LOWER(TRIM(fa.name)) = 'cross road'
+       AND LOWER(TRIM(l.name)) = 'cross'
+       AND (fa.location_id IS NULL OR fa.location_id != l.id)`
   );
 
   console.log('[Bootstrap] Essential platform defaults verified.');

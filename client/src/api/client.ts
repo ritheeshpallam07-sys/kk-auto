@@ -80,6 +80,19 @@ export interface FareEstimate {
   destinationZone?: string;
   pickupZoneId?: number;
   destinationZoneId?: number;
+  isAutoFare?: boolean;
+  distanceKm?: number;
+  durationSeconds?: number;
+  fareSource?: string;
+  rawFare?: number;
+}
+
+export interface AutoFareSettings {
+  autoFareEnabled: boolean;
+  baseFare: number;
+  perKmRate: number;
+  maxDistanceKm: number;
+  roundingIncrement: number;
 }
 
 export interface FareZone {
@@ -684,6 +697,12 @@ savePushSubscription: (subscription: {
       method: 'PATCH',
       body: JSON.stringify({ commission })
     }),
+    getAutoFareSettings: () => request<AutoFareSettings>('/admin/auto-fare-settings'),
+    updateAutoFareSettings: (settings: Partial<AutoFareSettings>) =>
+      request<AutoFareSettings>('/admin/auto-fare-settings', {
+        method: 'PATCH',
+        body: JSON.stringify(settings),
+      }),
     getSettlements: () => request<SettlementOverview>('/admin/settlements'),
     settlePayouts: (params: { driverId?: number; paymentId?: number }) =>
       request<{ settledCount: number; settledAmount: number }>('/admin/settlements/settle', {

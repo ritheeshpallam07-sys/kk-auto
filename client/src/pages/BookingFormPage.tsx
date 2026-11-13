@@ -1129,7 +1129,7 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
               {isCalculating ? (
                 <div className="flex items-center gap-2 text-xs font-bold text-[#C6FF3D]">
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Calculating fixed fare...</span>
+                  <span>Calculating fare...</span>
                 </div>
               ) : fareEstimate && fareEstimate.available ? (
                 <div className="flex items-baseline gap-2">
@@ -1139,6 +1139,11 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
                   {passengers > 1 && (
                     <span className="text-[11px] font-semibold text-[#A1A1AA]">
                       ({passengers} × ₹{Math.round(fareEstimate.estimatedFare / passengers)})
+                    </span>
+                  )}
+                  {fareEstimate.isAutoFare && fareEstimate.distanceKm && (
+                    <span className="text-[11px] font-bold text-[#C6FF3D]/80">
+                      ({fareEstimate.distanceKm} km)
                     </span>
                   )}
                 </div>
@@ -1153,7 +1158,9 @@ export const BookingFormPage: React.FC<BookingFormPageProps> = ({ navigate }) =>
               )}
 
               <span className="text-[10px] font-semibold text-[#A1A1AA]">
-                Fixed Rate
+                {fareEstimate?.isAutoFare
+                  ? 'Automatic Fare'
+                  : 'Fixed Rate'}
               </span>
             </div>
           </div>

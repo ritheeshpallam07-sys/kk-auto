@@ -11,7 +11,8 @@ import {
   RatingRecord,
   AdminAuditLog,
   SupportTicket,
-  SupportTicketDetails
+  SupportTicketDetails,
+  AutoFareSettings
 } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
 import { 
@@ -63,6 +64,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
   const [driverRatings, setDriverRatings] = useState<RatingRecord[]>([]);
   const [routes, setRoutes] = useState<FareRoute[]>([]);
   const [commissionInput, setCommissionInput] = useState<number>(5);
+  const [autoFareSettings, setAutoFareSettings] = useState<AutoFareSettings>({
+    autoFareEnabled: true,
+    baseFare: 10,
+    perKmRate: 15,
+    maxDistanceKm: 15,
+    roundingIncrement: 10
+  });
+  const [isSavingAutoFare, setIsSavingAutoFare] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -247,7 +256,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
   const loadAllData = async () => {
     setIsLoading(true);
     try {
-      const [dashRes, bookRes, drivRes, setlRes, commRes, finRes, tripRes, ratRes, delRes] = await Promise.all([
+      const [dashRes, bookRes, drivRes, setlRes, commRes, finRes, tripRes, ratRes, delRes, autoFareRes] = await Promise.all([
         api.admin.getDashboard(),
         api.admin.getAllBookings(),
         api.admin.getDrivers(),
@@ -256,7 +265,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
         api.admin.getFinancials(),
         api.tripBookings.getAllOwner(),
         api.admin.getDriverRatings(),
-        api.admin.getDeletionRequests()
+        api.admin.getDeletionRequests(),
+        api.admin.getAutoFareSettings()
       ]);
 
       if (dashRes.success && dashRes.data) {
@@ -312,6 +322,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
 
       if (delRes.success && delRes.data) {
         setDeletionRequests(delRes.data);
+      }
+
+      if (autoFareRes.success && autoFareRes.data) {
+        setAutoFareSettings(autoFareRes.data);
       }
     } catch (err: any) {
       console.error(err);
@@ -421,6 +435,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
       loadAllData();
     } else {
       showToast(`Error: ${res.error}`);
+    }
+  };
+
+  // Update automatic distance-based fare settings
+  const handleSaveAutoFare = async () => {
+    try {
+      setIsSavingAutoFare(true);
+      const res = await api.admin.updateAutoFareSettings(autoFareSettings);
+      if (res.success && res.data) {
+        setAutoFareSettings(res.data);
+        showToast('Automatic distance fare settings updated successfully.');
+        loadAllData();
+      } else {
+        showToast(`Error: ${res.error || 'Failed to update settings.'}`);
+      }
+    } catch (err: any) {
+      showToast(`Error: ${err.message || 'Failed to update settings.'}`);
+    } finally {
+      setIsSavingAutoFare(false);
     }
   };
 
@@ -1089,6 +1122,144 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigate }) => {
                   </button>
                 </div>
               </form>
+            </div>
+
+            {/* Hybrid Fare System: Automatic Distance-Based Fare Settings */}
+            <div className="bg-[#202023] rounded-2xl p-6 border border-[#303034] space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#303034]">
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-[#C6FF3D]" />
+                    <span>Automatic Distance Pricing (Hybrid Fallback)</span>
+                  </h3>
+                  <p className="text-xs text-[#A1A1AA]">
+                    Used only when no fixed route fare is configured. Distance is calculated via Google Routes API and rounded to the nearest ₹10.
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={autoFareSettings.autoFareEnabled}
+                    onChange={(e) =>
+                      setAutoFareSettings({
+                        ...autoFareSettings,
+                        autoFareEnabled: e.target.checked
+                      })
+                    }
+                    className="w-4 h-4 rounded text-[#C6FF3D] focus:ring-[#36C98F] bg-[#171719] border-[#303034]"
+                  />
+                  <span className={`text-xs font-bold ${autoFareSettings.autoFareEnabled ? 'text-[#C6FF3D]' : 'text-[#A1A1AA]'}`}>
+                    {autoFareSettings.autoFareEnabled ? 'Automatic Fares Active' : 'Automatic Fares Disabled'}
+                  </span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-[#A1A1AA] uppercase mb-1">
+                    Base Fare (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={autoFareSettings.baseFare}
+                    onChange={(e) =>
+                      setAutoFareSettings({
+                        ...autoFareSettings,
+                        baseFare: Number(e.target.value)
+                      })
+                    }
+                    className="w-full px-3 py-2 bg-[#171719] border border-[#303034] rounded-xl text-xs font-black text-white focus:outline-none focus:ring-2 focus:ring-[#36C98F]"
+                  />
+                  <span className="text-[10px] text-[#71717A] mt-1 block">Default: ₹10</span>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-[#A1A1AA] uppercase mb-1">
+                    Per-Km Rate (₹/km)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.5"
+                    value={autoFareSettings.perKmRate}
+                    onChange={(e) =>
+                      setAutoFareSettings({
+                        ...autoFareSettings,
+                        perKmRate: Number(e.target.value)
+                      })
+                    }
+                    className="w-full px-3 py-2 bg-[#171719] border border-[#303034] rounded-xl text-xs font-black text-white focus:outline-none focus:ring-2 focus:ring-[#36C98F]"
+                  />
+                  <span className="text-[10px] text-[#71717A] mt-1 block">Default: ₹15/km</span>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-[#A1A1AA] uppercase mb-1">
+                    Max Distance (km)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={autoFareSettings.maxDistanceKm}
+                    onChange={(e) =>
+                      setAutoFareSettings({
+                        ...autoFareSettings,
+                        maxDistanceKm: Number(e.target.value)
+                      })
+                    }
+                    className="w-full px-3 py-2 bg-[#171719] border border-[#303034] rounded-xl text-xs font-black text-white focus:outline-none focus:ring-2 focus:ring-[#36C98F]"
+                  />
+                  <span className="text-[10px] text-[#71717A] mt-1 block">Max 15 km limit</span>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-[#A1A1AA] uppercase mb-1">
+                    Rounding Increment (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={autoFareSettings.roundingIncrement}
+                    onChange={(e) =>
+                      setAutoFareSettings({
+                        ...autoFareSettings,
+                        roundingIncrement: Number(e.target.value)
+                      })
+                    }
+                    className="w-full px-3 py-2 bg-[#171719] border border-[#303034] rounded-xl text-xs font-black text-white focus:outline-none focus:ring-2 focus:ring-[#36C98F]"
+                  />
+                  <span className="text-[10px] text-[#71717A] mt-1 block">Rounds to nearest ₹10</span>
+                </div>
+              </div>
+
+              {/* Real-time Interactive Formula Preview */}
+              <div className="p-3 bg-[#171719] border border-[#303034] rounded-xl text-xs text-[#A1A1AA] space-y-2">
+                <div className="font-mono text-[11px] text-[#C6FF3D]">
+                  Formula: Math.round((₹{autoFareSettings.baseFare} + (distance × ₹{autoFareSettings.perKmRate})) / {autoFareSettings.roundingIncrement}) × {autoFareSettings.roundingIncrement}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                  <div>5.2 km → <strong className="text-white">₹{Math.round((autoFareSettings.baseFare + 5.2 * autoFareSettings.perKmRate) / autoFareSettings.roundingIncrement) * autoFareSettings.roundingIncrement}</strong></div>
+                  <div>7.35 km → <strong className="text-white">₹{Math.round((autoFareSettings.baseFare + 7.35 * autoFareSettings.perKmRate) / autoFareSettings.roundingIncrement) * autoFareSettings.roundingIncrement}</strong></div>
+                  <div>10.6 km → <strong className="text-white">₹{Math.round((autoFareSettings.baseFare + 10.6 * autoFareSettings.perKmRate) / autoFareSettings.roundingIncrement) * autoFareSettings.roundingIncrement}</strong></div>
+                  <div>14.8 km → <strong className="text-white">₹{Math.round((autoFareSettings.baseFare + 14.8 * autoFareSettings.perKmRate) / autoFareSettings.roundingIncrement) * autoFareSettings.roundingIncrement}</strong></div>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSaveAutoFare}
+                  disabled={isSavingAutoFare}
+                  className="px-5 py-2.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-white font-black text-xs rounded-xl shadow-subtle transition-all flex items-center gap-1.5"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{isSavingAutoFare ? 'Saving Settings...' : 'Save Automatic Fare Settings'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
