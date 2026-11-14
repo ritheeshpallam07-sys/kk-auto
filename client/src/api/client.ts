@@ -616,10 +616,13 @@ export const api = {
       }),
     getBookingPayment: (bookingId: number) =>
       request<{ payment: PaymentRecord | null; rating: RatingRecord | null }>(`/payments/booking/${bookingId}`),
-        confirmDriverPayment: (bookingId: number) =>
+    confirmDriverPayment: (bookingId: number, paymentMethod: 'CASH' | 'UPI_DIRECT' = 'UPI_DIRECT') =>
       request<PaymentRecord>(
         `/payments/driver/confirm-payment/${bookingId}`,
-        { method: 'POST' }
+        {
+          method: 'POST',
+          body: JSON.stringify({ paymentMethod })
+        }
       ),
     rateDriver: (params: { bookingId: number; rating: number; review?: string }) =>
       request<RatingRecord>('/payments/rate-driver', {

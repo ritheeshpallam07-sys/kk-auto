@@ -291,9 +291,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
   const currentStepIndex = steps.findIndex(s => s.label === booking.status);
   const isCancelled = booking.status === 'Cancelled';
   const isCompleted = booking.status === 'Ride Completed';
-  const isPaid =
-    payment?.payment_status === 'COMPLETED' &&
-    payment?.payment_method !== 'Cash';
+  const isPaid = payment?.payment_status === 'COMPLETED';
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8 bg-[#0B0B0D] text-white safe-bottom">
@@ -372,7 +370,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
                 {isPaid ? (
                   <span className="px-3 py-1 bg-emerald-950/40 text-emerald-300 border border-emerald-800 rounded-full font-bold text-xs flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Paid Online</span>
+                    <span>Paid ({payment?.payment_method === 'CASH' ? 'Cash' : 'UPI'})</span>
                   </span>
                 ) : (
                   <span className="px-3 py-1 bg-[#202023] text-[#A1A1AA] border border-[#303034] rounded-full font-bold text-xs">
@@ -679,7 +677,7 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
               {isPaid ? (
                 <span className="font-black text-emerald-400 flex items-center gap-1">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span>Paid ({payment?.payment_method || 'UPI'})</span>
+                  <span>Paid ({payment?.payment_method === 'CASH' ? 'Cash' : 'UPI'})</span>
                 </span>
               ) : isCompleted && !isCancelled ? (
                 <div className="flex items-center gap-2">
@@ -895,7 +893,13 @@ export const BookingStatusPage: React.FC<BookingStatusPageProps> = ({ bookingId,
               </div>
               <div className="flex justify-between text-[#A1A1AA]">
                 <span>Payment Mode:</span>
-                <span className="font-bold text-white">{payment?.payment_method || 'Cash / Post-Ride'}</span>
+                <span className="font-bold text-white">
+                  {payment?.payment_method === 'CASH'
+                    ? 'Cash'
+                    : payment?.payment_method === 'UPI_DIRECT' || payment?.payment_method === 'UPI'
+                    ? 'UPI'
+                    : (payment?.payment_method || 'Cash / Post-Ride')}
+                </span>
               </div>
 
               <div className="pt-3 border-t border-[#303034] space-y-2">

@@ -232,6 +232,8 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
   const [activeRide, setActiveRide] = useState<Booking | null>(null);
   const [completedRides, setCompletedRides] = useState<Booking[]>([]);
   const [completedRideForPayment, setCompletedRideForPayment] = useState<Booking | null>(null);
+  const [paymentMethodModalRide, setPaymentMethodModalRide] = useState<Booking | null>(null);
+  const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [profileAuthError, setProfileAuthError] = useState<string | null>(null);
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
@@ -695,6 +697,35 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
     }
   };
 
+  const handleSelectPaymentMethod = async (ride: Booking, method: 'CASH' | 'UPI_DIRECT') => {
+    const isUpi = method === 'UPI_DIRECT';
+    const confirmMsg = isUpi
+      ? `Please verify: Have you checked your bank account or UPI app and confirmed that ₹${ride.estimated_fare} was credited via UPI?`
+      : `Please verify: Have you collected ₹${ride.estimated_fare} in cash directly from the passenger?`;
+
+    const verified = window.confirm(confirmMsg);
+    if (!verified) return;
+
+    setIsConfirmingPayment(true);
+    try {
+      const result = await api.payments.confirmDriverPayment(ride.id, method);
+      if (result.success) {
+        alert(`Payment receipt confirmed as ${isUpi ? 'UPI' : 'Cash'}.`);
+        setPaymentMethodModalRide(null);
+        if (completedRideForPayment?.id === ride.id) {
+          setCompletedRideForPayment(null);
+        }
+        await loadDriverData();
+      } else {
+        alert(result.error || 'Unable to confirm payment.');
+      }
+    } catch {
+      alert('Unable to confirm payment. Please try again.');
+    } finally {
+      setIsConfirmingPayment(false);
+    }
+  };
+
   const handleDismissOnboarding = () => {
     dismissNotificationOnboarding(user?.id);
     setIsOnboardingDismissed(true);
@@ -1075,25 +1106,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
           ) : (
             <button
               type="button"
-              onClick={async () => {
-                const verified = window.confirm(
-                  `Please verify: Have you checked your bank account or UPI app and confirmed that ₹${completedRideForPayment.estimated_fare} was credited?`
-                );
-                if (!verified) return;
-
-                try {
-                  const result = await api.payments.confirmDriverPayment(completedRideForPayment.id);
-                  if (result.success) {
-                    alert('Payment receipt confirmed.');
-                    setCompletedRideForPayment(null);
-                    await loadDriverData();
-                  } else {
-                    alert(result.error || 'Unable to confirm payment.');
-                  }
-                } catch {
-                  alert('Unable to confirm payment. Please try again.');
-                }
-              }}
+              onClick={() => setPaymentMethodModalRide(completedRideForPayment)}
               className="w-full sm:flex-1 py-3 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] font-black text-xs rounded-xl shadow-glow-lime transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4 text-[#0B0B0D]" />
@@ -1363,27 +1376,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
                   ) : (
                     <button
                       type="button"
-                      onClick={async () => {
-                        const verified = window.confirm(
-                          `Please verify: Have you checked your bank account or UPI app and confirmed that ₹${ride.estimated_fare} was credited?`
-                        );
-                        if (!verified) return;
-
-                        try {
-                          const result = await api.payments.confirmDriverPayment(ride.id);
-                          if (result.success) {
-                            alert('Payment receipt confirmed.');
-                            if (completedRideForPayment?.id === ride.id) {
-                              setCompletedRideForPayment(null);
-                            }
-                            await loadDriverData();
-                          } else {
-                            alert(result.error || 'Unable to confirm payment.');
-                          }
-                        } catch {
-                          alert('Unable to confirm payment. Please try again.');
-                        }
-                      }}
+                      onClick={() => setPaymentMethodModalRide(ride)}
                       className="px-3 py-1.5 bg-[#C6FF3D] hover:bg-[#B5F028] text-[#0B0B0D] rounded-lg font-bold text-[10px] transition-colors cursor-pointer"
                     >
                       Payment Received
@@ -2074,6 +2067,86 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ navigate }) =>
                 <span>Manage Account & Deletion Requests →</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Method Selection Modal */}
+      {paymentMethodModalRide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#171719] rounded-3xl p-6 sm:p-7 max-w-sm w-full shadow-2xl border border-[#303034] space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-[#303034]">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-[#C6FF3D]" />
+                <h3 className="text-base font-black text-white">Confirm Payment Receipt</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => !isConfirmingPayment && setPaymentMethodModalRide(null)}
+                className="text-[#A1A1AA] hover:text-white text-base p-1"
+                disabled={isConfirmingPayment}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-[#202023] rounded-2xl border border-[#303034] space-y-1 text-center">
+              <div className="text-xs text-[#A1A1AA]">
+                Ride: <strong className="text-white font-mono">{paymentMethodModalRide.booking_reference || `#${paymentMethodModalRide.id}`}</strong>
+              </div>
+              <div className="text-2xl font-black text-[#C6FF3D]">
+                ₹{paymentMethodModalRide.estimated_fare}
+              </div>
+              <div className="text-[11px] text-[#A1A1AA] pt-1">
+                Select the payment method received from customer:
+              </div>
+            </div>
+
+            <div className="space-y-2.5">
+              <button
+                type="button"
+                disabled={isConfirmingPayment}
+                onClick={() => handleSelectPaymentMethod(paymentMethodModalRide, 'CASH')}
+                className="w-full py-3.5 px-4 bg-[#202023] hover:bg-[#26262A] disabled:opacity-50 text-white border border-[#303034] hover:border-[#C6FF3D]/60 font-bold text-xs rounded-xl transition-all flex items-center justify-between cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="w-7 h-7 rounded-lg bg-[#171719] border border-[#303034] text-[#C6FF3D] font-black text-sm flex items-center justify-center">
+                    ₹
+                  </span>
+                  <div className="text-left">
+                    <div className="font-bold text-white text-xs">Cash</div>
+                    <div className="text-[10px] text-[#A1A1AA]">Physical cash handover</div>
+                  </div>
+                </div>
+                <span className="text-[11px] font-bold text-[#C6FF3D]">₹{paymentMethodModalRide.estimated_fare} →</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={isConfirmingPayment}
+                onClick={() => handleSelectPaymentMethod(paymentMethodModalRide, 'UPI_DIRECT')}
+                className="w-full py-3.5 px-4 bg-[#C6FF3D] hover:bg-[#B5F028] disabled:opacity-50 text-[#0B0B0D] font-black text-xs rounded-xl shadow-glow-lime transition-all flex items-center justify-between cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <CreditCard className="w-4 h-4 text-[#0B0B0D]" />
+                  <div className="text-left">
+                    <div className="font-black text-[#0B0B0D] text-xs">UPI</div>
+                    <div className="text-[10px] text-[#0B0B0D]/80">PhonePe / GPay / QR</div>
+                  </div>
+                </div>
+                <span className="text-[11px] font-black text-[#0B0B0D]">₹{paymentMethodModalRide.estimated_fare} →</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              disabled={isConfirmingPayment}
+              onClick={() => setPaymentMethodModalRide(null)}
+              className="w-full py-2.5 text-[#A1A1AA] hover:text-white font-semibold text-xs transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}

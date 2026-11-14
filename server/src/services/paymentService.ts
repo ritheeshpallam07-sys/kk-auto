@@ -820,7 +820,8 @@ const driverAmount = Number((totalFare - ownerAmount).toFixed(2));
 
     public static async confirmDriverPayment(
     bookingId: number,
-    userId: number
+    userId: number,
+    paymentMethod: 'CASH' | 'UPI_DIRECT' = 'UPI_DIRECT'
   ): Promise<any> {
     const bookingResult = await query(
       `SELECT
@@ -854,15 +855,17 @@ const driverAmount = Number((totalFare - ownerAmount).toFixed(2));
       `SELECT *
        FROM payments
        WHERE booking_id = $1
-         AND payment_method = 'UPI_DIRECT'
          AND driver_payment_confirmed_at IS NOT NULL
        LIMIT 1`,
       [bookingId]
     );
 
     if (existing.rows.length > 0) {
-      throw new Error('Direct UPI payment has already been confirmed.');
+      throw new Error('Payment has already been confirmed for this ride.');
     }
+
+    const prefix = paymentMethod === 'CASH' ? 'CASH' : 'UPIDIRECT';
+    const transactionReference = `${prefix}_${bookingId}_${Date.now()}`;
 
     const pending = await query(
       `SELECT *
@@ -879,28 +882,27 @@ const driverAmount = Number((totalFare - ownerAmount).toFixed(2));
       const updated = await query(
         `UPDATE payments
          SET payment_status = 'COMPLETED',
-             payment_method = 'UPI_DIRECT',
-             driver_id = $2,
-             total_amount = $3,
-             driver_amount = $3,
+             payment_method = $2,
+             transaction_reference = COALESCE(transaction_reference, $6),
+             driver_id = $3,
+             total_amount = $4,
+             driver_amount = $4,
              owner_amount = 0,
              commission_amount = 0,
              driver_payment_confirmed_at = CURRENT_TIMESTAMP,
-             driver_payment_confirmed_by = $4,
+             driver_payment_confirmed_by = $5,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $1
            AND payment_status = 'PENDING'
            AND gateway_order_id IS NULL
            AND driver_payment_confirmed_at IS NULL
          RETURNING *`,
-        [pending.rows[0].id, booking.driver_id, fare, booking.assigned_driver_id]
+        [pending.rows[0].id, paymentMethod, booking.driver_id, fare, booking.assigned_driver_id, transactionReference]
       );
 
       if (updated.rows.length > 0) return updated.rows[0];
       throw new Error('Payment status changed. Refresh and try again.');
     }
-
-    const transactionReference = `UPIDIRECT_${bookingId}_${Date.now()}`;
 
     const inserted = await query(
       `INSERT INTO payments (
@@ -924,11 +926,11 @@ const driverAmount = Number((totalFare - ownerAmount).toFixed(2));
          $1, $2, $3, $4, $4, 0, 0,
          'COMPLETED',
          'PENDING',
-         'UPI_DIRECT',
          $5,
+         $6,
          NULL,
          CURRENT_TIMESTAMP,
-         $6,
+         $7,
          CURRENT_TIMESTAMP,
          CURRENT_TIMESTAMP
        )
@@ -938,6 +940,7 @@ const driverAmount = Number((totalFare - ownerAmount).toFixed(2));
         booking.customer_id,
         booking.driver_id,
         fare,
+        paymentMethod,
         transactionReference,
         booking.assigned_driver_id
       ]

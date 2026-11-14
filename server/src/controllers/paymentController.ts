@@ -301,7 +301,7 @@ try {
     }
   }
     /**
-   * Driver manually confirms direct UPI payment for a completed auto ride.
+   * Driver manually confirms direct UPI or cash payment for a completed auto ride.
    */
   public static async confirmDriverPayment(req: Request, res: Response) {
     try {
@@ -315,9 +315,22 @@ try {
         });
       }
 
+      const rawMethod = typeof req.body?.paymentMethod === 'string'
+        ? req.body.paymentMethod.trim().toUpperCase()
+        : '';
+
+      if (rawMethod !== 'CASH' && rawMethod !== 'UPI_DIRECT') {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid or missing payment method. Must be "CASH" or "UPI_DIRECT".'
+        });
+      }
+      const paymentMethod = rawMethod as 'CASH' | 'UPI_DIRECT';
+
       const result = await PaymentService.confirmDriverPayment(
         bookingId,
-        user.id
+        user.id,
+        paymentMethod
       );
 
       return res.json({
